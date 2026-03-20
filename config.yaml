@@ -1,0 +1,34 @@
+# Field Viewer Configuration
+
+# Which field file to load (relative to the fields/ directory)
+# Options: fieldAdultSize.yaml | fieldRCAP.yaml | fieldSPL.yaml
+field: fieldAdultSize.yaml
+
+display:
+  # Field surface color
+  field_color: "#3a7d44"
+  # Border strip between field and surroundings (distance in metres)
+  border_color: "#2d6b35"
+  border_width: 1.0
+  # Area surrounding the field
+  surround_color: "#1e3d1e"
+  # Line color
+  line_color: "white"
+  # Goal color
+  goal_color: "#cccccc"
+  # Ball color
+  ball_color: "orange"
+  # Penalty mark color (uses line_color if not set)
+  penalty_mark_color: "white"
+
+  # Show optional elements
+  show_ball: true
+  show_goals: true
+  show_dimensions_label: true
+
+  # Window title
+  title: "SPQR TV"
+
+agents:
+  count: 5      # number of animated agents
+  speed: 1.5    # base speed in m/s
