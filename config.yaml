@@ -17,7 +17,7 @@ display:
   # Goal color
   goal_color: "#cccccc"
   # Ball color
-  ball_color: "orange"
+  ball_color: "white"
   # Penalty mark color (uses line_color if not set)
   penalty_mark_color: "white"
 
@@ -32,3 +32,8 @@ display:
 agents:
   count: 5      # number of animated agents
   speed: 1.5    # base speed in m/s
+  colors:
+    - "#822433"   # sap red rgb(130, 36, 51)
+    - "#006778"   # sap blue rgb(0, 103, 120)
+    - "#000000"   # black
+    - "#ffffff"   # white

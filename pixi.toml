@@ -1,6 +1,6 @@
 
 [workspace]
-name = "tcm-field-viewer"
+name = "spqr-tv"
 version = "0.1.0"
 description = "RoboCup field viewer GUI"
 channels = ["conda-forge"]
@@ -13,4 +13,4 @@ pyyaml = ">=6.0"
 tk = "*"
 
 [tasks]
-viewer = "python field_viewer.py"
+tv = "python run_tv.py"

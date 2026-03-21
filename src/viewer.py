@@ -9,7 +9,6 @@ from matplotlib.animation import FuncAnimation
 from .config import load_config
 from .field import draw_field
 from matplotlib.patches import Circle
-
 from .agents import create_agents, make_agent_artists, update_agent_artists, Ball
 
 
@@ -64,10 +63,11 @@ def main() -> None:
         agent_artists.append(make_agent_artists(ax, agent, i, agent_size))
 
     # --- Ball ---
-    ball_color = disp.get("ball_color", "orange")
+    ball_color = disp.get("ball_color", "white")
     ball = Ball(x=0.0, y=0.0, vx=2.0, vy=1.3,
                 radius=field["ball_radius"], color=ball_color)
-    ball_patch = Circle((ball.x, ball.y), ball.radius, color=ball.color, zorder=6)
+    ball_patch = Circle((ball.x, ball.y), ball.radius,
+                        facecolor=ball.color, edgecolor="black", linewidth=1, zorder=6)
     if disp.get("show_ball", True):
         ax.add_patch(ball_patch)
 
