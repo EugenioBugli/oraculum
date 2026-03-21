@@ -9,6 +9,8 @@ from matplotlib.transforms import Affine2D
 
 # Default palette for agents
 AGENT_COLORS = ["#822433", "#006778", "#000000", "#ffffff"]
+AGENT_ROLES = ["G", "D", "M", "A"]
+AGENT_STATES = ["I", "R", "S", "P", "X"] 
 
 _LIGHT_COLORS = {"#ffffff", "white"}
 
@@ -24,6 +26,8 @@ class Agent:
     speed: float
     angle: float  # radians, direction of movement
     color: str
+    role: str = "M"
+    state: str = "R"
 
     @property
     def vx(self) -> float:
@@ -78,66 +82,41 @@ def create_agents(n: int, hw: float, hh: float, speed: float = 1.5, seed: int = 
             speed=speed * rng.uniform(0.7, 1.3),
             angle=rng.uniform(0, 2 * math.pi),
             color=AGENT_COLORS[i % len(AGENT_COLORS)],
+            role=AGENT_ROLES[i % len(AGENT_ROLES)],
+            state=AGENT_STATES[i % len(AGENT_STATES)],
         )
         for i in range(n)
     ]
 
 
-def _body_verts(agent: Agent, s: float) -> list[tuple]:
-    """Compute the 3 vertices of the arrowhead triangle in world frame.
-
-    Triangle centroid sits at (agent.x, agent.y) so the number label is
-    always centered inside the shape.
-    Local frame: forward = +x, lateral = +y.
-      tip:        ( 2s,   0   )
-      back-left:  (-2s,  +1.2s)
-      back-right: (-2s,  -1.2s)
-    Centroid: ((2s - 2s - 2s)/3, 0) = (-2s/3, 0)
-    The centroid sits in the wide body section, so (agent.x, agent.y)
-    already lands in the right spot for the number label — no angle-dependent
-    offset needed.
-    """
-    c, si = math.cos(agent.angle), math.sin(agent.angle)
-
-    def to_world(fwd: float, lat: float) -> tuple:
-        return (agent.x + fwd * c - lat * si,
-                agent.y + fwd * si + lat * c)
-
+def _pentagon_verts(agent: Agent, s: float) -> list:
+    """Pentagon with an elongated front vertex pointing in the heading direction."""
+    radii = [s * 2.2, s * 1.0, s * 1.0, s * 1.0, s * 1.0]
     return [
-        to_world(2 * s, 0),            # tip
-        to_world(-2.0 * s, +1.2 * s),  # back-left
-        to_world(-2.0 * s, -1.2 * s),  # back-right
+        (agent.x + radii[k] * math.cos(agent.angle + k * 2 * math.pi / 5),
+         agent.y + radii[k] * math.sin(agent.angle + k * 2 * math.pi / 5))
+        for k in range(5)
     ]
 
 
-
-def _triangle_centroid(agent: Agent, s: float) -> tuple:
-    verts = _body_verts(agent, s)
-    return (sum(v[0] for v in verts) / 3, sum(v[1] for v in verts) / 3)
-
-
-def _text_transform(agent: Agent, s: float, ax):
-    """Affine transform that rotates the label and places it at the centroid.
-
-    The text is defined at (0, 0); this transform handles both rotation and
-    translation in one matrix, avoiding any pixel-snapping drift.
-    """
-    cx, cy = _triangle_centroid(agent, s)
+def _text_transform(agent: Agent, ax):
+    """Rotate the label to match movement direction and place it at agent centre."""
     return (Affine2D()
-            .rotate(agent.angle - math.pi / 2)
-            .translate(cx, cy)
+            .rotate(agent.angle)
+            .translate(agent.x, agent.y)
             + ax.transData)
 
 
 def make_agent_artists(ax, agent: Agent, index: int, size: float) -> tuple:
-    """Create and add to *ax* the body polygon and number label for *agent*.
+    """Create ellipse body and number label for *agent*.
 
-    Returns (body_patch, text) — both support in-place updates.
+    The ellipse is elongated along the heading direction so the shape
+    visually rotates with the agent.
+    Returns (body, text) — both support in-place updates.
     """
     body = patches.Polygon(
-        _body_verts(agent, size),
-        closed=True, facecolor=agent.color, edgecolor="black",
-        linewidth=1, zorder=10,
+        _pentagon_verts(agent, size),
+        closed=True, facecolor=agent.color, edgecolor="black", linewidth=1, zorder=10,
     )
     ax.add_patch(body)
 
@@ -145,14 +124,57 @@ def make_agent_artists(ax, agent: Agent, index: int, size: float) -> tuple:
         0, 0, str(index + 1),
         color=_label_color(agent.color), ha="center", va="center",
         fontsize=15, fontweight="bold", zorder=11,
-        transform=_text_transform(agent, size, ax),
+        transform=_text_transform(agent, ax),
     )
     return body, text
 
 
-def update_agent_artists(agent: Agent, body: patches.Polygon, text, size: float) -> None:
+def update_agent_artists(agent: Agent, body, text, size: float) -> None:
     """Update existing artists in-place (no remove/re-add needed)."""
-    body.set_xy(_body_verts(agent, size))
+    body.set_xy(_pentagon_verts(agent, size))
     text.set_color(_label_color(agent.color))
-    text.set_transform(_text_transform(agent, size, text.axes))
+    text.set_transform(_text_transform(agent, text.axes))
+
+
+def draw_agent_legend(ax, agents: list) -> None:
+    """Draw a static column per agent showing Player number and Role."""
+    n = len(agents)
+    ax.set_xlim(-0.5, n - 0.5)
+    ax.set_ylim(0, 1)
+    ax.set_facecolor("#1e1e1e")
+    ax.axis("off")
+
+    rect_w, rect_h = 0.55, 0.82
+    y0 = (1 - rect_h) / 2        # rectangle bottom
+    y1 = y0 + rect_h              # rectangle top
+    third = rect_h / 3
+    d1 = y0 + third               # divider between state and role
+    d2 = y0 + 2 * third           # divider between role and player
+
+    for i, agent in enumerate(agents):
+        lc = _label_color(agent.color)
+
+        # Colored rectangle
+        rect = patches.Rectangle(
+            (i - rect_w / 2, y0), rect_w, rect_h,
+            facecolor=agent.color, edgecolor="black", linewidth=1,
+        )
+        ax.add_patch(rect)
+
+        # Divider lines
+        for dy in (d1, d2):
+            ax.plot([i - rect_w / 2, i + rect_w / 2], [dy, dy],
+                    color=lc, linewidth=0.6, alpha=0.5)
+
+        # "Player : N"  (top third)
+        ax.text(i, (d2 + y1) / 2, f"Player : {i + 1}",
+                color=lc, ha="center", va="center", fontsize=8, fontweight="bold")
+
+        # "Role : X"  (middle third)
+        ax.text(i, (d1 + d2) / 2, f"Role : {agent.role}",
+                color=lc, ha="center", va="center", fontsize=8, fontweight="bold")
+
+        # "State : X"  (bottom third)
+        ax.text(i, (y0 + d1) / 2, f"State : {agent.state}",
+                color=lc, ha="center", va="center", fontsize=8, fontweight="bold")
 

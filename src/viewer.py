@@ -9,7 +9,7 @@ from matplotlib.animation import FuncAnimation
 from .config import load_config
 from .field import draw_field
 from matplotlib.patches import Circle
-from .agents import create_agents, make_agent_artists, update_agent_artists, Ball
+from .agents import create_agents, make_agent_artists, update_agent_artists, Ball, draw_agent_legend
 
 
 _ROOT_DIR = os.path.join(os.path.dirname(__file__), "..")
@@ -34,11 +34,16 @@ def main() -> None:
 
     # --- Figure setup ---
     fig_w = 16
-    fig_h = fig_w * (H + 2 * margin) / (W + 2 * margin)
-    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+    fig_h_field = fig_w * (H + 2 * margin) / (W + 2 * margin)
+    legend_h = 1.1  # inches
+    fig, (ax, ax_leg) = plt.subplots(
+        2, 1,
+        figsize=(fig_w, fig_h_field + legend_h),
+        gridspec_kw={"height_ratios": [fig_h_field, legend_h], "hspace": 0.02},
+    )
     fig.patch.set_facecolor("#1e1e1e")
     fig.canvas.manager.set_window_title(title)
-    fig.canvas.manager.window.setMinimumSize(int(fig_w * fig.dpi), int(fig_h * fig.dpi))
+    fig.canvas.manager.window.setMinimumSize(int(fig_w * fig.dpi), int((fig_h_field + legend_h) * fig.dpi))
 
     draw_field(ax, field, cfg)
 
@@ -46,21 +51,23 @@ def main() -> None:
     ax.set_ylim(-hh - margin, hh + margin)
     ax.set_aspect("equal")
     ax.axis("off")
-    ax.set_title(
-        f"{title}",
-        color="white", fontsize=11, pad=10,
-    )
+    fig.suptitle(title,
+                 color="#822433", fontsize=30, fontweight="bold",
+                 fontfamily="serif")
 
     # --- Agents ---
     n_agents = cfg.get("agents", {}).get("count", 5)
     speed = cfg.get("agents", {}).get("speed", 1.5)
     agents = create_agents(n_agents, hw, hh, speed=speed)
 
-    agent_size = min(W, H) * 0.018  # half-side of the agent square
+    agent_size = min(W, H) * 0.032  # radius of the agent circle
 
     agent_artists: list[tuple] = []
     for i, agent in enumerate(agents):
         agent_artists.append(make_agent_artists(ax, agent, i, agent_size))
+
+    # --- Legend ---
+    draw_agent_legend(ax_leg, agents)
 
     # --- Ball ---
     ball_color = disp.get("ball_color", "white")
@@ -86,6 +93,7 @@ def main() -> None:
     anim = FuncAnimation(fig, update, interval=int(dt * 1000), blit=False, cache_frame_data=False)  # noqa: F841
 
     plt.tight_layout()
+    plt.subplots_adjust(top=0.93)
     try:
         plt.show()
     except KeyboardInterrupt:

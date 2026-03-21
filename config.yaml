@@ -30,7 +30,7 @@ display:
   title: "SPQR TV"
 
 agents:
-  count: 5      # number of animated agents
+  count: 7      # number of animated agents
   speed: 1.5    # base speed in m/s
   colors:
     - "#822433"   # sap red rgb(130, 36, 51)
