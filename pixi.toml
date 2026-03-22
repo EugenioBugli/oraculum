@@ -13,4 +13,5 @@ pyyaml = ">=6.0"
 tk = "*"
 
 [tasks]
-tv = "python run_tv.py"
+tv     = "python run_tv.py"
+sender = "python tools/udp_sender.py"

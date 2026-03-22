@@ -29,6 +29,11 @@ display:
   # Window title
   title: "SPQR TV"
 
+socket:
+  enabled: true        # set to true to receive live data via UDP
+  host: "0.0.0.0"      # bind address (0.0.0.0 = all interfaces)
+  port: 10006
+
 agents:
   count: 7      # number of animated agents
   speed: 1.5    # base speed in m/s

@@ -10,6 +10,7 @@ from .config import load_config
 from .field import draw_field
 from matplotlib.patches import Circle
 from .agents import create_agents, make_agent_artists, update_agent_artists, Ball, draw_agent_legend
+from .socket_client import UDPReceiver
 
 
 _ROOT_DIR = os.path.join(os.path.dirname(__file__), "..")
@@ -55,6 +56,16 @@ def main() -> None:
                  color="#822433", fontsize=30, fontweight="bold",
                  fontfamily="serif")
 
+    # --- Socket receiver (optional) ---
+    sock_cfg = cfg.get("socket", {})
+    receiver: UDPReceiver | None = None
+    if sock_cfg.get("enabled", False):
+        receiver = UDPReceiver(
+            host=sock_cfg.get("host", "0.0.0.0"),
+            port=sock_cfg.get("port", 10006),
+        )
+        receiver.start()
+
     # --- Agents ---
     n_agents = cfg.get("agents", {}).get("count", 5)
     speed = cfg.get("agents", {}).get("speed", 1.5)
@@ -82,12 +93,24 @@ def main() -> None:
     dt = 0.04  # seconds per frame (~25 fps)
 
     def update(_frame):
-        for agent in agents:
-            agent.step(dt, hw, hh)
+        if receiver is not None:
+            msg = receiver.latest()
+            if msg is not None:
+                for agent_msg in msg.agents:
+                    idx = agent_msg.id - 1
+                    if 0 <= idx < len(agents):
+                        a = agents[idx]
+                        a.x, a.y, a.angle = agent_msg.x, agent_msg.y, agent_msg.angle
+                        a.role, a.state, a.color = agent_msg.role, agent_msg.state, agent_msg.color
+                if msg.ball is not None:
+                    ball.x, ball.y = msg.ball.x, msg.ball.y
+        else:
+            for agent in agents:
+                agent.step(dt, hw, hh)
+            ball.step(dt, hw, hh)
+
         for i, agent in enumerate(agents):
             update_agent_artists(agent, *agent_artists[i], agent_size)
-
-        ball.step(dt, hw, hh)
         ball_patch.set_center((ball.x, ball.y))
 
     anim = FuncAnimation(fig, update, interval=int(dt * 1000), blit=False, cache_frame_data=False)  # noqa: F841
@@ -98,3 +121,6 @@ def main() -> None:
         plt.show()
     except KeyboardInterrupt:
         pass
+    finally:
+        if receiver is not None:
+            receiver.stop()
