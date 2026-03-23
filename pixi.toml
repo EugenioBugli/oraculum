@@ -1,6 +1,6 @@
 
 [workspace]
-name = "spqr-tv"
+name = "spqr-oraculum"
 version = "0.1.0"
 description = "RoboCup field viewer GUI"
 channels = ["conda-forge"]
@@ -13,5 +13,5 @@ pyyaml = ">=6.0"
 tk = "*"
 
 [tasks]
-tv     = "python run_tv.py"
+oraculum     = "python run_oraculum.py"
 sender = "python tools/udp_sender.py"
