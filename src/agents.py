@@ -144,7 +144,7 @@ def draw_agent_legend(ax, agents: list) -> None:
     ax.set_facecolor("#1e1e1e")
     ax.axis("off")
 
-    rect_w, rect_h = 0.55, 0.82
+    rect_w, rect_h = 0.88, 0.82
     y0 = (1 - rect_h) / 2        # rectangle bottom
     y1 = y0 + rect_h              # rectangle top
     third = rect_h / 3

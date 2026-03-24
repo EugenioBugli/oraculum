@@ -27,12 +27,18 @@ display:
   show_dimensions_label: true
 
   # Window title
-  title: "SPQR TV"
+  title: "Oraculum"
 
 socket:
   enabled: true        # set to true to receive live data via UDP
   host: "0.0.0.0"      # bind address (0.0.0.0 = all interfaces)
   port: 10006
+
+game_controller:
+  enabled: true        # set to true to receive GameController state via UDP
+  host: "0.0.0.0"
+  port: 3838
+  own_team: 19       # set to your team number to track own team index
 
 agents:
   count: 7      # number of animated agents

@@ -25,3 +25,18 @@ def load_config(root_dir: str) -> tuple[dict, dict, str]:
     field_data = load_yaml(field_path)
     field_name = os.path.splitext(field_file)[0]
     return cfg, field_data, field_name
+
+
+def load_teams(root_dir: str) -> dict[int, dict]:
+    """Return {team_number: {"name": str, "colors": [str]}} from config/teams.yaml."""
+    teams_path = os.path.join(root_dir, "config", "teams.yaml")
+    if not os.path.exists(teams_path):
+        return {}
+    entries = yaml.safe_load(open(teams_path)) or []
+    return {
+        e["number"]: {
+            "name":   e["name"],
+            "colors": e.get("fieldPlayerColors", []),
+        }
+        for e in entries if "number" in e and "name" in e
+    }
