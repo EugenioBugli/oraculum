@@ -48,3 +48,15 @@ agents:
     - "#006778"   # sap blue rgb(0, 103, 120)
     - "#000000"   # black
     - "#ffffff"   # white
+
+joystick:
+  enabled: true
+  target_host: "127.0.0.1"   # Use "255.255.255.255" or your wifi network's broadcast for physical robot
+  target_port: 10007
+  device_path: "/dev/input/js0"
+
+drawings:
+  ignored_paths:
+    - "test/hidden_drawings"
+    - "particles/ignored"
+

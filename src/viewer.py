@@ -1,3 +1,4 @@
+
 """Figure setup, animation loop, and entry point."""
 
 import os
@@ -187,18 +188,8 @@ def main() -> None:
         gc_receiver.start()
 
     # --- Agents ---
-    n_agents = cfg.get("agents", {}).get("count", 5)
-    speed = cfg.get("agents", {}).get("speed", 1.5)
-    agents = create_agents(n_agents, hw, hh, speed=speed)
-
     agent_size = min(W, H) * 0.032  # radius of the agent circle
-
-    agent_artists: list[tuple] = []
-    for i, agent in enumerate(agents):
-        agent_artists.append(make_agent_artists(ax, agent, i, agent_size))
-
-    # --- Legend ---
-    draw_agent_legend(ax_leg, agents)
+    active_agents = {}  # key: (ip, id) -> {'agent': Agent, 'artists': (body, text)}
 
     # --- Ball ---
     ball_color = disp.get("ball_color", "white")
@@ -221,21 +212,51 @@ def main() -> None:
         if receiver is not None:
             msg = receiver.latest()
             if msg is not None:
+                legend_changed = False
                 for agent_msg in msg.agents:
-                    idx = agent_msg.id - 1
-                    if 0 <= idx < len(agents):
-                        a = agents[idx]
+                    agent_ip = getattr(agent_msg, "ip", "") or ""
+                    key = (agent_ip, agent_msg.id)
+                    if key not in active_agents:
+                        from .agents import Agent, make_agent_artists
+                        new_agent = Agent(
+                            x=agent_msg.x,
+                            y=agent_msg.y,
+                            speed=0.0,
+                            angle=agent_msg.angle,
+                            color=agent_msg.color,
+                            role=agent_msg.role,
+                            state=agent_msg.state,
+                            id=agent_msg.id
+                        )
+                        body, text = make_agent_artists(ax, new_agent, agent_msg.id - 1, agent_size)
+                        active_agents[key] = {
+                            'agent': new_agent,
+                            'artists': (body, text)
+                        }
+                        legend_changed = True
+                    else:
+                        entry = active_agents[key]
+                        a = entry['agent']
                         a.x, a.y, a.angle = agent_msg.x, agent_msg.y, agent_msg.angle
-                        a.role, a.state, a.color = agent_msg.role, agent_msg.state, agent_msg.color
+                        if a.role != agent_msg.role or a.state != agent_msg.state or a.color != agent_msg.color:
+                            a.role, a.state, a.color = agent_msg.role, agent_msg.state, agent_msg.color
+                            legend_changed = True
+                        from .agents import update_agent_artists
+                        update_agent_artists(a, entry['artists'][0], entry['artists'][1], agent_size)
+
+                if legend_changed:
+                    ax_leg.clear()
+                    sorted_agents = sorted(
+                        [v['agent'] for v in active_agents.values()],
+                        key=lambda a: (a.color, a.id)
+                    )
+                    if sorted_agents:
+                        from .agents import draw_agent_legend
+                        draw_agent_legend(ax_leg, sorted_agents)
+
                 if msg.ball is not None:
                     ball.x, ball.y = msg.ball.x, msg.ball.y
-        else:
-            for agent in agents:
-                agent.step(dt, hw, hh)
-            ball.step(dt, hw, hh)
 
-        for i, agent in enumerate(agents):
-            update_agent_artists(agent, *agent_artists[i], agent_size)
         ball_patch.set_center((ball.x, ball.y))
 
     anim = FuncAnimation(fig, update, interval=int(dt * 1000), blit=False, cache_frame_data=False)  # noqa: F841

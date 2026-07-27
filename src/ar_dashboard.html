@@ -1,0 +1,2481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Oraculum Responsive & AR Analyzer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/static/three.module.js",
+          "three/addons/": "/static/"
+        }
+      }
+    </script>
+    
+    <style>
+        :root {
+            --bg-dark: #07090e;
+            --bg-card: rgba(14, 18, 28, 0.75);
+            --border-glow: rgba(0, 255, 136, 0.2);
+            --accent-green: #00ff88;
+            --accent-blue: #00d2ff;
+            --accent-red: #ff3c6a;
+            --accent-orange: #ff9f1c;
+            --text-main: #f0f4f8;
+            --text-muted: #7e8d9f;
+            --font-outfit: 'Outfit', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: var(--font-outfit);
+            min-height: 100vh;
+            overflow-x: hidden;
+            background-image: radial-gradient(circle at 50% -10%, #17243c 0%, var(--bg-dark) 65%);
+        }
+
+        header {
+            padding: 1rem 2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            background: rgba(10, 14, 23, 0.8);
+            backdrop-filter: blur(12px);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: 2px;
+            background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 25px rgba(0, 255, 136, 0.25);
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+        }
+
+        .ip-config {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 0.4rem 0.8rem;
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+        }
+
+        .ip-config input {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-main);
+            padding: 2px 8px;
+            border-radius: 4px;
+            width: 140px;
+            font-family: var(--font-mono);
+        }
+
+        .ip-config button {
+            background: var(--accent-blue);
+            color: #000;
+            border: none;
+            padding: 2px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .gc-panel {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 0.4rem 1.2rem;
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+        }
+
+        .gc-badge {
+            background: var(--accent-blue);
+            color: #000;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .gc-badge.offline {
+            background: var(--accent-red);
+            color: #fff;
+        }
+
+        .connection-status {
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 600;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-red);
+            box-shadow: 0 0 8px var(--accent-red);
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-dot.online {
+            background: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+
+        .main-container {
+            display: grid;
+            grid-template-columns: 420px 1fr;
+            gap: 1.5rem;
+            padding: 1.5rem;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 14px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(10px);
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .card:hover {
+            border-color: var(--border-glow);
+        }
+
+        .card-header {
+            padding: 1rem 1.2rem;
+            font-size: 0.95rem;
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.02);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            letter-spacing: 1px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-content {
+            padding: 1.2rem;
+        }
+
+        .view-pane-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .tab-bar {
+            display: flex;
+            gap: 0.5rem;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 4px;
+            border-radius: 10px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 0.6rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-family: var(--font-outfit);
+            transition: all 0.2s;
+        }
+
+        .tab-btn.active {
+            background: rgba(255, 255, 255, 0.07);
+            color: var(--accent-green);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        .viewport-wrapper {
+            position: relative;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            min-height: 550px;
+            height: calc(100vh - 200px);
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .viewport-element {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+        }
+
+        .viewport-element.active {
+            display: block;
+        }
+
+        canvas#fieldCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        #threejsContainer {
+            background: #020408;
+        }
+
+        /* Lists */
+        .robot-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.8rem 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.01);
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 0.5rem;
+        }
+
+        .robot-item:hover, .robot-item.selected {
+            background: rgba(0, 255, 136, 0.05);
+            border-color: rgba(0, 255, 136, 0.3);
+        }
+
+        .robot-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .robot-id {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .robot-role {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+        }
+
+        .robot-stat {
+            text-align: right;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+        }
+
+        .battery-badge {
+            background: rgba(0, 255, 136, 0.15);
+            color: var(--accent-green);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        .battery-badge.low {
+            background: rgba(255, 60, 106, 0.15);
+            color: var(--accent-red);
+        }
+
+        /* Joystick Override UI */
+        .joystick-panel-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .joy-boundary {
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.4);
+            border: 2px dashed rgba(255, 255, 255, 0.15);
+            position: relative;
+            margin: 0 auto;
+            touch-action: none;
+        }
+
+        .joy-stick {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: radial-gradient(circle, var(--accent-blue) 0%, #0088cc 100%);
+            position: absolute;
+            top: 48px;
+            left: 48px;
+            box-shadow: 0 4px 15px rgba(0, 210, 255, 0.4);
+            cursor: pointer;
+        }
+
+        .control-sliders {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .slider-row {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+        }
+
+        .slider-row label {
+            display: flex;
+            justify-content: space-between;
+            color: var(--text-muted);
+        }
+
+        .slider-row input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent-blue);
+        }
+
+        /* Checklist style */
+        .filter-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+
+        .filter-checkbox input {
+            accent-color: var(--accent-green);
+        }
+
+        /* Table styles */
+        .net-stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.75rem;
+            font-family: var(--font-mono);
+            margin-top: 1rem;
+        }
+
+        .net-stats-table th {
+            text-align: left;
+            color: var(--text-muted);
+            padding: 0.4rem 0.2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .net-stats-table td {
+            padding: 0.5rem 0.2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .budget-container {
+            margin-bottom: 0.8rem;
+        }
+
+        .budget-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            font-family: var(--font-mono);
+            margin-bottom: 0.2rem;
+        }
+
+        .budget-bar {
+            height: 6px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .budget-progress {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-green), var(--accent-orange));
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+
+        .warning-badge {
+            background: rgba(255, 159, 28, 0.2);
+            color: var(--accent-orange);
+            font-size: 0.65rem;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+
+        .chart-container {
+            margin-top: 1rem;
+            background: rgba(0,0,0,0.2);
+            padding: 0.5rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.02);
+        }
+
+        .net-chart {
+            width: 100%;
+            height: 50px;
+            display: block;
+        }
+
+        /* 3D Action buttons overlay on viewport */
+        .viewport-actions {
+            position: absolute;
+            bottom: 1rem;
+            right: 1rem;
+            display: flex;
+            gap: 0.5rem;
+            z-index: 10;
+        }
+
+        .action-btn {
+            background: rgba(14, 18, 28, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: var(--text-main);
+            padding: 0.6rem 1.2rem;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            backdrop-filter: blur(8px);
+            font-family: var(--font-outfit);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+        }
+
+        .action-btn:hover {
+            border-color: var(--accent-green);
+            background: rgba(0, 255, 136, 0.1);
+            color: var(--accent-green);
+        }
+
+        /* WebXR DOM Overlay layout style */
+        #arOverlayContainer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: none;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 1rem;
+            box-sizing: border-box;
+            z-index: 9999;
+        }
+
+        #arOverlayContainer.active {
+            display: flex;
+        }
+
+        .ar-hud-panel {
+            background: rgba(7, 9, 14, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 14px;
+            padding: 0.8rem;
+            pointer-events: auto;
+            backdrop-filter: blur(10px);
+            color: #fff;
+            max-width: 90%;
+            align-self: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+
+        .ar-calibration-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.4rem;
+            margin-top: 0.5rem;
+        }
+
+        .ar-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            padding: 0.4rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            user-select: none;
+        }
+
+        .ar-btn:active {
+            background: var(--accent-green);
+            color: #000;
+        }
+
+        .ar-btn.accent {
+            background: var(--accent-blue);
+            color: #000;
+            border: none;
+        }
+
+        .ar-btn.danger {
+            background: var(--accent-red);
+            color: #fff;
+            border: none;
+        }
+
+        .ar-btn.green {
+            background: var(--accent-green);
+            color: #000;
+            border: none;
+        }
+
+        /* Responsive Breakpoints */
+        @media (max-width: 1024px) {
+            .main-container {
+                grid-template-columns: 1fr;
+                padding: 1rem;
+            }
+            .sidebar {
+                order: 2;
+            }
+            .view-pane-container {
+                order: 1;
+            }
+            .viewport-wrapper {
+                height: 450px;
+                min-height: 350px;
+            }
+            header {
+                padding: 1rem;
+                flex-direction: column;
+                gap: 0.8rem;
+                align-items: stretch;
+            }
+            .header-controls {
+                flex-direction: column;
+                gap: 0.5rem;
+                align-items: stretch;
+            }
+            .logo {
+                text-align: center;
+            }
+        }
+    <style>
+        :root {
+            --bg-dark: #121316;
+            --bg-surface: #18191d;
+            --bg-panel: #1e2025;
+            --bg-card: #24272e;
+            --bg-input: #2b2e37;
+            --border-subtle: #2d3038;
+            --border-strong: #3b3f4a;
+            --accent-indigo: #6366f1;
+            --accent-blue: #3b82f6;
+            --accent-emerald: #10b981;
+            --accent-red: #ef4444;
+            --accent-amber: #f59e0b;
+            --text-primary: #eceef2;
+            --text-secondary: #9fa4b2;
+            --text-muted: #656a76;
+            --font-main: 'Inter', system-ui, -apple-system, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        /* Modern Antigravity Dark Gray App Shell */
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            font-family: var(--font-main);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 36px Compact Application Status Bar */
+        .app-status-bar {
+            height: 36px;
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 0.8rem;
+            font-size: 0.75rem;
+            user-select: none;
+            z-index: 100;
+        }
+
+        .bar-section {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+        .app-title-badge {
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+        }
+
+        .hamburger-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0.2rem;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.15s ease, background 0.15s ease;
+        }
+        .hamburger-btn:hover {
+            color: var(--text-primary);
+            background: var(--bg-card);
+        }
+
+        /* Main Studio Workspace Layout (3 Columns) */
+        .app-workspace {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 280px 1fr 320px;
+            gap: 1px;
+            background: var(--border-subtle);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .workspace-col {
+            background: var(--bg-dark);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .panel-box {
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .panel-title {
+            height: 32px;
+            padding: 0 0.8rem;
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.6px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            user-select: none;
+        }
+
+        .panel-body {
+            padding: 0.8rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        /* Center Column Viewport Tabs */
+        .viewport-header-tabs {
+            height: 36px;
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            padding: 0 0.4rem;
+            gap: 0.2rem;
+        }
+
+        .v-tab {
+            height: 28px;
+            padding: 0 0.8rem;
+            border-radius: 4px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 0.72rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: all 0.15s ease;
+        }
+        .v-tab:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.04);
+        }
+        .v-tab.active {
+            color: var(--text-primary);
+            background: var(--bg-panel);
+            border: 1px solid var(--border-subtle);
+        }
+
+        .viewport-canvas-container {
+            flex: 1;
+            position: relative;
+            background: #000;
+            overflow: hidden;
+        }
+
+        .viewport-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+        }
+        .viewport-layer.active {
+            display: block;
+        }
+
+        /* Floating AR Action Button */
+        .ar-floating-btn {
+            position: absolute;
+            bottom: 1rem;
+            right: 1rem;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-strong);
+            color: var(--text-primary);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+            transition: all 0.15s ease;
+            z-index: 50;
+        }
+        .ar-floating-btn:hover {
+            border-color: var(--accent-indigo);
+            background: rgba(99, 102, 241, 0.15);
+        }
+
+        /* Hamburger Dropdown Modal */
+        .hamburger-modal {
+            position: absolute;
+            top: 36px;
+            left: 0;
+            width: 320px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-strong);
+            border-top: none;
+            box-shadow: 0 16px 32px rgba(0,0,0,0.5);
+            padding: 1rem;
+            display: none;
+            flex-direction: column;
+            gap: 0.8rem;
+            z-index: 200;
+        }
+        .hamburger-modal.open {
+            display: flex;
+        }
+
+        /* Robot Tree Styling */
+        .tree-node {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.3rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+        .tree-node:hover {
+            background: var(--bg-card);
+        }
+        .tree-node.selected {
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--accent-indigo);
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 36px Compact Application Status Bar -->
+    <div class="app-status-bar">
+        <div class="bar-section">
+            <button class="hamburger-btn" onclick="toggleHamburgerMenu()" title="Open System Menu">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            </button>
+            <div class="app-title-badge">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent-indigo)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                ORACULUM XR
+            </div>
+        </div>
+
+        <div class="bar-section">
+            <div class="gc-panel" style="display: flex; gap: 0.5rem; align-items: center; font-family: var(--font-mono); font-size: 0.72rem;">
+                <span class="gc-badge offline" id="gcState" style="padding: 2px 6px; border-radius: 4px; background: var(--bg-card); border: 1px solid var(--border-subtle);">GC: OFFLINE</span>
+                <span id="gcTime">00:00</span>
+                <span id="gcScore" style="color: var(--accent-amber); font-weight: bold;">0 - 0</span>
+            </div>
+            <div class="connection-status" style="display: flex; gap: 0.4rem; align-items: center; font-family: var(--font-mono); font-size: 0.72rem;">
+                <div class="status-dot" id="statusDot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--accent-emerald);"></div>
+                <span id="statusText" style="color: var(--text-secondary);">GATEWAY ONLINE</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hamburger Dropdown Modal -->
+    <div class="hamburger-modal" id="hamburgerModal">
+        <div style="font-weight: 700; font-size: 0.75rem; color: var(--text-primary); border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.4rem; text-transform: uppercase;">SYSTEM GATEWAY CONFIGURATION</div>
+        <div class="ip-config" style="display: flex; gap: 0.4rem; align-items: center;">
+            <span style="font-size: 0.72rem; color: var(--text-secondary);">GATEWAY IP:</span>
+            <input type="text" id="gatewayIp" value="" placeholder="localhost:8080" style="background: var(--bg-input); border: 1px solid var(--border-subtle); color: var(--text-primary); padding: 4px 8px; border-radius: 4px; flex: 1; font-family: var(--font-mono); font-size: 0.75rem;">
+            <button onclick="updateGatewayUrl()" style="background: var(--accent-indigo); color: #fff; border: none; padding: 4px 10px; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 0.75rem;">SET</button>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-secondary);">
+            <span>BYPASS REFEREE RULES</span>
+            <input type="checkbox" id="checkTestingOverride">
+        </div>
+        <button class="ar-btn danger" style="padding: 0.4rem; font-size: 0.72rem; background: var(--bg-card); border: 1px solid var(--border-subtle); color: var(--text-primary); cursor: pointer; border-radius: 4px;" onclick="toggleHamburgerMenu()">CLOSE MENU</button>
+    </div>
+
+    <!-- Modular Studio 3-Column Workspace -->
+    <div class="app-workspace">
+
+        <!-- LEFT COLUMN: Robot Hierarchy Tree & Filters (280px) -->
+        <div class="workspace-col" style="overflow-y: auto;">
+            
+            <!-- Robot Hierarchy Panel -->
+            <div class="panel-box" style="flex: 1; min-height: 200px;">
+                <div class="panel-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                    ROBOT HIERARCHY & TEAM
+                </div>
+                <div class="panel-body" id="robotList">
+                    <div style="text-align: center; color: var(--text-muted); padding: 1rem; font-size: 0.75rem;">Waiting for robot packets...</div>
+                </div>
+            </div>
+
+            <!-- Debug Drawings Checklist Panel -->
+            <div class="panel-box" style="flex: 1; min-height: 180px;">
+                <div class="panel-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                    DEBUG DRAWINGS CHECKLIST
+                </div>
+                <div class="panel-body" id="drawingFilterList">
+                    <div style="text-align: center; color: var(--text-muted); padding: 1rem; font-size: 0.75rem;">No drawings streams found.</div>
+                </div>
+            </div>
+
+            <!-- Spatial Calibration Panel -->
+            <div class="panel-box" style="height: 140px;">
+                <div class="panel-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    AR SPATIAL ALIGNMENT
+                </div>
+                <div class="panel-body">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-secondary);">
+                        <span>SCALE</span>
+                        <input type="range" id="sliderFieldScale" min="0.5" max="2.0" step="0.05" value="1.0" style="width: 130px;">
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-secondary);">
+                        <span>ROTATION Y</span>
+                        <input type="range" id="sliderFieldRot" min="-180" max="180" step="1" value="0" style="width: 130px;">
+                    </div>
+                    <button class="ar-btn" style="background: var(--bg-card); border: 1px solid var(--border-subtle); color: var(--text-primary); font-size: 0.7rem; padding: 4px; border-radius: 4px; cursor: pointer;" onclick="resetCalibration()">RESET ALIGNMENT</button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- CENTER COLUMN: Viewport Canvas Studio (Flex 1) -->
+        <div class="workspace-col">
+            
+            <div class="viewport-header-tabs">
+                <button class="v-tab active" data-mode="3d" onclick="switchView('3d')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                    3D FIELD
+                </button>
+                <button class="v-tab" data-mode="2d" onclick="switchView('2d')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+                    2D ARENA
+                </button>
+                <button class="v-tab" data-mode="rerun" onclick="switchView('rerun')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                    RERUN LOGS
+                </button>
+            </div>
+
+            <div class="viewport-canvas-container">
+                
+                <!-- 3D Viewport Layer -->
+                <div class="viewport-layer active" id="viewport3d">
+                    <div id="threejsContainer" style="width:100%; height:100%;"></div>
+                    <button class="ar-floating-btn" id="btnEnterAR">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+                        START AR PASSTHROUGH
+                    </button>
+                </div>
+
+                <!-- 2D Viewport Layer -->
+                <div class="viewport-layer" id="viewport2d">
+                    <canvas id="fieldCanvas" width="1280" height="720" style="width:100%; height:100%; object-fit: contain;"></canvas>
+                </div>
+
+                <!-- Rerun Viewport Layer -->
+                <div class="viewport-layer" id="viewportRerun">
+                    <iframe id="rerunIframe" src="about:blank" style="width: 100%; height: 100%; border: none;"></iframe>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- RIGHT COLUMN: Inspector & Control Panels (320px) -->
+        <div class="workspace-col" style="overflow-y: auto;">
+            
+            <!-- Manual Joystick Panel -->
+            <div class="panel-box" style="min-height: 220px;">
+                <div class="panel-title" style="justify-content: space-between;">
+                    <span style="display: flex; align-items: center; gap: 0.4rem;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="12" x2="10" y2="12"></line><line x1="8" y1="10" x2="8" y2="14"></line><circle cx="15" cy="13" r="1"></circle><circle cx="18" cy="11" r="1"></circle><rect x="2" y="6" width="20" height="12" rx="6"></rect></svg>
+                        MANUAL JOYSTICK OVERRIDE
+                    </span>
+                    <input type="checkbox" id="checkManualMode" onchange="toggleManualMode(this.checked)">
+                </div>
+                <div class="panel-body">
+                    <div class="joystick-panel-grid" style="display: flex; gap: 0.8rem; align-items: center;">
+                        <div class="joy-boundary" id="joyBoundary" style="width: 100px; height: 100px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 50%; position: relative; flex-shrink: 0;">
+                            <div class="joy-stick" id="joyStick" style="width: 32px; height: 32px; background: var(--accent-indigo); border-radius: 50%; position: absolute; top: 34px; left: 34px;"></div>
+                        </div>
+                        <div class="control-sliders" style="flex: 1; display: flex; flex-direction: column; gap: 0.4rem;">
+                            <div style="font-size: 0.68rem; color: var(--text-secondary); display: flex; justify-content: space-between;">
+                                <span>STRAFE (VY)</span>
+                                <span id="labelVy">1.0</span>
+                            </div>
+                            <input type="range" id="sliderVy" min="0.1" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('labelVy').textContent=this.value">
+                            <div style="font-size: 0.68rem; color: var(--text-secondary); display: flex; justify-content: space-between;">
+                                <span>WALK (VX)</span>
+                                <span id="labelVx">1.0</span>
+                            </div>
+                            <input type="range" id="sliderVx" min="0.1" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('labelVx').textContent=this.value">
+                        </div>
+                    </div>
+                    <button class="ar-btn danger" style="padding: 0.4rem; font-size: 0.7rem; font-weight: bold; width: 100%; border-radius: 4px; background: var(--accent-red); border: none; color: #fff; cursor: pointer;" onclick="toggleLimpArms()">
+                        TOGGLE STIFFNESS (LIMP ARMS)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Robot Telemetry Inspector Panel -->
+            <div class="panel-box" style="flex: 1; min-height: 180px;">
+                <div class="panel-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect></svg>
+                    TELEMETRY INSPECTOR
+                </div>
+                <div class="panel-body" id="textDataList">
+                    <div style="text-align: center; color: var(--text-muted); padding: 1rem; font-size: 0.75rem;">Select a robot from hierarchy to inspect.</div>
+                </div>
+            </div>
+
+            <!-- Network Budget Panel -->
+            <div class="panel-box" style="height: 180px;">
+                <div class="panel-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                    NETWORK BUDGET ANALYZER
+                </div>
+                <div class="panel-body">
+                    <div class="budget-container">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.68rem; color: var(--text-secondary); margin-bottom: 2px;">
+                            <span>TEAM COMM BUDGET</span>
+                            <span id="budgetUsage">0 / 12,000</span>
+                        </div>
+                        <div class="budget-bar" style="height: 6px; background: var(--bg-card); border-radius: 3px; overflow: hidden;">
+                            <div class="budget-progress" id="budgetProgressBar" style="width: 0%; height: 100%; background: var(--accent-indigo);"></div>
+                        </div>
+                    </div>
+                    <table class="net-stats-table" style="width: 100%; font-size: 0.68rem; border-collapse: collapse; margin-top: 0.4rem;">
+                        <thead>
+                            <tr style="color: var(--text-muted); border-bottom: 1px solid var(--border-subtle); text-align: left;">
+                                <th style="padding: 2px;">TYPE</th>
+                                <th style="padding: 2px;">PKTS</th>
+                                <th style="padding: 2px;">SIZE</th>
+                            </tr>
+                        </thead>
+                        <tbody id="netStatsBody">
+                            <tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 0.5rem;">No metrics.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- WebXR Overlay Container -->
+    <div id="arOverlayContainer">
+        <div class="ar-hud-panel">
+            <div style="font-weight: 700; font-size: 0.8rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.2rem; margin-bottom: 0.4rem;">ON-FIELD SPATIAL CALIBRATION</div>
+            <div class="ar-calibration-grid">
+                <button class="ar-btn" onclick="translateField(0, -0.1)">FORWARD</button>
+                <button class="ar-btn" onclick="translateField(0, 0.1)">BACKWARD</button>
+                <button class="ar-btn" onclick="translateField(-0.1, 0)">LEFT</button>
+                <button class="ar-btn" onclick="translateField(0.1, 0)">RIGHT</button>
+            </div>
+            <div style="display: flex; gap: 0.4rem; margin-top: 0.4rem;">
+                <button class="ar-btn green" style="flex: 1;" onclick="resetCalibration()">RESET CALIBRATION</button>
+            </div>
+        </div>
+    </div>
+
+    </div>
+
+    <!-- WebXR Immersive DOM Overlay HUD panel (calibration controls) -->
+    <div id="arOverlayContainer">
+        <!-- Top HUD bar -->
+        <div class="ar-hud-panel" style="width: 250px; font-size: 0.8rem; text-align: center;">
+            <div style="font-weight: bold; color: var(--accent-green); margin-bottom: 0.2rem;">ROBOCUP AR CALIBRATION</div>
+            <div id="arHudState">Point camera at floor and TAP to anchor field.</div>
+        </div>
+
+        <!-- Bottom HUD panel with calibration buttons -->
+        <div class="ar-hud-panel" style="width: 320px;" id="arCalibrationControls">
+            <div style="font-size: 0.75rem; color: var(--text-muted); text-align: center; margin-bottom: 0.4rem; font-family: var(--font-mono)">
+                ROTATION & POSITION OFFSETS
+            </div>
+            
+            <div class="ar-calibration-grid">
+                <button class="ar-btn" id="btnArRotCcw">↺ ROT CCW</button>
+                <button class="ar-btn" id="btnArFwd">▲ FORWARD</button>
+                <button class="ar-btn" id="btnArRotCw">↺ ROT CW</button>
+                <button class="ar-btn accent" id="btnArScaleUp">+ SCALE</button>
+                
+                <button class="ar-btn" id="btnArLeft">◀ LEFT</button>
+                <button class="ar-btn danger" id="btnArReset">RESET</button>
+                <button class="ar-btn" id="btnArRight">RIGHT ▶</button>
+                <button class="ar-btn accent" id="btnArScaleDown">- SCALE</button>
+
+                <button class="ar-btn" id="btnArUp">▲ UP</button>
+                <button class="ar-btn" id="btnArBwd">▼ BACKWARD</button>
+                <button class="ar-btn" id="btnArDown">▼ DOWN</button>
+                <button class="ar-btn green" id="btnArPreset">PRESET</button>
+            </div>
+            
+            <div style="display: flex; gap: 0.5rem; margin-top: 0.6rem;">
+                <button class="ar-btn danger" style="flex: 1; padding: 0.5rem; font-weight: bold;" id="btnArExit">EXIT AR</button>
+                <button class="ar-btn green" style="flex: 1; padding: 0.5rem; font-weight: bold;" id="btnArFiltersToggle">TOGGLE FILTER HUD</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Controller Logic Module -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { ARButton } from 'three/addons/ARButton.js';
+        import { OrbitControls } from 'three/addons/OrbitControls.js';
+
+        // Global variables mapping back to legacy UI scripts
+        let API_URL = window.location.origin;
+        document.getElementById("gatewayIp").value = window.location.host;
+        
+        let isOnline = false;
+        let selectedRobotId = null;
+        let selectedRobotIp = "";
+        let isManualMode = false;
+        let isLimpArms = false;
+        const knownDrawingPaths = new Set();
+        const disabledDrawingPaths = new Set();
+        const netHistories = {};
+        const totalTeamMessagesAcrossRobots = {};
+
+        // Field size constants
+        const FIELD_WIDTH = 9.0;
+        const FIELD_HEIGHT = 6.0;
+        const CANVAS_MARGIN = 50;
+
+        // Elements
+        const statusDot = document.getElementById("statusDot");
+        const statusText = document.getElementById("statusText");
+        const gcState = document.getElementById("gcState");
+        const gcTime = document.getElementById("gcTime");
+        const gcScore = document.getElementById("gcScore");
+        const robotList = document.getElementById("robotList");
+        const textDataList = document.getElementById("textDataList");
+        const budgetUsage = document.getElementById("budgetUsage");
+        const budgetProgressBar = document.getElementById("budgetProgressBar");
+        const netStatsBody = document.getElementById("netStatsBody");
+        const netChartLine = document.getElementById("netChartLine");
+
+        // 2D Canvas setup
+        const canvas = document.getElementById("fieldCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // 3D Scene setup
+        let renderer, scene, camera, orbitControls;
+        let fieldAnchor; // WebXR Anchor group
+        let reticle;     // Hit-test targeting ring
+        let xrHitTestSource = null;
+        let localSpace = null;
+        let isFieldPlaced = false;
+
+        // Calibration offsets
+        let fieldScale = 1.0;
+        let fieldRotationY = 0.0;
+        const fieldPositionOffset = new THREE.Vector3(0, 0, 0);
+
+        // 3D entities
+        let ballMesh = null;
+        const robotMeshes = {};
+        let drawingsGroup = null; // Group containing dynamic C++ drawings
+        const textBillboards = {};
+        let grassMesh = null;
+
+        // Initialize 3D WebGL renderer
+        function init3D() {
+            const container = document.getElementById("threejsContainer");
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.xr.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            scene = new THREE.Scene();
+
+            camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 100);
+            camera.position.set(0, 8, 8);
+
+            orbitControls = new OrbitControls(camera, renderer.domElement);
+            orbitControls.enableDamping = true;
+            orbitControls.dampingFactor = 0.05;
+            orbitControls.maxPolarAngle = Math.PI / 2.1; // Limit camera from going underground
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(5, 10, 5);
+            scene.add(dirLight);
+
+            // Field Anchor Group
+            fieldAnchor = new THREE.Group();
+            scene.add(fieldAnchor);
+
+            // Create 3D soccer field elements
+            build3DField();
+
+            // Create drawings group
+            drawingsGroup = new THREE.Group();
+            fieldAnchor.add(drawingsGroup);
+
+            // Create AR Reticle (Ring placed on floor during hit test)
+            const ringGeo = new THREE.RingGeometry(0.15, 0.2, 32);
+            ringGeo.rotateX(-Math.PI / 2);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0x00ff88, side: THREE.DoubleSide });
+            reticle = new THREE.Mesh(ringGeo, ringMat);
+            reticle.visible = false;
+            scene.add(reticle);
+
+            // Setup AR Session triggers
+            setupWebXR();
+
+            // Resize listener
+            window.addEventListener('resize', onWindowResize);
+
+            // Kick off animation loop
+            renderer.setAnimationLoop(renderFrame);
+        }
+
+        // Build 3D Field lines and goals (Colosseum Authentic Style)
+        function build3DField() {
+            // 1. Colosseum Dark Slate Tiled Outer Floor (20m x 20m surrounding grid plane)
+            const outerFloorGeo = new THREE.PlaneGeometry(22, 18);
+            const outerFloorMat = new THREE.MeshStandardMaterial({
+                color: 0x22252a,
+                roughness: 0.8,
+                metalness: 0.1,
+                transparent: true,
+                opacity: 1.0
+            });
+            const outerFloor = new THREE.Mesh(outerFloorGeo, outerFloorMat);
+            outerFloor.rotateX(-Math.PI / 2);
+            outerFloor.position.y = -0.01; // Below green pitch plane
+            fieldAnchor.add(outerFloor);
+
+            // Outer Floor Grid Lines
+            const gridHelper = new THREE.GridHelper(22, 22, 0x383c44, 0x2e323a);
+            gridHelper.position.y = -0.008;
+            fieldAnchor.add(gridHelper);
+
+            // 2. Turf green floor plane (Colosseum Green Turf)
+            const grassGeo = new THREE.PlaneGeometry(FIELD_WIDTH + 1.5, FIELD_HEIGHT + 1.5);
+            const grassMat = new THREE.MeshStandardMaterial({ 
+                color: 0x388e3c, 
+                roughness: 0.85,
+                metalness: 0.05,
+                transparent: true,
+                opacity: 1.0
+            });
+            grassMesh = new THREE.Mesh(grassGeo, grassMat);
+            grassMesh.rotateX(-Math.PI / 2);
+            grassMesh.position.y = -0.005; // Slightly below line meshes
+            fieldAnchor.add(grassMesh);
+
+            // Line material (Colosseum Solid Crisp White Lines)
+            const lineMat = new THREE.MeshStandardMaterial({ 
+                color: 0xffffff, 
+                roughness: 0.4,
+                metalness: 0.1,
+                transparent: true, 
+                opacity: 0.95
+            });
+            const drawLine = (w, h, x, z) => {
+                const geo = new THREE.PlaneGeometry(w, h);
+                const mesh = new THREE.Mesh(geo, lineMat);
+                mesh.rotateX(-Math.PI / 2);
+                mesh.position.set(x, 0.001, z);
+                fieldAnchor.add(mesh);
+            };
+
+            const lineWidth = 0.05;
+
+            // Sidelines
+            drawLine(FIELD_WIDTH, lineWidth, 0, -FIELD_HEIGHT/2);
+            drawLine(FIELD_WIDTH, lineWidth, 0, FIELD_HEIGHT/2);
+            // Goal lines
+            drawLine(lineWidth, FIELD_HEIGHT, -FIELD_WIDTH/2, 0);
+            drawLine(lineWidth, FIELD_HEIGHT, FIELD_WIDTH/2, 0);
+            // Center line
+            drawLine(lineWidth, FIELD_HEIGHT, 0, 0);
+
+            // Center Circle
+            const circGeo = new THREE.RingGeometry(0.75 - lineWidth/2, 0.75 + lineWidth/2, 64);
+            const circ = new THREE.Mesh(circGeo, lineMat);
+            circ.rotateX(-Math.PI / 2);
+            circ.position.set(0, 0.001, 0);
+            fieldAnchor.add(circ);
+
+            // Goal boxes (Left & Right)
+            const boxLen = 0.6;
+            const boxWid = 2.2;
+            drawLine(boxLen, lineWidth, -FIELD_WIDTH/2 + boxLen/2, -boxWid/2);
+            drawLine(boxLen, lineWidth, -FIELD_WIDTH/2 + boxLen/2, boxWid/2);
+            drawLine(lineWidth, boxWid, -FIELD_WIDTH/2 + boxLen, 0);
+
+            drawLine(boxLen, lineWidth, FIELD_WIDTH/2 - boxLen/2, -boxWid/2);
+            drawLine(boxLen, lineWidth, FIELD_WIDTH/2 - boxLen/2, boxWid/2);
+            drawLine(lineWidth, boxWid, FIELD_WIDTH/2 - boxLen, 0);
+
+            // Penalty Marks
+            const markGeo = new THREE.CircleGeometry(0.04, 16);
+            const pMarkLeft = new THREE.Mesh(markGeo, lineMat);
+            pMarkLeft.rotateX(-Math.PI / 2);
+            pMarkLeft.position.set(-FIELD_WIDTH/2 + 1.3, 0.002, 0);
+            fieldAnchor.add(pMarkLeft);
+
+            const pMarkRight = pMarkLeft.clone();
+            pMarkRight.position.set(FIELD_WIDTH/2 - 1.3, 0.002, 0);
+            fieldAnchor.add(pMarkRight);
+
+            // 3D Goals (Posts, Crossbars & Net Mesh)
+            const buildGoal = (xSign) => {
+                const goalPostRadius = 0.025;
+                const goalHeight = 0.8;
+                const goalWidth = 1.6;
+                const goalDepth = 0.5;
+
+                const goalGroup = new THREE.Group();
+                goalGroup.position.set(xSign * FIELD_WIDTH/2, 0, 0);
+
+                const postMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.1 });
+                const tubeGeo = (r, len) => new THREE.CylinderGeometry(r, r, len, 16);
+
+                // Left post
+                const lp = new THREE.Mesh(tubeGeo(goalPostRadius, goalHeight), postMat);
+                lp.position.set(0, goalHeight/2, -goalWidth/2);
+                goalGroup.add(lp);
+
+                // Right post
+                const rp = lp.clone();
+                rp.position.set(0, goalHeight/2, goalWidth/2);
+                goalGroup.add(rp);
+
+                // Crossbar
+                const cb = new THREE.Mesh(tubeGeo(goalPostRadius, goalWidth), postMat);
+                cb.rotateX(Math.PI / 2);
+                cb.position.set(0, goalHeight, 0);
+                goalGroup.add(cb);
+
+                // Support posts (backwards)
+                const sbLeft = new THREE.Mesh(tubeGeo(goalPostRadius - 0.005, goalHeight), postMat);
+                sbLeft.position.set(-xSign * goalDepth, goalHeight/2, -goalWidth/2);
+                goalGroup.add(sbLeft);
+
+                const sbRight = sbLeft.clone();
+                sbRight.position.set(-xSign * goalDepth, goalHeight/2, goalWidth/2);
+                goalGroup.add(sbRight);
+
+                const sbCross = new THREE.Mesh(tubeGeo(goalPostRadius - 0.005, goalWidth), postMat);
+                sbCross.rotateX(Math.PI / 2);
+                sbCross.position.set(-xSign * goalDepth, goalHeight, 0);
+                goalGroup.add(sbCross);
+
+                // Goal Net Wireframe Mesh (Back, Top & Side Nets)
+                const netMat = new THREE.MeshBasicMaterial({ color: 0x78909c, wireframe: true, transparent: true, opacity: 0.4 });
+                const backNetGeo = new THREE.PlaneGeometry(goalWidth, goalHeight, 16, 8);
+                const backNet = new THREE.Mesh(backNetGeo, netMat);
+                backNet.position.set(-xSign * goalDepth, goalHeight/2, 0);
+                backNet.rotateY(Math.PI / 2);
+                goalGroup.add(backNet);
+
+                fieldAnchor.add(goalGroup);
+            };
+
+            buildGoal(-1); // Left goal
+            buildGoal(1);  // Right goal
+        }
+
+        // WebXR Setup
+        function setupWebXR() {
+            const btnAR = document.getElementById("btnEnterAR");
+            
+            // WebXR Device API check
+            if ('xr' in navigator) {
+                navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
+                    if (supported) {
+                        btnAR.disabled = false;
+                        btnAR.addEventListener('click', startArSession);
+                    } else {
+                        btnAR.textContent = "XR AR UNSUPPORTED";
+                        btnAR.disabled = true;
+                    }
+                });
+            } else {
+                btnAR.textContent = "NO XR DEVICE FOUND";
+                btnAR.disabled = true;
+            }
+        }
+
+        async function startArSession() {
+            const sessionInit = {
+                requiredFeatures: ['hit-test'],
+                optionalFeatures: ['domOverlay'],
+                domOverlay: { root: document.getElementById('arOverlayContainer') }
+            };
+
+            try {
+                const session = await navigator.xr.requestSession('immersive-ar', sessionInit);
+                
+                // Hide normal UI and show AR elements
+                document.getElementById('arOverlayContainer').classList.add('active');
+                
+                // Make WebGL canvas transparent for camera passthrough superimposition
+                scene.background = null;
+                renderer.setClearColor(0x000000, 0);
+                if (grassMesh) grassMesh.visible = false;
+                
+                renderer.xr.setReferenceSpaceType('local');
+                await renderer.xr.setSession(session);
+
+                session.addEventListener('end', onArSessionEnd);
+                
+                // Setup Hit Testing
+                const refSpace = await session.requestReferenceSpace('viewer');
+                xrHitTestSource = await session.requestHitTestSource({ space: refSpace });
+                localSpace = await session.requestReferenceSpace('local');
+
+                // Initial calibration reset
+                resetCalibration();
+                isFieldPlaced = false;
+                fieldAnchor.visible = false;
+                reticle.visible = true;
+
+                document.getElementById("arHudState").textContent = "Point at floor and TAP screen to place field.";
+                
+                // Overlay Tap event to place field
+                session.addEventListener('select', onArTap);
+
+            } catch (err) {
+                console.error("Failed to start WebXR session: ", err);
+                alert("Could not start AR session: " + err.message);
+            }
+        }
+
+        function onArSessionEnd() {
+            document.getElementById('arOverlayContainer').classList.remove('active');
+            xrHitTestSource = null;
+            localSpace = null;
+            isFieldPlaced = false;
+            
+            // Restore default view parameters
+            fieldAnchor.visible = true;
+            fieldAnchor.position.set(0, 0, 0);
+            fieldAnchor.rotation.set(0, 0, 0);
+            fieldAnchor.scale.set(1, 1, 1);
+            reticle.visible = false;
+            
+            // Re-center Orbit controls
+            orbitControls.reset();
+        }
+
+        function onArTap() {
+            if (!isFieldPlaced && reticle.visible) {
+                // Lock field anchor at the current reticle position
+                fieldAnchor.position.copy(reticle.position);
+                fieldAnchor.rotation.set(0, 0, 0);
+                fieldAnchor.scale.set(fieldScale, fieldScale, fieldScale);
+                fieldAnchor.visible = true;
+                isFieldPlaced = true;
+                reticle.visible = false;
+                
+                document.getElementById("arHudState").textContent = "Field anchored! Use offsets to align.";
+                
+                // Stop listening to hits
+                xrHitTestSource = null;
+            }
+        }
+
+        // WebXR Frame Render loop
+        function renderFrame(time, frame) {
+            // Update Orbit controls in WebGL desktop view
+            if (!renderer.xr.isPresenting) {
+                orbitControls.update();
+            } else {
+                // If presenting AR, handle hit testing for target ring
+                if (xrHitTestSource && frame) {
+                    const hitTestResults = frame.getHitTestResults(xrHitTestSource);
+                    if (hitTestResults.length > 0) {
+                        const hit = hitTestResults[0];
+                        const pose = hit.getPose(localSpace);
+                        
+                        reticle.visible = true;
+                        reticle.position.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
+                        reticle.updateMatrixWorld(true);
+                    } else {
+                        reticle.visible = false;
+                    }
+                }
+            }
+
+            // Sync dynamic text billboard matrices to face the camera
+            updateTextBillboards();
+
+            renderer.render(scene, camera);
+        }
+
+        // Keeps jersey ID billboards rotated toward the viewport camera
+        function updateTextBillboards() {
+            const camPosition = new THREE.Vector3();
+            camera.getWorldPosition(camPosition);
+            
+            Object.values(textBillboards).forEach(billboard => {
+                billboard.lookAt(camPosition);
+            });
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById("threejsContainer");
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        // 3D UI helper elements creation - Authentic Colosseum Booster-T1 Humanoid Robot Model
+        function getOrCreateRobotMesh(agent) {
+            const id = agent.id;
+            if (robotMeshes[id]) return robotMeshes[id];
+
+            const group = new THREE.Group();
+            
+            // Team Jersey color determination (Red #d32f2f for Team 19/Red, Blue #0288d1 for Blue)
+            const isRedTeam = (agent.team === 19 || agent.team === "red" || id <= 2);
+            const teamColorHex = isRedTeam ? 0xd32f2f : 0x0288d1;
+            const darkBodyMat = new THREE.MeshStandardMaterial({ color: 0x1e1e1e, roughness: 0.6, metalness: 0.2 });
+            const teamJerseyMat = new THREE.MeshStandardMaterial({ color: teamColorHex, roughness: 0.5, metalness: 0.1 });
+
+            // 1. Trunk / Torso
+            const torsoGeo = new THREE.BoxGeometry(0.18, 0.25, 0.12);
+            const torso = new THREE.Mesh(torsoGeo, teamJerseyMat);
+            torso.position.y = 0.45;
+            group.add(torso);
+
+            // 2. Head
+            const headGeo = new THREE.SphereGeometry(0.07, 16, 16);
+            const head = new THREE.Mesh(headGeo, darkBodyMat);
+            head.position.set(0, 0.63, 0);
+            group.add(head);
+
+            // Head team accent badge
+            const headBadgeGeo = new THREE.BoxGeometry(0.04, 0.04, 0.04);
+            const headBadge = new THREE.Mesh(headBadgeGeo, teamJerseyMat);
+            headBadge.position.set(0, 0.69, 0);
+            group.add(headBadge);
+
+            // 3. Legs (Left & Right)
+            const legGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.32, 12);
+            const leftLeg = new THREE.Mesh(legGeo, darkBodyMat);
+            leftLeg.position.set(-0.06, 0.16, 0);
+            group.add(leftLeg);
+
+            const rightLeg = leftLeg.clone();
+            rightLeg.position.set(0.06, 0.16, 0);
+            group.add(rightLeg);
+
+            // 4. Feet
+            const footGeo = new THREE.BoxGeometry(0.05, 0.03, 0.10);
+            const leftFoot = new THREE.Mesh(footGeo, darkBodyMat);
+            leftFoot.position.set(-0.06, 0.015, 0.02);
+            group.add(leftFoot);
+
+            const rightFoot = leftFoot.clone();
+            rightFoot.position.set(0.06, 0.015, 0.02);
+            group.add(rightFoot);
+
+            // 5. Arms (Left & Right)
+            const armGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.24, 12);
+            const leftArm = new THREE.Mesh(armGeo, darkBodyMat);
+            leftArm.position.set(-0.12, 0.42, 0);
+            group.add(leftArm);
+
+            const rightArm = leftArm.clone();
+            rightArm.position.set(0.12, 0.42, 0);
+            group.add(rightArm);
+
+            // 6. Direction Pointer (Nose Box pointing forward along -Z)
+            const noseGeo = new THREE.BoxGeometry(0.04, 0.04, 0.08);
+            const noseMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 });
+            const nose = new THREE.Mesh(noseGeo, noseMat);
+            nose.position.set(0, 0.63, -0.09);
+            group.add(nose);
+
+            // Create text billboard for Jersey ID
+            const billboard = createTextBillboard(`R${id}`);
+            billboard.position.set(0, 0.78, 0);
+            group.add(billboard);
+            textBillboards[id] = billboard;
+
+            fieldAnchor.add(group);
+            robotMeshes[id] = group;
+            return group;
+        }
+
+        function createTextBillboard(text) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            
+            // Draw clean badge with holographic cyan border matching mockup
+            ctx.fillStyle = 'rgba(7, 9, 14, 0.8)';
+            ctx.strokeStyle = '#00d2ff';
+            ctx.lineWidth = 4;
+            ctx.roundRect(4, 4, 120, 56, 12);
+            ctx.fill();
+            ctx.stroke();
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 28px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 64, 32);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const mat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+            const sprite = new THREE.Sprite(mat);
+            sprite.scale.set(0.4, 0.2, 1.0);
+            return sprite;
+        }
+
+        // Apply state updates to 3D entities
+        function update3DScene(state) {
+            if (!fieldAnchor) return;
+
+            // In AR Passthrough mode, hide the grass turf plane to show the physical room floor
+            if (grassMesh) {
+                grassMesh.visible = !renderer.xr.isPresenting;
+            }
+
+            // Apply global calibration offsets inside WebXR
+            if (renderer.xr.isPresenting && isFieldPlaced) {
+                fieldAnchor.scale.set(fieldScale, fieldScale, fieldScale);
+                fieldAnchor.rotation.y = fieldRotationY;
+            }
+
+            // Draw Ball (Colosseum Realistic Orange Ball)
+            if (state.ball) {
+                if (!ballMesh) {
+                    const ballGeo = new THREE.SphereGeometry(0.042, 32, 32);
+                    const ballMat = new THREE.MeshStandardMaterial({ 
+                        color: 0xff6b00, 
+                        roughness: 0.3, 
+                        metalness: 0.1
+                    });
+                    ballMesh = new THREE.Mesh(ballGeo, ballMat);
+                    fieldAnchor.add(ballMesh);
+                }
+                // Convert RoboCup [x, y] to Three.js [-y, -x] equivalent
+                ballMesh.position.set(-state.ball.y, 0.042, -state.ball.x);
+                ballMesh.visible = true;
+            } else if (ballMesh) {
+                ballMesh.visible = false;
+            }
+
+            // Draw Robots
+            const activeIds = new Set();
+            if (state.agents) {
+                state.agents.forEach(agent => {
+                    activeIds.add(agent.id);
+                    const mesh = getOrCreateRobotMesh(agent);
+                    mesh.position.set(-agent.y, 0, -agent.x);
+                    
+                    // Rotate cylinder relative to heading angle
+                    mesh.rotation.y = agent.angle;
+                    mesh.visible = true;
+                });
+            }
+
+            // Remove/hide disconnected robots
+            Object.keys(robotMeshes).forEach(id => {
+                if (!activeIds.has(parseInt(id))) {
+                    robotMeshes[id].visible = false;
+                }
+            });
+
+            // Draw Dynamic debug drawings
+            drawingsGroup.clear(); // Wipe previous drawings
+            if (state.drawings) {
+                state.drawings.forEach(dr => {
+                    if (dr.path && disabledDrawingPaths.has(dr.path)) return;
+                    
+                    const color = dr.color ? (dr.color[0] << 16 | dr.color[1] << 8 | dr.color[2]) : 0xffffff;
+                    const material = new THREE.LineBasicMaterial({ 
+                        color: color, 
+                        linewidth: dr.size || 2,
+                        transparent: true,
+                        opacity: 0.8,
+                        blending: THREE.AdditiveBlending
+                    });
+                    const fillMaterial = new THREE.MeshBasicMaterial({ 
+                        color: color, 
+                        side: THREE.DoubleSide,
+                        transparent: true,
+                        opacity: 0.55,
+                        blending: THREE.AdditiveBlending
+                    });
+                    const coords = dr.coords;
+                    
+                    if (!coords || coords.length === 0) return;
+                    const frame = dr.frame || "field";
+
+                    // Map coordinate list
+                    const getPoint = (cx, cy) => {
+                        // Frame = field maps directly to 3D world meters
+                        if (frame === "field") {
+                            return new THREE.Vector3(-cy, 0.02, -cx);
+                        } else {
+                            return null;
+                        }
+                    };
+
+                    if (dr.type === "point") {
+                        const pt = getPoint(coords[0], coords[1]);
+                        if (!pt) return;
+                        const size = dr.size || 0.05;
+                        const geo = new THREE.SphereGeometry(size, 8, 8);
+                        const mesh = new THREE.Mesh(geo, fillMaterial);
+                        mesh.position.copy(pt);
+                        drawingsGroup.add(mesh);
+
+                    } else if (dr.type === "circle") {
+                        const pt = getPoint(coords[0], coords[1]);
+                        if (!pt) return;
+                        const radius = dr.size || 0.15;
+                        const points = [];
+                        for (let i = 0; i <= 32; i++) {
+                            const theta = (i / 32) * Math.PI * 2;
+                            points.push(new THREE.Vector3(
+                                pt.x + radius * Math.cos(theta),
+                                pt.y,
+                                pt.z + radius * Math.sin(theta)
+                            ));
+                        }
+                        const geo = new THREE.BufferGeometry().setFromPoints(points);
+                        const line = new THREE.Line(geo, material);
+                        drawingsGroup.add(line);
+
+                    } else if (dr.type === "line" && coords.length >= 4) {
+                        const pt1 = getPoint(coords[0], coords[1]);
+                        const pt2 = getPoint(coords[2], coords[3]);
+                        if (!pt1 || !pt2) return;
+                        const geo = new THREE.BufferGeometry().setFromPoints([pt1, pt2]);
+                        const line = new THREE.Line(geo, material);
+                        drawingsGroup.add(line);
+
+                    } else if (dr.type === "box" && coords.length >= 4) {
+                        const cx = coords[0], cy = coords[1], w = coords[2], h = coords[3];
+                        const ptTL = getPoint(cx - w/2, cy + h/2);
+                        const ptTR = getPoint(cx + w/2, cy + h/2);
+                        const ptBL = getPoint(cx - w/2, cy - h/2);
+                        const ptBR = getPoint(cx + w/2, cy - h/2);
+                        if (!ptTL || !ptTR || !ptBL || !ptBR) return;
+                        
+                        const geo = new THREE.BufferGeometry().setFromPoints([
+                            ptTL, ptTR, ptTR, ptBR, ptBR, ptBL, ptBL, ptTL
+                        ]);
+                        const line = new THREE.LineSegments(geo, material);
+                        drawingsGroup.add(line);
+
+                    } else if (dr.type === "arc" && coords.length >= 2) {
+                        const cx = coords[0], cy = coords[1];
+                        const radius = coords[2] || dr.size || 0.2;
+                        const startAngle = (coords[3] || 0) * Math.PI / 180;
+                        const endAngle = (coords[4] || 360) * Math.PI / 180;
+                        
+                        const points = [];
+                        const segments = 16;
+                        for (let i = 0; i <= segments; i++) {
+                            const theta = startAngle + (i / segments) * (endAngle - startAngle);
+                            const rx = cx + radius * Math.cos(theta);
+                            const ry = cy + radius * Math.sin(theta);
+                            const pt = getPoint(rx, ry);
+                            if (pt) points.push(pt);
+                        }
+                        if (points.length > 0) {
+                            const geo = new THREE.BufferGeometry().setFromPoints(points);
+                            const line = new THREE.Line(geo, material);
+                            drawingsGroup.add(line);
+                        }
+                    }
+                });
+            }
+        }
+
+        // Calibration Control Listeners (for WebXR DOM overlay adjustment)
+        function setupCalibrationListeners() {
+            document.getElementById("btnArRotCcw").addEventListener("click", () => { fieldRotationY += 0.05; });
+            document.getElementById("btnArRotCw").addEventListener("click", () => { fieldRotationY -= 0.05; });
+            
+            document.getElementById("btnArFwd").addEventListener("click", () => { translateField(0, -0.05); });
+            document.getElementById("btnArBwd").addEventListener("click", () => { translateField(0, 0.05); });
+            document.getElementById("btnArLeft").addEventListener("click", () => { translateField(-0.05, 0); });
+            document.getElementById("btnArRight").addEventListener("click", () => { translateField(0.05, 0); });
+            
+            document.getElementById("btnArUp").addEventListener("click", () => { fieldAnchor.position.y += 0.02; });
+            document.getElementById("btnArDown").addEventListener("click", () => { fieldAnchor.position.y -= 0.02; });
+            
+            document.getElementById("btnArScaleUp").addEventListener("click", () => { fieldScale = Math.min(3.0, fieldScale + 0.05); });
+            document.getElementById("btnArScaleDown").addEventListener("click", () => { fieldScale = Math.max(0.05, fieldScale - 0.05); });
+            
+            document.getElementById("btnArPreset").addEventListener("click", () => {
+                fieldScale = (fieldScale === 1.0) ? 0.1 : 1.0;
+            });
+            
+            document.getElementById("btnArReset").addEventListener("click", resetCalibration);
+            
+            document.getElementById("btnArExit").addEventListener("click", () => {
+                if (renderer.xr.isPresenting) {
+                    renderer.xr.getSession().end();
+                }
+            });
+            
+            document.getElementById("btnArFiltersToggle").addEventListener("click", () => {
+                const filterCard = document.getElementById("cardFilters");
+                filterCard.style.display = filterCard.style.display === "none" ? "block" : "none";
+            });
+        }
+
+        function translateField(offsetX, offsetZ) {
+            const vec = new THREE.Vector3(offsetX, 0, offsetZ);
+            vec.applyAxisAngle(new THREE.Vector3(0, 1, 0), fieldRotationY);
+            fieldAnchor.position.add(vec);
+        }
+
+        function resetCalibration() {
+            fieldScale = 1.0;
+            fieldRotationY = 0.0;
+            if (renderer.xr.isPresenting) {
+            } else {
+                fieldAnchor.position.set(0, 0, 0);
+            }
+        }
+
+        let activePanelId = null;
+
+        window.toggleToolPanel = (panelId) => {
+            const dock = document.getElementById("toolPanelDock");
+            const activeBtn = document.querySelector(`.activity-icon[data-panel="${panelId}"]`);
+            
+            if (activePanelId === panelId && !dock.classList.contains("collapsed")) {
+                dock.classList.add("collapsed");
+                document.querySelectorAll(".activity-icon[data-panel]").forEach(b => b.classList.remove("active"));
+                activePanelId = null;
+                setTimeout(onWindowResize, 200);
+                return;
+            }
+
+            dock.classList.remove("collapsed");
+            document.querySelectorAll(".activity-icon[data-panel]").forEach(b => b.classList.remove("active"));
+            if (activeBtn) activeBtn.classList.add("active");
+
+            document.querySelectorAll(".dock-panel-section").forEach(sec => sec.style.display = "none");
+            const targetSec = document.getElementById(`panelSection_${panelId}`);
+            if (targetSec) {
+                targetSec.style.display = "flex";
+                document.getElementById("dockPanelTitle").textContent = targetSec.getAttribute("data-title") || "TOOL PANEL";
+            }
+            activePanelId = panelId;
+            setTimeout(onWindowResize, 200);
+        };
+
+        window.toggleHamburgerMenu = () => {
+            const modal = document.getElementById("hamburgerModal");
+            modal.classList.toggle("open");
+        };
+
+        window.switchView = (mode) => {
+            document.querySelectorAll(".activity-icon[data-mode]").forEach(b => {
+                b.classList.toggle("active", b.getAttribute("data-mode") === mode);
+            });
+            document.getElementById("viewport2d").classList.toggle("active", mode === '2d');
+            document.getElementById("viewport3d").classList.toggle("active", mode === '3d');
+            document.getElementById("viewportRerun").classList.toggle("active", mode === 'rerun');
+            
+            const badge = document.getElementById("currentModeBadge");
+            if (badge) badge.textContent = mode.toUpperCase() + " MODE";
+
+            if (mode === '3d') {
+                onWindowResize();
+            }
+        };
+
+        // Rerun Timepoint & Frame Replay Listener
+        window.addEventListener('message', (event) => {
+            if (event.data && (event.data.type === 'rerun_timepoint' || event.data.type === 'telemetry_frame')) {
+                const stateData = event.data.payload || event.data;
+                if (stateData.agents || stateData.ball) {
+                    update3DScene(stateData);
+                    render2DArena(stateData);
+                }
+            }
+        });
+
+        window.updateGatewayUrl = () => {
+            const inputVal = document.getElementById("gatewayIp").value.trim();
+            if (inputVal) {
+                API_URL = inputVal.startsWith("http") ? inputVal : `http://${inputVal}`;
+                console.log("[Gateway] Updated API Endpoint target: ", API_URL);
+            }
+        };
+
+        // Initialize elements and poll loops
+        window.addEventListener('load', () => {
+            init3D();
+            setupCalibrationListeners();
+            
+            // Set dynamic API URL based on address bar if blank
+            if (!document.getElementById("gatewayIp").value) {
+                const host = window.location.host || "localhost:8080";
+                document.getElementById("gatewayIp").value = host;
+                API_URL = `${window.location.protocol}//${host}`;
+            }
+
+            // URL query parameter support (?mode=2d, ?mode=3d, ?mode=rerun)
+            const urlParams = new URLSearchParams(window.location.search);
+            const modeParam = urlParams.get('mode');
+            if (modeParam && ['2d', '3d', 'rerun'].includes(modeParam)) {
+                switchView(modeParam);
+            } else {
+                switchView('3d');
+            }
+
+            // Start loops
+            fetchState();
+            sendControlLoop();
+        });
+
+
+        // ----------------- LEGACY 2D RENDERING & API PORT -----------------
+        
+        function toCanvasCoords(fx, fy) {
+            const scaleX = (canvas.width - CANVAS_MARGIN * 2) / FIELD_WIDTH;
+            const scaleY = (canvas.height - CANVAS_MARGIN * 2) / FIELD_HEIGHT;
+            const cx = canvas.width / 2 + fx * scaleX;
+            const cy = canvas.height / 2 - fy * scaleY;
+            return { x: cx, y: cy };
+        }
+
+        function mapCoords(cx, cy, frame) {
+            if (frame === "viewport") {
+                return { x: cx * canvas.width, y: (1 - cy) * canvas.height };
+            }
+            return toCanvasCoords(cx, cy);
+        }
+
+        function mapSize(sz, frame) {
+            const scaleX = (canvas.width - CANVAS_MARGIN * 2) / FIELD_WIDTH;
+            return frame === "viewport" ? sz * canvas.width : sz * scaleX;
+        }
+
+        function draw2DField(state) {
+            ctx.fillStyle = "#111622";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Turf lines
+            ctx.strokeStyle = "rgba(255,255,255,0.4)";
+            ctx.lineWidth = 2;
+
+            const tl = toCanvasCoords(-FIELD_WIDTH/2, FIELD_HEIGHT/2);
+            const br = toCanvasCoords(FIELD_WIDTH/2, -FIELD_HEIGHT/2);
+            ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+
+            const tc = toCanvasCoords(0, FIELD_HEIGHT/2);
+            const bc = toCanvasCoords(0, -FIELD_HEIGHT/2);
+            ctx.beginPath();
+            ctx.moveTo(tc.x, tc.y);
+            ctx.lineTo(bc.x, bc.y);
+            ctx.stroke();
+
+            const center = toCanvasCoords(0, 0);
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, mapSize(0.75, "field"), 0, 2 * Math.PI);
+            ctx.stroke();
+
+            // Penalty box Left
+            const p1 = toCanvasCoords(-FIELD_WIDTH/2, 1.1);
+            const p2 = toCanvasCoords(-FIELD_WIDTH/2 + 0.6, -1.1);
+            ctx.strokeRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
+
+            // Penalty box Right
+            const p3 = toCanvasCoords(FIELD_WIDTH/2 - 0.6, 1.1);
+            const p4 = toCanvasCoords(FIELD_WIDTH/2, -1.1);
+            ctx.strokeRect(p3.x, p3.y, p4.x - p3.x, p4.y - p3.y);
+
+            // Marks
+            const markLeft = toCanvasCoords(-FIELD_WIDTH/2 + 1.3, 0);
+            ctx.fillStyle = "rgba(255,255,255,0.4)";
+            ctx.beginPath();
+            ctx.arc(markLeft.x, markLeft.y, 3, 0, 2 * Math.PI);
+            ctx.fill();
+
+            const markRight = toCanvasCoords(FIELD_WIDTH/2 - 1.3, 0);
+            ctx.beginPath();
+            ctx.arc(markRight.x, markRight.y, 3, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Draw drawings
+            if (state.drawings) {
+                state.drawings.forEach(dr => {
+                    if (dr.path && disabledDrawingPaths.has(dr.path)) return;
+                    
+                    const color = dr.color ? `rgb(${dr.color[0]}, ${dr.color[1]}, ${dr.color[2]})` : "#ffffff";
+                    const coords = dr.coords;
+                    if (!coords || coords.length === 0) return;
+
+                    ctx.strokeStyle = color;
+                    ctx.fillStyle = color;
+                    ctx.lineWidth = dr.size ? Math.max(1, dr.size) : 2;
+
+                    const frame = dr.frame || "field";
+
+                    if (dr.type === "point") {
+                        const pt = mapCoords(coords[0], coords[1], frame);
+                        const radius = mapSize(dr.size || 0.05, frame);
+                        ctx.beginPath();
+                        ctx.arc(pt.x, pt.y, radius, 0, 2 * Math.PI);
+                        ctx.fill();
+                    } else if (dr.type === "circle") {
+                        const pt = mapCoords(coords[0], coords[1], frame);
+                        const radius = mapSize(dr.size || 0.1, frame);
+                        ctx.beginPath();
+                        ctx.arc(pt.x, pt.y, radius, 0, 2 * Math.PI);
+                        ctx.stroke();
+                    } else if (dr.type === "line" && coords.length >= 4) {
+                        const pt1 = mapCoords(coords[0], coords[1], frame);
+                        const pt2 = mapCoords(coords[2], coords[3], frame);
+                        ctx.beginPath();
+                        ctx.moveTo(pt1.x, pt1.y);
+                        ctx.lineTo(pt2.x, pt2.y);
+                        ctx.stroke();
+                    } else if (dr.type === "box" && coords.length >= 4) {
+                        const cx = coords[0], cy = coords[1], w = coords[2], h = coords[3];
+                        const sizeW = mapSize(w, frame);
+                        const sizeH = mapSize(h, frame);
+                        const tl = mapCoords(cx - w/2, cy + h/2, frame);
+                        ctx.strokeRect(tl.x, tl.y, sizeW, sizeH);
+                    } else if (dr.type === "arc" && coords.length >= 2) {
+                        const pt = mapCoords(coords[0], coords[1], frame);
+                        const radius = mapSize(coords[2] || dr.size || 0.2, frame);
+                        const start = (coords[3] || 0) * Math.PI / 180;
+                        const end = (coords[4] || 360) * Math.PI / 180;
+                        ctx.beginPath();
+                        ctx.arc(pt.x, pt.y, radius, start, end);
+                        ctx.stroke();
+                    }
+                });
+            }
+
+            // Draw Ball
+            if (state.ball) {
+                const pt = toCanvasCoords(state.ball.x, state.ball.y);
+                ctx.fillStyle = "#ff7f00";
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, 8, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.strokeStyle = "#fff";
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+
+            // Draw Robots
+            if (state.agents) {
+                state.agents.forEach(agent => {
+                    const pt = toCanvasCoords(agent.x, agent.y);
+                    
+                    if (agent.id === selectedRobotId) {
+                        ctx.strokeStyle = "rgba(0, 255, 136, 0.4)";
+                        ctx.lineWidth = 4;
+                        ctx.beginPath();
+                        ctx.arc(pt.x, pt.y, 20, 0, 2 * Math.PI);
+                        ctx.stroke();
+                    }
+
+                    ctx.fillStyle = agent.color || "#822433";
+                    ctx.beginPath();
+                    ctx.arc(pt.x, pt.y, 13, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.strokeStyle = "#fff";
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                    const headX = pt.x + 18 * Math.cos(agent.angle);
+                    const headY = pt.y - 18 * Math.sin(agent.angle);
+                    ctx.beginPath();
+                    ctx.moveTo(pt.x, pt.y);
+                    ctx.lineTo(headX, headY);
+                    ctx.stroke();
+
+                    ctx.fillStyle = "#fff";
+                    ctx.font = "bold 9px sans-serif";
+                    ctx.textAlign = "center";
+                    ctx.fillText(agent.id, pt.x, pt.y + 3);
+                });
+            }
+        }
+
+        // Telemetry Polling loop
+        async function fetchState() {
+            let nextDelay = 100;
+            try {
+                const res = await fetch(`${API_URL}/state`);
+                const state = await res.json();
+                
+                isOnline = true;
+                statusDot.className = "status-dot online";
+                statusText.textContent = "GATEWAY ONLINE";
+
+                if (state.gamecontroller) {
+                    const gc = state.gamecontroller;
+                    if (gc.external_gc_online) {
+                        gcState.className = "gc-badge";
+                        gcState.textContent = gc.state || "UNKNOWN";
+                    } else {
+                        gcState.className = "gc-badge offline";
+                        gcState.textContent = "OFFLINE";
+                    }
+
+                    const rem = gc.secsRemaining || 0;
+                    const mins = Math.floor(rem / 60);
+                    const secs = rem % 60;
+                    document.getElementById("gcTime").textContent = `${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+
+                    if (gc.score) {
+                        document.getElementById("gcScore").textContent = `${gc.score[0]} - ${gc.score[1]}`;
+                    }
+                }
+
+                draw2DField(state);
+                update3DScene(state);
+
+                updateRobotsList(state);
+                updateDrawingFilters(state.drawings || []);
+                updateNetworkDashboard(state);
+
+            } catch (err) {
+                isOnline = false;
+                statusDot.className = "status-dot";
+                statusText.textContent = "GATEWAY OFFLINE";
+                gcState.className = "gc-badge offline";
+                gcState.textContent = "OFFLINE";
+                nextDelay = 1000;
+            }
+            
+            setTimeout(fetchState, nextDelay);
+        }
+
+        function updateRobotsList(state) {
+            if (!state.agents || state.agents.length === 0) {
+                robotList.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 1.5rem; font-size: 0.85rem;">No active robots broadcasted.</div>`;
+                return;
+            }
+
+            let html = "";
+            state.agents.forEach(agent => {
+                const batt = agent.battery !== undefined ? Math.round(agent.battery * 100) : 85;
+                const isSelected = agent.id === selectedRobotId ? "selected" : "";
+                
+                html += `
+                    <div class="robot-item ${isSelected}" onclick="selectRobot(${agent.id}, '${agent.ip || '127.0.0.1'}')">
+                        <div class="robot-meta">
+                            <span class="robot-id" style="color: ${agent.color || 'var(--accent-green)'}">#${agent.id}</span>
+                            <span class="robot-role">${agent.role || 'STRIKER'}</span>
+                        </div>
+                        <div class="robot-stat">
+                            <div>IP: ${agent.ip || '127.0.0.1'}</div>
+                            <div style="margin-top: 0.2rem;">
+                                BATT: <span class="battery-badge ${batt < 20 ? 'low' : ''}">${batt}%</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            robotList.innerHTML = html;
+
+            if (selectedRobotId) {
+                const robotTexts = (state.texts || []).filter(t => t.agent_id === selectedRobotId);
+                if (robotTexts.length === 0) {
+                    textDataList.innerHTML = `<div style="padding: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">No key-value metrics found for Robot #${selectedRobotId}.</div>`;
+                } else {
+                    let textHtml = `<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; font-family: var(--font-mono); font-size: 0.75rem;">`;
+                    robotTexts.forEach(t => {
+                        textHtml += `
+                            <div style="color: var(--text-muted); border-bottom: 1px solid rgba(255,255,255,0.02); padding: 2px;">${t.path}:</div>
+                            <div style="color: #fff; font-weight: bold; border-bottom: 1px solid rgba(255,255,255,0.02); padding: 2px; text-align: right;">${t.text}</div>
+                        `;
+                    });
+                    textHtml += `</div>`;
+                    textDataList.innerHTML = textHtml;
+                }
+            }
+        }
+
+        window.selectRobot = (id, ip) => {
+            selectedRobotId = id;
+            selectedRobotIp = ip;
+            const items = document.querySelectorAll(".robot-item");
+            items.forEach(el => el.classList.remove("selected"));
+        };
+
+        function updateDrawingFilters(drawings) {
+            let changed = false;
+            drawings.forEach(dr => {
+                if (dr.path && !knownDrawingPaths.has(dr.path)) {
+                    knownDrawingPaths.add(dr.path);
+                    changed = true;
+                }
+            });
+
+            if (changed || document.getElementById("drawingFilterList").children.length <= 1) {
+                if (knownDrawingPaths.size === 0) {
+                    document.getElementById("drawingFilterList").innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 1rem; font-size: 0.85rem;">No drawings streams found.</div>`;
+                    return;
+                }
+
+                let html = "";
+                Array.from(knownDrawingPaths).sort().forEach(path => {
+                    const isChecked = !disabledDrawingPaths.has(path) ? "checked" : "";
+                    html += `
+                        <label class="filter-checkbox">
+                            <input type="checkbox" ${isChecked} onchange="toggleDrawingFilter('${path}', this.checked)">
+                            <span>${path}</span>
+                        </label>
+                    `;
+                });
+                document.getElementById("drawingFilterList").innerHTML = html;
+            }
+        }
+
+        window.toggleDrawingFilter = (path, enabled) => {
+            if (enabled) {
+                disabledDrawingPaths.delete(path);
+            } else {
+                disabledDrawingPaths.add(path);
+            }
+        };
+
+        function updateNetworkDashboard(state) {
+            if (!selectedRobotId) return;
+
+            const robotTexts = (state.texts || []).filter(t => t.agent_id === selectedRobotId);
+            const lastSz = { team: 0, gc: 0, debug: 0 };
+            const counts = { team: 0, gc: 0, debug: 0 };
+
+            robotTexts.forEach(t => {
+                if (t.path === "net/team_sz") lastSz.team = parseInt(t.text) || 0;
+                if (t.path === "net/gc_sz") lastSz.gc = parseInt(t.text) || 0;
+                if (t.path === "net/debug_sz") lastSz.debug = parseInt(t.text) || 0;
+                
+                if (t.path === "net/team_cnt") counts.team = parseInt(t.text) || 0;
+                if (t.path === "net/gc_cnt") counts.gc = parseInt(t.text) || 0;
+                if (t.path === "net/debug_cnt") counts.debug = parseInt(t.text) || 0;
+            });
+
+            if (!netHistories[selectedRobotId]) {
+                netHistories[selectedRobotId] = {
+                    team: [], gc: [], debug: [],
+                    lastTeamCount: 0, lastGcCount: 0, lastDebugCount: 0
+                };
+            }
+
+            const rHist = netHistories[selectedRobotId];
+
+            if (counts.team > rHist.lastTeamCount && lastSz.team > 0) {
+                rHist.team.push(lastSz.team);
+                if (rHist.team.length > 100) rHist.team.shift();
+                rHist.lastTeamCount = counts.team;
+            }
+            if (counts.gc > rHist.lastGcCount && lastSz.gc > 0) {
+                rHist.gc.push(lastSz.gc);
+                if (rHist.gc.length > 100) rHist.gc.shift();
+                rHist.lastGcCount = counts.gc;
+            }
+            if (counts.debug > rHist.lastDebugCount && lastSz.debug > 0) {
+                rHist.debug.push(lastSz.debug);
+                if (rHist.debug.length > 100) rHist.debug.shift();
+                rHist.lastDebugCount = counts.debug;
+            }
+
+            if (counts.team > 0) {
+                totalTeamMessagesAcrossRobots[selectedRobotId] = counts.team;
+            }
+
+            let totalTeamCommSent = Object.values(totalTeamMessagesAcrossRobots).reduce((a,b)=>a+b, 0);
+            const budgetMax = 12000;
+
+            if (state.gamecontroller && state.gamecontroller.message_budget && state.gamecontroller.own_team_index !== undefined && state.gamecontroller.own_team_index !== -1) {
+                const idx = state.gamecontroller.own_team_index;
+                if (state.gamecontroller.message_budget[idx] !== undefined) {
+                    totalTeamCommSent = Math.max(0, budgetMax - state.gamecontroller.message_budget[idx]);
+                }
+            }
+            
+            budgetUsage.textContent = `${totalTeamCommSent.toLocaleString()} / 12,000`;
+            const budgetPercent = Math.min(100, (totalTeamCommSent / budgetMax) * 100);
+            budgetProgressBar.style.width = `${budgetPercent}%`;
+            budgetProgressBar.style.background = budgetPercent > 90 ? "var(--accent-red)" : (budgetPercent > 70 ? "var(--accent-orange)" : "linear-gradient(90deg, var(--accent-green), var(--accent-orange))");
+
+            const teamStats = calcStats(rHist.team);
+            const gcStats = calcStats(rHist.gc);
+            const debugStats = calcStats(rHist.debug);
+
+            const buildRow = (type, currentVal, stats) => {
+                const isOverLimit = (type === "TEAM" && currentVal > 512);
+                const limitBadge = isOverLimit ? ` <span class="warning-badge">⚠️ OVER (512B)</span>` : "";
+                return `
+                    <tr>
+                        <td style="color: var(--text-main); font-weight: bold;">${type}</td>
+                        <td>${counts[type.toLowerCase()] || 0}</td>
+                        <td style="color: ${isOverLimit ? 'var(--accent-red)' : 'var(--text-main)'}">${currentVal} B${limitBadge}</td>
+                        <td>${stats.mean.toFixed(0)} B</td>
+                        <td style="font-weight: bold;">${stats.max} B</td>
+                    </tr>
+                `;
+            };
+
+            netStatsBody.innerHTML = `
+                ${buildRow("TEAM", lastSz.team, teamStats)}
+                ${buildRow("GC", lastSz.gc, gcStats)}
+                ${buildRow("DEBUG", lastSz.debug, debugStats)}
+            `;
+
+            if (rHist.team.length > 0) {
+                const maxVal = Math.max(700, ...rHist.team, 512);
+                const points = rHist.team.map((val, idx) => {
+                    const x = (idx / Math.max(1, rHist.team.length - 1)) * 100;
+                    const y = 40 - (val / maxVal) * 40;
+                    return `${x.toFixed(1)},${y.toFixed(1)}`;
+                }).join(" ");
+                netChartLine.setAttribute("points", points);
+                
+                const limitLineY = 40 - (512 / maxVal) * 40;
+                const limitLine = document.querySelector("#netChart line");
+                if (limitLine) {
+                    limitLine.setAttribute("y1", limitLineY);
+                    limitLine.setAttribute("y2", limitLineY);
+                }
+            } else {
+                netChartLine.setAttribute("points", "");
+            }
+        }
+
+        window.toggleManualMode = (enabled) => {
+            isManualMode = enabled;
+            console.log("[Override] Manual override toggle:", isManualMode);
+        };
+
+        window.toggleLimpArms = () => {
+            isLimpArms = !isLimpArms;
+            console.log("[Override] Toggling arms stiffness. Limp:", isLimpArms);
+        };
+
+        // Touch Joystick tracking
+        const joyStickEl = document.getElementById("joyStick");
+        const joyBoundaryEl = document.getElementById("joyBoundary");
+        let joyActive = false;
+        let joyX = 0;
+        let joyY = 0;
+
+        const handleJoystickStart = (e) => {
+            joyActive = true;
+            document.getElementById("checkManualMode").checked = true;
+            isManualMode = true;
+        };
+
+        const handleJoystickMove = (e) => {
+            if (!joyActive) return;
+            e.preventDefault();
+            
+            const touch = e.touches ? e.touches[0] : e;
+            const rect = joyBoundaryEl.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            
+            const rawX = touch.clientX - centerX;
+            const rawY = touch.clientY - centerY;
+            const distance = Math.min(60, Math.sqrt(rawX * rawX + rawY * rawY));
+            const angle = Math.atan2(rawY, rawX);
+            
+            joyX = (distance / 60) * Math.cos(angle);
+            joyY = (distance / 60) * Math.sin(angle);
+            
+            joyStickEl.style.left = `${48 + joyX * 48}px`;
+            joyStickEl.style.top = `${48 + joyY * 48}px`;
+        };
+
+        const handleJoystickEnd = () => {
+            joyActive = false;
+            joyX = 0;
+            joyY = 0;
+            joyStickEl.style.left = "48px";
+            joyStickEl.style.top = "48px";
+        };
+
+        joyBoundaryEl.addEventListener("mousedown", handleJoystickStart);
+        window.addEventListener("mousemove", handleJoystickMove);
+        window.addEventListener("mouseup", handleJoystickEnd);
+
+        joyBoundaryEl.addEventListener("touchstart", handleJoystickStart, {passive:false});
+        window.addEventListener("touchmove", handleJoystickMove, {passive:false});
+        window.addEventListener("touchend", handleJoystickEnd);
+
+        async function sendControlLoop() {
+            if (isManualMode && selectedRobotId) {
+                const sliderVxVal = parseFloat(document.getElementById("sliderVx").value);
+                const sliderVyVal = parseFloat(document.getElementById("sliderVy").value);
+                
+                const vx = -joyY * sliderVxVal;
+                const vy = -joyX * sliderVyVal;
+                
+                const payload = {
+                    ip: selectedRobotIp,
+                    port: 10007,
+                    vx: vx,
+                    vy: vy,
+                    vtheta: 0.0,
+                    isManual: true,
+                    lt: isLimpArms,
+                    disabled_drawings: Array.from(disabledDrawingPaths).join(",")
+                };
+
+                try {
+                    await fetch(`${API_URL}/control`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    });
+                } catch (err) {
+                    console.error("[Control] Failed sending manual command:", err);
+                }
+            } else if (disabledDrawingPaths.size > 0) {
+                try {
+                    await fetch(`${API_URL}/control`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ disabled_drawings: Array.from(disabledDrawingPaths).join(",") })
+                    });
+                } catch(e){}
+            }
+            
+            setTimeout(sendControlLoop, 80);
+        }
+
+    </script>
+</body>
+</html>

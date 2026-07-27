@@ -49,10 +49,7 @@ try:
 except Exception as e:
     print(f"✗ {e}")
 
-print("\n[*] Showing window (close it to continue)...")
-try:
-    plt.show()
-except KeyboardInterrupt:
-    pass
-
+print("\n[*] Saving figure to field_render_test.png...")
+fig.savefig("field_render_test.png")
+print("[*] Saved.")
 print("[*] Test complete")

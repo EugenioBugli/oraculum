@@ -4,9 +4,6 @@ import math
 import random
 from dataclasses import dataclass
 
-import matplotlib.patches as patches
-from matplotlib.transforms import Affine2D
-
 # Default palette for agents
 AGENT_COLORS = ["#822433", "#006778", "#000000", "#ffffff"]
 AGENT_ROLES = ["G", "D", "M", "A"]
@@ -28,6 +25,7 @@ class Agent:
     color: str
     role: str = "M"
     state: str = "R"
+    id: int = 1
 
     @property
     def vx(self) -> float:
@@ -84,6 +82,7 @@ def create_agents(n: int, hw: float, hh: float, speed: float = 1.5, seed: int = 
             color=AGENT_COLORS[i % len(AGENT_COLORS)],
             role=AGENT_ROLES[i % len(AGENT_ROLES)],
             state=AGENT_STATES[i % len(AGENT_STATES)],
+            id=i + 1,
         )
         for i in range(n)
     ]
@@ -121,7 +120,7 @@ def make_agent_artists(ax, agent: Agent, index: int, size: float) -> tuple:
     ax.add_patch(body)
 
     text = ax.text(
-        0, 0, str(index + 1),
+        0, 0, str(agent.id),
         color=_label_color(agent.color), ha="center", va="center",
         fontsize=15, fontweight="bold", zorder=11,
         transform=_text_transform(agent, ax),
@@ -167,7 +166,7 @@ def draw_agent_legend(ax, agents: list) -> None:
                     color=lc, linewidth=0.6, alpha=0.5)
 
         # "Player : N"  (top third)
-        ax.text(i, (d2 + y1) / 2, f"Player : {i + 1}",
+        ax.text(i, (d2 + y1) / 2, f"Player : {agent.id}",
                 color=lc, ha="center", va="center", fontsize=8, fontweight="bold")
 
         # "Role : X"  (middle third)

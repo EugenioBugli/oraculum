@@ -16,7 +16,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.agents import Agent, Ball, create_agents, AGENT_COLORS, AGENT_ROLES, AGENT_STATES
-from src.socket_client import AgentMsg, BallMsg, GameStateMsg
+from src.socket_client import AgentMsg, BallMsg, GameStateMsg, DrawingMsg
 from src.socket_host import UDPSender
 
 # ---------------------------------------------------------------------------
@@ -34,6 +34,50 @@ N_AGENTS = 7
 
 
 def build_msg(agents: list[Agent], ball: Ball) -> GameStateMsg:
+    # Simulated drawings
+    drawings = [
+        # Field center circle indicator
+        DrawingMsg(
+            type="circle",
+            path="/field/center_circle",
+            coords=[0.0, 0.0],
+            color=[0, 210, 255],
+            size=1.5
+        ),
+        # Dynamic box centered on the ball
+        DrawingMsg(
+            type="box",
+            path="/ball/bounding_box",
+            coords=[ball.x, ball.y, 0.6, 0.6],
+            color=[255, 60, 106],
+            size=0.01
+        ),
+        # Vector line from first robot to the ball
+        DrawingMsg(
+            type="line",
+            path="/coordination/pass_line",
+            coords=[agents[0].x, agents[0].y, ball.x, ball.y],
+            color=[0, 255, 136],
+            size=0.02
+        ),
+        # Striker goal target point
+        DrawingMsg(
+            type="point",
+            path="/striker/target_pose",
+            coords=[3.5, 1.5],
+            color=[255, 255, 0],
+            size=0.08
+        ),
+        # Goalkeeper field-of-view arc
+        DrawingMsg(
+            type="arc",
+            path="/goalie/view_arc",
+            coords=[-HW + 0.5, 0.0, 2.5, -45, 45],
+            color=[200, 200, 200],
+            size=0.02
+        )
+    ]
+
     return GameStateMsg(
         agents=[
             AgentMsg(
@@ -48,6 +92,7 @@ def build_msg(agents: list[Agent], ball: Ball) -> GameStateMsg:
             for i, a in enumerate(agents)
         ],
         ball=BallMsg(x=round(ball.x, 4), y=round(ball.y, 4)),
+        drawings=drawings
     )
 
 
@@ -68,7 +113,7 @@ def main() -> None:
                     agent.step(dt, HW, HH)
                 ball.step(dt, HW, HH)
 
-                # Occasionally randomise role/state to show live legend updates
+                # Occasionally randomise role/state to show legend updates
                 for agent in agents:
                     if random.random() < 0.002:
                         agent.state = random.choice(AGENT_STATES)

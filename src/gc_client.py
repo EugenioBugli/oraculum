@@ -281,6 +281,17 @@ class GCReceiver:
         self._queue: queue.Queue[GameControllerData] = queue.Queue(maxsize=queue_size)
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True, name="GCReceiver")
+        
+        import time
+        self.last_packet_time = 0.0
+        self.is_external_gc_online = False
+
+    @property
+    def external_gc_online(self) -> bool:
+        import time
+        if time.time() - self.last_packet_time > 2.0:
+            return False
+        return self.is_external_gc_online
 
     def start(self) -> None:
         self._thread.start()
@@ -317,6 +328,10 @@ class GCReceiver:
                 if gc is None:
                     print("[GCReceiver] Malformed or unexpected packet, skipping")
                     continue
+
+                import time
+                self.last_packet_time = time.time()
+                self.is_external_gc_online = (gc.competition_type != 42)
 
                 if self._queue.full():
                     try:
