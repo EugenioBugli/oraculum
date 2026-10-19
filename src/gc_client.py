@@ -1,6 +1,7 @@
 """GameController UDP receiver and return-message sender.
 
-The GameController broadcasts RoboCupGameControlData (198 bytes) on UDP port 3838.
+The GameController broadcasts RoboCupGameControlData on UDP port 3838
+(version 20 = HSL GameController, 158 bytes; version 19 = older GameController, 198 bytes).
 Robots reply with RoboCupGameControlReturnData (32 bytes) on port 3939.
 
 Quick start::
@@ -18,11 +19,10 @@ Quick start::
     receiver.stop()
 """
 
-import dataclasses
-import queue
 import socket
 import struct
 import threading
+import time
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -34,7 +34,6 @@ GC_DATA_PORT   = 3838
 GC_RETURN_PORT = 3939
 
 _GC_HEADER        = b"RGme"
-_GC_VERSION       = 19
 _GC_RETURN_HEADER = b"RGrt"
 _GC_RETURN_VER    = 4
 
@@ -65,16 +64,25 @@ SET_PLAY_PENALTY_KICK     = 3
 SET_PLAY_THROW_IN         = 4
 SET_PLAY_GOAL_KICK        = 5
 SET_PLAY_CORNER_KICK      = 6
+SET_PLAY_NAMES = {0: "", 1: "DIRECT FREE KICK", 2: "INDIRECT FREE KICK", 3: "PENALTY KICK", 4: "THROW-IN", 5: "GOAL KICK",
+                  6: "CORNER KICK"}
+
+# Penalties (as spqrbooster2026's RoboCupGameControlData.h)
+PENALTY_NAMES = {0: "", 1: "Illegal positioning", 2: "Motion in Set", 3: "Motion in Stop", 4: "Local game stuck",
+                 5: "Incapable robot", 6: "Pick-up", 7: "Ball holding", 8: "Leaving the field", 9: "Playing with arms/hands",
+                 10: "Pushing", 11: "Cautioned", 12: "Sent off", 13: "Substitute"}
 
 # ---------------------------------------------------------------------------
 # Binary struct formats  (little-endian, matching x86 GameController output)
 #
-# RoboCupGameControlData layout (198 bytes):
+# RoboCupGameControlData layout:
 #   header[4]           4s
 #   version..kickingTeam  10B  (10 uint8 fields)
 #   secsRemaining         h    (int16)
 #   secondaryTime         h    (int16)
-#   teams[2]:  each TeamInfo = 6B + 2H + 20*(4B)  = 90 bytes
+#   teams[2]:  each TeamInfo = 6B + 2H + 20*RobotInfo
+#   RobotInfo  v20 (158 bytes total): penalty, secsTillUnpenalised, cautions            = 3B
+#              v19 (198 bytes total): penalty, secsTillUnpenalised, warnings, cautions  = 4B
 #
 # RoboCupGameControlReturnData layout (32 bytes):
 #   header[4]  4s
@@ -82,9 +90,13 @@ SET_PLAY_CORNER_KICK      = 6
 #   pose[3]+ballAge+ball[2]           6f
 # ---------------------------------------------------------------------------
 
-_GC_DATA_FMT = "<4s10Bhh" + ("6B2H" + "4B" * MAX_NUM_PLAYERS) * 2
-_GC_DATA_STRUCT = struct.Struct(_GC_DATA_FMT)
-assert _GC_DATA_STRUCT.size == 198, f"Unexpected GC struct size: {_GC_DATA_STRUCT.size}"
+def _gc_data_struct(robot_info_len: int) -> struct.Struct:
+    return struct.Struct("<4s10Bhh" + ("6B2H" + f"{robot_info_len}B" * MAX_NUM_PLAYERS) * 2)
+
+# version -> (struct, bytes per RobotInfo)
+_GC_DATA_STRUCTS = {20: (_gc_data_struct(3), 3), 19: (_gc_data_struct(4), 4)}
+assert _GC_DATA_STRUCTS[20][0].size == 158, f"Unexpected GC v20 size: {_GC_DATA_STRUCTS[20][0].size}"
+assert _GC_DATA_STRUCTS[19][0].size == 198, f"Unexpected GC v19 size: {_GC_DATA_STRUCTS[19][0].size}"
 
 _GC_RETURN_FMT = "<4s4B6f"
 _GC_RETURN_STRUCT = struct.Struct(_GC_RETURN_FMT)
@@ -153,10 +165,13 @@ def parse_gc_packet(data: bytes, own_team: Optional[int] = None) -> Optional[Gam
     If *own_team* is provided, sets GameControllerData.own_team_index to the
     index of that team in teams[], or leaves it as -1 if not found.
     """
-    if len(data) != _GC_DATA_STRUCT.size:
+    if len(data) < 5 or data[:4] != _GC_HEADER or data[4] not in _GC_DATA_STRUCTS:
+        return None
+    gc_struct, info_len = _GC_DATA_STRUCTS[data[4]]
+    if len(data) != gc_struct.size:
         return None
 
-    vals = _GC_DATA_STRUCT.unpack(data)
+    vals = gc_struct.unpack(data)
 
     # vals indices:
     # [0]  header (bytes)       [1]  version          [2]  packetNumber
@@ -164,13 +179,7 @@ def parse_gc_packet(data: bytes, own_team: Optional[int] = None) -> Optional[Gam
     # [6]  gamePhase            [7]  state             [8]  setPlay
     # [9]  firstHalf            [10] kickingTeam       [11] secsRemaining
     # [12] secondaryTime
-    # [13..100] team 0: 6B + 2H + 80B  (88 elements)
-    # [101..188] team 1: same layout
-
-    if vals[0] != _GC_HEADER:
-        return None
-    if vals[1] != _GC_VERSION:
-        return None
+    # [13..] team 0: 6B + 2H + 20*info_len B, then team 1: same layout
 
     gc = GameControllerData(
         version=vals[1],
@@ -204,10 +213,10 @@ def parse_gc_packet(data: bytes, own_team: Optional[int] = None) -> Optional[Gam
             team.players.append(RobotInfo(
                 penalty=vals[offset],
                 secs_till_unpenalised=vals[offset + 1],
-                warnings=vals[offset + 2],
-                cautions=vals[offset + 3],
+                warnings=vals[offset + 2] if info_len == 4 else 0,  # v20 has no warnings
+                cautions=vals[offset + info_len - 1],
             ))
-            offset += 4  # consumed 4B per RobotInfo
+            offset += info_len
         gc.teams.append(team)
 
     if own_team is not None:
@@ -251,6 +260,9 @@ def pack_gc_return(
 # Background receiver
 # ---------------------------------------------------------------------------
 
+# A packet older than this means the GameController is gone (it sends at 2 Hz).
+STALE_S = 2.0
+
 class GCReceiver:
     """Bind to (host, port) and receive GameControllerData packets in a daemon thread.
 
@@ -274,22 +286,21 @@ class GCReceiver:
         host: str = "0.0.0.0",
         port: int = GC_DATA_PORT,
         own_team: Optional[int] = None,
-        queue_size: int = 10,
     ) -> None:
         self._addr = (host, port)
         self._own_team = own_team
-        self._queue: queue.Queue[GameControllerData] = queue.Queue(maxsize=queue_size)
+        self._last: Optional[GameControllerData] = None
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True, name="GCReceiver")
         
-        import time
         self.last_packet_time = 0.0
+        self.last_sender = ""  # IP of the last GameController packet (pages show it in a tooltip)
         self.is_external_gc_online = False
+        self.on_packet = None  # called with (sender IP, raw bytes) for every valid packet (session recorder)
 
     @property
     def external_gc_online(self) -> bool:
-        import time
-        if time.time() - self.last_packet_time > 2.0:
+        if time.time() - self.last_packet_time > STALE_S:
             return False
         return self.is_external_gc_online
 
@@ -301,14 +312,14 @@ class GCReceiver:
         self._thread.join(timeout=2.0)
 
     def latest(self) -> Optional[GameControllerData]:
-        """Drain the queue and return the most recent packet, or None."""
-        msg = None
-        while not self._queue.empty():
-            try:
-                msg = self._queue.get_nowait()
-            except queue.Empty:
-                break
-        return msg
+        """Return the newest packet, or None if none arrived in the last STALE_S seconds.
+
+        It does not consume the packet: /state and the /control 403 rule run in
+        different HTTP threads and must both see the current game state.
+        """
+        if self._last is None or time.time() - self.last_packet_time > STALE_S:
+            return None
+        return self._last
 
     def _run(self) -> None:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -320,7 +331,7 @@ class GCReceiver:
         try:
             while not self._stop_event.is_set():
                 try:
-                    data, _ = sock.recvfrom(65535)
+                    data, addr = sock.recvfrom(65535)
                 except socket.timeout:
                     continue
 
@@ -329,16 +340,46 @@ class GCReceiver:
                     print("[GCReceiver] Malformed or unexpected packet, skipping")
                     continue
 
-                import time
+                self._last = gc
                 self.last_packet_time = time.time()
+                self.last_sender = addr[0]
                 self.is_external_gc_online = (gc.competition_type != 42)
-
-                if self._queue.full():
-                    try:
-                        self._queue.get_nowait()
-                    except queue.Empty:
-                        pass
-                self._queue.put_nowait(gc)
+                if self.on_packet is not None:
+                    self.on_packet(addr[0], data)
         finally:
             sock.close()
             print("[GCReceiver] Socket closed.")
+
+
+if __name__ == "__main__":
+    # Self-check: python3 src/gc_client.py
+    def _packet(version: int) -> bytes:
+        gc_struct, info_len = _GC_DATA_STRUCTS[version]
+        player = (5, 30, 1) if info_len == 3 else (5, 30, 2, 1)  # penalty, secs, [warnings,] cautions
+        idle = (0,) * info_len
+        team = lambda number, score: (number, 0, 1, 1, score, 0, 0, 1200, *player, *idle * (MAX_NUM_PLAYERS - 1))  # noqa: E731
+        header = (_GC_HEADER, version, 7, 5, 1, 0, 0, STATE_PLAYING, 0, 1, 19, 300, 0)
+        return gc_struct.pack(*header, *team(19, 2), *team(4, 1))
+
+    for v in (20, 19):
+        gc = parse_gc_packet(_packet(v), own_team=4)
+        assert gc is not None, f"v{v} packet rejected"
+        assert (gc.version, gc.state_name, gc.secs_remaining, gc.kicking_team) == (v, "PLAYING", 300, 19)
+        assert [t.score for t in gc.teams] == [2, 1] and gc.own_team_index == 1
+        assert [t.message_budget for t in gc.teams] == [1200, 1200]
+        p = gc.teams[0].players[0]
+        assert (p.penalty, p.secs_till_unpenalised, p.cautions) == (5, 30, 1)
+        assert p.warnings == (2 if v == 19 else 0)
+        assert gc.teams[1].players[1].penalty == 0
+
+    assert parse_gc_packet(_packet(20)[:-1]) is None              # truncated
+    assert parse_gc_packet(b"RGme\x15" + _packet(20)[5:]) is None   # unknown version 21
+    assert parse_gc_packet(b"XXXX" + _packet(20)[4:]) is None       # wrong header
+
+    # latest() must give the same packet to every caller (HTTP threads) until it is stale.
+    rx = GCReceiver(host="127.0.0.1", port=0)
+    rx._last, rx.last_packet_time = parse_gc_packet(_packet(20)), time.time()
+    assert rx.latest() is not None and rx.latest() is not None
+    rx.last_packet_time -= STALE_S + 0.1
+    assert rx.latest() is None
+    print("gc_client self-check OK (v19, v20, latest)")

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oraculum sessions</title>
+<style>
+    :root {
+        --bg-dark: #121316; --bg-panel: #1e2025; --bg-card: #24272e; --border: #2d3038; --border-strong: #3b3f4a;
+        --text: #eceef2; --text-2: #9fa4b2; --green: #10b981; --amber: #f59e0b; --red: #ef4444; --indigo: #6366f1;
+        --font: 'Inter', system-ui, -apple-system, sans-serif; --mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg-dark); color: var(--text); font: 15px/1.5 var(--font); }
+    header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--bg-panel); }
+    header b { letter-spacing: .08em; }
+    header .sub { color: var(--text-2); }
+    header .who { margin-left: auto; color: var(--text-2); font-family: var(--mono); font-size: 13px; }
+    header a { color: var(--text-2); font-size: 13px; }
+    main { max-width: 760px; margin: 0 auto; padding: 16px; }
+    .card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    h1 { font-size: 18px; margin: 0 0 6px; }
+    h2 { font-size: 13px; margin: 0 0 10px; color: var(--text-2); letter-spacing: .06em; text-transform: uppercase; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+    button, .btn { font: 600 15px var(--font); border-radius: 8px; padding: 10px 16px; border: 1px solid var(--border-strong);
+        background: var(--bg-card); color: var(--text); cursor: pointer; text-decoration: none; display: inline-block; }
+    .primary { background: var(--indigo); border-color: var(--indigo); color: #fff; }
+    .danger { color: var(--red); }
+    .danger.armed { background: var(--red); border-color: var(--red); color: #fff; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    button:focus-visible, .btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+    .muted { color: var(--text-2); }
+    .msg { color: var(--amber); min-height: 1.5em; margin: 8px 0 0; }
+    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--green); margin-right: 6px; }
+    table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 13px; }
+    td { padding: 6px 4px; border-top: 1px solid var(--border); }
+    td:last-child { text-align: right; }
+    .status { font-family: var(--mono); font-size: 13px; color: var(--text-2); margin: 0 0 16px; }
+    @media (max-width: 520px) { header .sub { display: none; } .row > * { flex: 1 1 100%; text-align: center; } }
+</style>
+</head>
+<body>
+<header>
+    <b>ORACULUM</b><span class="sub">simulation sessions</span>
+    <span class="who" id="who"></span><a href="/oauth2/sign_out?rd=%2F">Sign out</a>
+</header>
+<main>
+    <section class="card" id="current" aria-live="polite"><p class="muted">Loading…</p></section>
+    <p class="status" id="status"></p>
+    <section class="card" id="history" hidden><h2>Your recent sessions</h2><table id="hist"></table></section>
+    <p class="muted">A session is one Booster T1 robot in the circus simulator, with its own oraculum and its own referee.
+        It stops after <span id="mins">30</span> minutes, or after <span id="idle">10</span> minutes with no open page.
+        Nothing in a session can reach a real robot.</p>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+let busy = false, last = null;
+
+async function api(path, body) {
+    const r = body === undefined ? await fetch(path, { cache: "no-store" })
+        : await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (r.status === 401) { location.href = "/oauth2/start?rd=%2F"; return null; }
+    const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    return j;
+}
+
+function render(s, msg = "") {
+    last = s;
+    $("who").textContent = s.user;
+    $("mins").textContent = s.minutes;
+    $("idle").textContent = s.idle_minutes;
+    const cur = $("current"), run = s.sessions.find(x => !x.end);
+    cur.replaceChildren();
+    if (run) {
+        const left = Math.max(0, Math.round((run.ends_by - Date.now() / 1000) / 60));
+        const stop = el("button", { className: "danger", textContent: "Stop session" });
+        stop.onclick = () => {  // two clicks, no browser dialog
+            if (!stop.classList.contains("armed")) {
+                stop.classList.add("armed"); stop.textContent = "Click again to stop";
+                setTimeout(() => { stop.classList.remove("armed"); stop.textContent = "Stop session"; }, 3000);
+                return;
+            }
+            act("/api/stop", { id: run.id }, "Stopping…");
+        };
+        cur.append(
+            el("h1", {}, el("span", { className: "dot" }), "Your session is running"),
+            el("p", { className: "muted", textContent: `Started ${run.minutes} min ago, stops in ${left} min at the latest. ` +
+                "The robot needs about a minute to stand up after the start." }),
+            el("div", { className: "row" },
+                el("a", { className: "btn primary", href: run.oraculum, target: "_blank", rel: "noopener", textContent: "Open oraculum" }),
+                el("a", { className: "btn", href: run.fleet, target: "_blank", rel: "noopener", textContent: "Fleet and referee" }),
+                el("a", { className: "btn", href: run.circus, target: "_blank", rel: "noopener", textContent: "Circus window" }),
+                stop),
+            el("p", { className: "msg", textContent: msg }));
+    } else {
+        const start = el("button", { className: "primary", textContent: "Start a session", disabled: !!s.refusal || busy });
+        start.onclick = () => act("/api/start", {}, "Starting the session… this takes about a minute.");
+        cur.append(
+            el("h1", { textContent: "No session running" }),
+            el("div", { className: "row" }, start),
+            el("p", { className: "msg", textContent: msg || s.refusal }));
+    }
+    $("status").textContent = `Sessions running: ${s.running} of ${s.max_parallel} · ` +
+        `today: $${(s.spent_usd + s.reserved_usd).toFixed(2)} of $${s.cap_usd.toFixed(2)} (estimate, resets 00:00 UTC)`;
+    const done = s.sessions.filter(x => x.end);
+    $("history").hidden = !done.length;
+    $("hist").replaceChildren(...done.map(x => el("tr", {},
+        el("td", { textContent: new Date(x.start * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" }) }),
+        el("td", { textContent: `${x.minutes} min` }))));
+}
+
+async function act(path, body, waiting) {
+    busy = true;
+    $("current").querySelectorAll("button").forEach(b => b.disabled = true);
+    const m = $("current").querySelector(".msg"); if (m) m.textContent = waiting;
+    try { const s = await api(path, body); if (s) render(s); }
+    catch (e) { if (last) render(last, e.message); }
+    finally { busy = false; if (last) render(last, $("current").querySelector(".msg")?.textContent || ""); }
+}
+
+async function poll() {
+    if (!busy) { try { const s = await api("/api/state"); if (s) render(s); } catch (e) { $("status").textContent = e.message; } }
+}
+poll();
+setInterval(poll, 10000);
+</script>
+</body>
+</html>

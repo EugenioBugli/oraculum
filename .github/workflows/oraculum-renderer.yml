@@ -1,0 +1,283 @@
+# Builds the B2 circus renderer (renderer/: MuJoCo 3.3.3 with its classic renderer in WebAssembly,
+# replayed on WebGL2), packages the maximus scenes of the circus-scene release, checks the browser
+# renders against MuJoCo's own renderer (pixel tests on SwiftShader, no GPU) and publishes the bundle
+# and the scene packages as assets of the same release (circus-scene-<circus>-<config>).
+# Details: renderer/README.md. Not pushed yet (2026-10-12).
+#
+# Pixel tests (renderer/pixeltest.sh, 5v5 and 1v1, depth modes ext and d24):
+#   msaa:  the pages' look (4 samples per pixel, as circus's window) against the native 4x MSAA references
+#          committed in renderer/refs_msaa/ (two GPUs; CI cannot make them: no GPU, llvmpipe has no MSAA).
+#   exact: no MSAA on either side, against MuJoCo on OSMesa (refs job).
+# Fails when: a render is out of the bounds of pixeltest.sh (PSNR, % pixels off by > 16, % white line
+# pixels kept), the scene is not the one refs_msaa/ was made from ("reference out of date"), the renderer
+# calls a GL function the shim does not implement (at load or render time), the negative test (one circus
+# view option changed) passes, or an API check fails.
+name: oraculum renderer
+
+on:
+  workflow_run:
+    workflows: ["circus scene export"]  # a new scene release
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      scene_tag:
+        description: "circus-scene release tag (empty: the newest)"
+        required: false
+        default: ""
+      publish:
+        description: "upload the bundle and scene packages to the scene release"
+        type: boolean
+        default: true
+  push:
+    paths:
+      - "renderer/**"
+      - ".github/workflows/oraculum-renderer.yml"
+  pull_request:
+    paths:
+      - "renderer/**"
+      - ".github/workflows/oraculum-renderer.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oraculum-renderer-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MUJOCO_VERSION: "3.3.3"
+
+jobs:
+  scene:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read  # artifacts of circus-scene.yml runs
+    outputs:
+      tag: ${{ steps.find.outputs.tag }}
+      from_release: ${{ steps.find.outputs.from_release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find the circus scene (release, else the newest export artifact)
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WANT: ${{ inputs.scene_tag }}
+        run: |
+          mkdir -p dl
+          tag="$WANT"
+          if [ -z "$tag" ]; then
+            tag=$(gh release list --limit 100 --json tagName,createdAt \
+              --jq '[.[] | select(.tagName | startswith("circus-scene-"))] | sort_by(.createdAt) | last | .tagName // empty')
+          fi
+          if [ -n "$tag" ] && gh release download "$tag" --pattern 'circus_scene_*.tar.gz' --pattern manifest.json --dir dl; then
+            echo "from_release=true" >> "$GITHUB_OUTPUT"
+          else
+            run=$(gh run list --workflow circus-scene.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+            if [ -z "$run" ]; then
+              echo "::error::No circus-scene release and no successful circus-scene.yml run."
+              exit 1
+            fi
+            tag=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts" --jq '.artifacts[0].name')
+            gh run download "$run" --name "$tag" --dir dl
+            echo "from_release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Scene $tag from the artifact of run $run (no release): nothing will be published."
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "scene: $tag"
+
+      - name: Check the archives against manifest.json and unpack them
+        working-directory: dl
+        run: |
+          python3 - <<'EOF'
+          import hashlib, json, pathlib
+          m = json.loads(pathlib.Path("manifest.json").read_text())
+          for name, f in m["files"].items():
+              assert hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() == f["sha256"], name
+          print("sha256 ok:", ", ".join(m["files"]), "| circus", m["circus_commit"], "| mujoco", m["mujoco"])
+          EOF
+          mkdir -p ../scenes
+          for f in circus_scene_*.tar.gz; do tar -xzf "$f" -C ../scenes; done
+
+      # circus-scene.yml exports with the maximus field and scene files (FRAMEWORK_PATH = maximus):
+      # its circus_scene_5v5 is the scene `pixi run sim` shows, published here as maximus_5v5.
+      - name: Scene packages for B2Viewer.load()
+        run: renderer/package_scenes.sh b2_scenes scenes/circus_scene_5v5:maximus_5v5 scenes/circus_scene_1v1:maximus_1v1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scenes
+          path: scenes/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: b2_scenes
+          path: b2_scenes/
+
+  build:
+    runs-on: ubuntu-24.04
+    container: emscripten/emsdk:3.1.74
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            renderer/build
+            renderer/src
+          key: b2-mujoco-${{ env.MUJOCO_VERSION }}-emsdk-3.1.74
+      - name: Build MuJoCo (WebAssembly) + GL shim + WebGL2 replay
+        run: |
+          renderer/build.sh "$MUJOCO_VERSION" b2_bundle
+          echo "oraculum $GITHUB_SHA" >> b2_bundle/BUILD_INFO.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: b2_bundle
+          path: b2_bundle/
+
+  refs:
+    needs: scene
+    runs-on: ubuntu-24.04
+    container: python:3.12-slim
+    env:
+      MUJOCO_GL: osmesa
+      PYOPENGL_PLATFORM: osmesa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: scenes
+          path: scenes
+      # for the exact check; the MSAA references are committed (renderer/refs_msaa/, msaa_refs.py)
+      - name: Native references (MuJoCo classic renderer, OSMesa, window buffer, no MSAA)
+        run: |
+          apt-get update -qq && apt-get install -y -qq libosmesa6 libgl1 > /dev/null
+          pip install -q "mujoco==$MUJOCO_VERSION" PyOpenGL numpy pillow
+          mkdir -p refs && cd renderer
+          python3 poses.py ../scenes/circus_scene_5v5 ../refs/poses_maximus_5v5.json
+          python3 poses.py ../scenes/circus_scene_1v1 ../refs/poses_maximus_1v1.json --suffix _1v1
+          python3 reference.py ../scenes/circus_scene_5v5 ../refs/poses_maximus_5v5.json ../refs
+          python3 reference.py ../scenes/circus_scene_1v1 ../refs/poses_maximus_1v1.json ../refs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: refs
+          path: refs/
+
+  pixeltest:
+    needs: [scene, build, refs]
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.58.0-noble
+      options: --ipc=host
+    strategy:
+      fail-fast: false
+      matrix:
+        scene: [maximus_5v5, maximus_1v1]
+        depth: [ext, d24]
+        check: [msaa, exact]
+        negative: [""]  # so that the include below adds a job instead of changing the 5v5 d24 exact one
+        include:
+          # negative test: textures off (mjvOption flags[mjVIS_TEXTURE] = 0); the pixel test must fail
+          - scene: maximus_5v5
+            depth: d24
+            check: exact
+            negative: "&visflag=1:0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: b2_bundle
+          path: site/b2_bundle
+      - uses: actions/download-artifact@v4
+        with:
+          name: b2_scenes
+          path: site/b2_scenes
+      - uses: actions/download-artifact@v4
+        with:
+          name: refs
+          path: refs
+      - name: Browser renders (headless Chromium, SwiftShader) + comparison
+        shell: bash
+        env:
+          SCENE: ${{ matrix.scene }}
+          DEPTH: ${{ matrix.depth }}
+          CHECK: ${{ matrix.check }}
+          NEGATIVE: ${{ matrix.negative }}
+        run: |
+          pip install -q --break-system-packages playwright==1.58.0 numpy pillow
+          rc=0
+          renderer/pixeltest.sh "$SCENE" "$DEPTH" "$CHECK" "$NEGATIVE" || rc=$?
+          if [ "$rc" = 4 ]; then echo "::error::Reference out of date: run renderer/msaa_refs.py on a machine with GPUs and commit refs_msaa/."; fi
+          if [ -z "$NEGATIVE" ]; then exit "$rc"; fi
+          if [ "$rc" = 3 ]; then echo "negative test: the pixel test failed as it must"; exit 0; fi
+          echo "::error::Negative test: changing a circus view option ($NEGATIVE) gave exit $rc, not 3 (pixel test failed)."
+          exit 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pixeltest-${{ matrix.scene }}-${{ matrix.depth }}-${{ matrix.check }}${{ matrix.negative && '-negative' || '' }}
+          path: results/
+
+  api:
+    needs: [scene, build]
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.58.0-noble
+      options: --ipc=host
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: b2_bundle
+          path: site/b2_bundle
+      - uses: actions/download-artifact@v4
+        with:
+          name: b2_scenes
+          path: site/b2_scenes
+      - name: B2Viewer API checks (robots, ball, numbers, camera, controls, context loss, errors)
+        run: |
+          pip install -q --break-system-packages playwright==1.58.0 numpy pillow
+          cd renderer && python3 api_check.py ../site --out ../api_check.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: api-check
+          path: api_check.json
+
+  publish:
+    needs: [scene, build, pixeltest, api]
+    if: >-
+      needs.scene.outputs.from_release == 'true' && github.event_name != 'pull_request' &&
+      github.ref_name == github.event.repository.default_branch &&
+      (github.event_name != 'workflow_dispatch' || inputs.publish)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write  # upload the release assets
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: b2_bundle
+          path: b2_bundle
+      - uses: actions/download-artifact@v4
+        with:
+          name: b2_scenes
+          path: b2_scenes
+      - name: Upload the bundle and the scene packages to the scene release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.scene.outputs.tag }}
+        run: |
+          tar czf b2_bundle.tar.gz b2_bundle
+          for d in b2_scenes/*/; do n=$(basename "$d"); tar czf "b2_scene_$n.tar.gz" -C b2_scenes "$n"; done
+          python3 - <<'EOF'
+          import hashlib, json, os, pathlib
+          files = {p.name: {"sha256": hashlib.sha256(p.read_bytes()).hexdigest(), "bytes": p.stat().st_size}
+                   for p in sorted(pathlib.Path(".").glob("b2_*.tar.gz"))}
+          manifest = {"scene_tag": os.environ["TAG"], "oraculum_commit": os.environ["GITHUB_SHA"],
+                      "mujoco": os.environ["MUJOCO_VERSION"], "emsdk": "3.1.74",
+                      "build_info": pathlib.Path("b2_bundle/BUILD_INFO.txt").read_text(), "files": files,
+                      "layout": "b2_bundle.tar.gz -> b2_bundle/; b2_scene_<name>.tar.gz -> <name>/, unpack into b2_scenes/"}
+          pathlib.Path("b2_manifest.json").write_text(json.dumps(manifest, indent=1))
+          print(json.dumps(manifest, indent=1))
+          EOF
+          gh release upload "$TAG" b2_bundle.tar.gz b2_scene_*.tar.gz b2_manifest.json --clobber --repo "$GITHUB_REPOSITORY"

@@ -1,0 +1,2167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Oraculum Studio</title>
+    
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/static/three.module.js",
+          "three/addons/": "/static/"
+        }
+      }
+    </script>
+    
+    <style>
+        :root {
+            /* Figma exact dark palette tokens */
+            --bg-darkest: #0b0d14;
+            --bg-dark: #111420;
+            --bg-surface: #171b2c;
+            --bg-panel: #1d2238;
+            --bg-card: #242a45;
+            --bg-input: #2b3252;
+            
+            --border-subtle: rgba(255, 255, 255, 0.08);
+            --border-strong: rgba(255, 255, 255, 0.18);
+            --border-glow: rgba(99, 102, 241, 0.4);
+            
+            --accent-indigo: #6366f1;
+            --accent-blue: #3b82f6;
+            --accent-cyan: #06b6d4;
+            --accent-emerald: #10b981;
+            --accent-red: #ef4444;
+            --accent-amber: #f59e0b;
+            --accent-purple: #8b5cf6;
+            
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #8a96aa;  /* >= 4.5:1 on --bg-panel */
+            
+            --font-main: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: var(--bg-darkest);
+            color: var(--text-primary);
+            font-family: var(--font-main);
+            display: flex;
+            flex-direction: column;
+            background-image: radial-gradient(circle at 50% 0%, #171e33 0%, var(--bg-darkest) 80%);
+        }
+
+        /* 52px Studio Application Header Bar matching Figma layout */
+        .app-status-bar {
+            height: 52px;
+            background: rgba(17, 20, 32, 0.92);
+            border-bottom: 1px solid var(--border-subtle);
+            backdrop-filter: blur(16px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 1.2rem;
+            font-size: 0.8rem;
+            user-select: none;
+            z-index: 100;
+        }
+
+        .bar-section {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .page-link { color: var(--text-secondary); text-decoration: none; font-size: 0.75rem; font-weight: 600; padding: 4px 8px;
+            border: 1px solid var(--border-subtle); border-radius: 4px; white-space: nowrap; }
+        .page-link:hover { color: var(--text-primary); }
+        .app-title-badge {
+            font-weight: 800;
+            letter-spacing: 1.5px;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.95rem;
+            background: linear-gradient(135deg, #a5b4fc, #6366f1, #06b6d4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 24px rgba(99, 102, 241, 0.4);
+        }
+
+        /* Main Workspace Studio Shell */
+        .app-studio-shell {
+            flex: 1;
+            display: flex;
+            flex-direction: row;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Activity Bar (52px Left Strip - Figma & VSCode Style) */
+        .activity-bar {
+            width: 52px;
+            background: rgba(11, 13, 20, 0.96);
+            border-right: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 0.6rem 0;
+            gap: 0.6rem;
+            z-index: 90;
+        }
+
+        .activity-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+
+        .activity-icon:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .activity-icon.active {
+            color: var(--accent-indigo);
+            background: rgba(99, 102, 241, 0.18);
+            box-shadow: 0 0 16px rgba(99, 102, 241, 0.25);
+        }
+
+        .activity-icon.active::before {
+            content: '';
+            position: absolute;
+            left: -6px;
+            top: 8px;
+            bottom: 8px;
+            width: 3.5px;
+            background: var(--accent-indigo);
+            border-radius: 0 3px 3px 0;
+        }
+
+        .activity-divider {
+            width: 28px;
+            height: 1px;
+            background: var(--border-subtle);
+            margin: 0.3rem 0;
+        }
+
+        .activity-spacer {
+            flex: 1;
+        }
+
+        /* Primary Dockable Tool Panel (Left 300px) */
+        .tool-panel-dock {
+            width: 300px;
+            background: rgba(23, 27, 44, 0.92);
+            border-right: 1px solid var(--border-subtle);
+            backdrop-filter: blur(20px);
+            display: flex;
+            flex-direction: column;
+            transition: width 0.24s cubic-bezier(0.4, 0, 0.2, 1), margin-left 0.24s ease;
+            overflow: hidden;
+            z-index: 80;
+        }
+
+        .tool-panel-dock.collapsed {
+            width: 0;
+            margin-left: -1px;
+            border-right: none;
+        }
+
+        .dock-header {
+            height: 42px;
+            padding: 0 1rem;
+            background: rgba(17, 20, 32, 0.7);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.9px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            user-select: none;
+        }
+
+        .dock-content {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .dock-panel-section {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            padding: 1rem;
+        }
+
+        /* Center Viewport Stage */
+        .viewport-stage {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #03050a;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .viewport-header-tabs {
+            min-height: 42px;
+            height: auto;
+            background: rgba(23, 27, 44, 0.92);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            flex-wrap: wrap;  /* the ENGINE select goes to a second row on narrow views */
+            gap: 0.3rem;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.3rem 0.8rem;
+        }
+
+        .v-tab {
+            white-space: nowrap;
+            height: 32px;
+            padding: 0 1.1rem;
+            border-radius: 8px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.18s ease;
+        }
+        .v-tab:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.06);
+        }
+        .v-tab.active {
+            color: #fff;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-strong);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+        }
+
+        .viewport-canvas-container {
+            flex: 1;
+            position: relative;
+            background: #111420;  /* the 2D field fill: no black letterbox bars */
+            overflow: hidden;
+        }
+
+        /* In-Simulation Window GameController HUD Overlay (Figma Glassmorphism Style) */
+        .sim-gc-overlay {
+            position: absolute;
+            top: 1.2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(17, 20, 32, 0.88);
+            border: 1px solid var(--border-strong);
+            border-radius: 24px;
+            padding: 0.5rem 1.4rem;
+            backdrop-filter: blur(16px);
+            display: flex;
+            align-items: center;
+            gap: 1.2rem;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.65);
+            z-index: 60;
+            pointer-events: none;
+            user-select: none;
+            white-space: nowrap;
+        }
+        /* Phone landscape: the full-size pill covered ~45 px of a ~314 px 3D view */
+        @media (max-height: 500px) {
+            .sim-gc-overlay { top: 0.25rem; padding: 0.2rem 0.8rem; gap: 0.6rem; transform: translateX(-50%) scale(0.8); transform-origin: top center; }
+        }
+
+        .sim-gc-badge {
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            font-weight: 800;
+            padding: 3px 10px;
+            border-radius: 8px;
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            color: var(--accent-emerald);
+            letter-spacing: 0.5px;
+        }
+        .sim-gc-badge.offline {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: var(--border-subtle);
+            color: var(--text-muted);
+        }
+
+        .sim-gc-time {
+            font-family: var(--font-mono);
+            font-size: 0.95rem;
+            font-weight: 800;
+            color: var(--text-primary);
+        }
+
+        .sim-gc-score {
+            font-family: var(--font-mono);
+            font-size: 1rem;
+            font-weight: 900;
+            color: var(--accent-amber);
+            letter-spacing: 1.5px;
+        }
+
+        .viewport-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+        }
+        .viewport-layer.active {
+            display: block;
+        }
+
+        /* Contextual Rerun Timeline Scrubber Bar (Progressive Disclosure - Hidden by default) */
+        .rerun-timeline-bar {
+            height: 52px;
+            background: rgba(17, 20, 32, 0.95);
+            border-top: 1px solid var(--border-subtle);
+            backdrop-filter: blur(16px);
+            display: none;
+            align-items: center;
+            padding: 0 1.2rem;
+            gap: 1.2rem;
+            z-index: 70;
+        }
+        .rerun-timeline-bar.active {
+            display: flex;
+        }
+
+        .timeline-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .timeline-btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-primary);
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.18s ease;
+        }
+        .timeline-btn:hover {
+            border-color: var(--accent-indigo);
+            color: var(--accent-indigo);
+            box-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
+        }
+
+        .timeline-slider-wrapper {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .timeline-slider {
+            flex: 1;
+            accent-color: var(--accent-indigo);
+            cursor: pointer;
+            height: 6px;
+            border-radius: 3px;
+        }
+
+        .timeline-time-display {
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            min-width: 95px;
+        }
+
+        /* Secondary Inspector Panel (Right 340px) */
+        .inspector-dock {
+            width: 340px;
+            background: rgba(23, 27, 44, 0.92);
+            border-left: 1px solid var(--border-subtle);
+            backdrop-filter: blur(20px);
+            display: flex;
+            flex-direction: column;
+            transition: width 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+            z-index: 80;
+        }
+
+        .inspector-dock.collapsed {
+            width: 0;
+            border-left: none;
+        }
+
+        /* Panel Cards matching Figma layout */
+        .panel-box {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            margin-bottom: 0.9rem;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+            transition: border-color 0.2s ease;
+        }
+        .panel-box:hover {
+            border-color: var(--border-strong);
+        }
+
+        .panel-title {
+            height: 38px;
+            padding: 0 1rem;
+            background: rgba(17, 20, 32, 0.7);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            user-select: none;
+        }
+
+        .panel-body {
+            padding: 0.9rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        /* Modal System Settings Window */
+        .hamburger-modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 460px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-strong);
+            border-radius: 16px;
+            box-shadow: 0 32px 80px rgba(0,0,0,0.9);
+            padding: 1.6rem;
+            display: none;
+            flex-direction: column;
+            gap: 1.2rem;
+            z-index: 1000;
+        }
+        .hamburger-modal.open {
+            display: flex;
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            display: none;
+            z-index: 999;
+        }
+        .modal-backdrop.open {
+            display: block;
+        }
+
+        .status-dot { background: var(--accent-red); box-shadow: 0 0 12px var(--accent-red); }
+        .status-dot.online { background: var(--accent-emerald); box-shadow: 0 0 12px var(--accent-emerald); }
+
+        /* Robot Hierarchy Cards matching Figma */
+        .robot-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.7rem 0.9rem;
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            background: var(--bg-dark);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-bottom: 0.5rem;
+        }
+        .robot-item:hover, .robot-item.selected {
+            background: rgba(99, 102, 241, 0.16);
+            border-color: var(--accent-indigo);
+            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.25);
+        }
+        .robot-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+        }
+        .robot-id {
+            font-weight: bold;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .team-swatch {
+            width: 0.8rem;
+            height: 0.8rem;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.85);
+            flex-shrink: 0;
+        }
+        .robot-role {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+        }
+
+        /* Joystick Override UI */
+        .joystick-panel-grid {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        .joy-boundary {
+            width: 104px;
+            height: 104px;
+            border-radius: 50%;
+            background: var(--bg-dark);
+            border: 1px dashed var(--border-strong);
+            position: relative;
+            flex-shrink: 0;
+            touch-action: none;
+        }
+        .joy-stick {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--accent-indigo);
+            position: absolute;
+            top: 34px;
+            left: 34px;
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.7);
+            cursor: pointer;
+        }
+
+        .btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-primary);
+            padding: 0.5rem 0.8rem;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            user-select: none;
+            transition: all 0.18s ease;
+        }
+        .btn:hover {
+            border-color: var(--border-strong);
+            background: var(--bg-input);
+        }
+        .btn.danger {
+            background: rgba(239, 68, 68, 0.18);
+            color: #fca5a5;  /* --accent-red text is below 4.5:1 here */
+            border-color: rgba(239, 68, 68, 0.4);
+        }
+
+        /* Health Telemetry Inspector Cards */
+        .health-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            margin-top: 0.4rem;
+        }
+        .health-card {
+            background: var(--bg-dark);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 0.6rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .health-card-label {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+        .health-card-val {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            white-space: nowrap;
+            font-weight: bold;
+            color: var(--text-primary);
+        }
+
+        /* Narrow screens (phones in landscape): the docks overlay the 3D view and start closed */
+        @media (max-width: 900px) {
+            .app-status-bar { height: 40px; padding: 0 0.6rem; }
+            .app-title-badge { font-size: 0.75rem; letter-spacing: 0.6px; gap: 0.4rem; }
+            .activity-bar { width: 44px; padding: 0.3rem 0; gap: 0.25rem; overflow-y: auto; }
+            .activity-bar .activity-icon { width: 36px; height: 36px; flex-shrink: 0; }
+            .viewport-header-tabs { min-height: 36px; padding: 0.15rem 0.5rem; }
+            .v-tab { height: 30px; padding: 0 0.6rem; }
+            #rendererSelect { min-height: 30px; }
+            .tool-panel-dock, .inspector-dock {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                max-width: calc(100% - 44px);
+                z-index: 85;
+            }
+            .tool-panel-dock { left: 44px; box-shadow: 8px 0 28px rgba(0,0,0,0.7); }
+            .inspector-dock { right: 0; box-shadow: -8px 0 28px rgba(0,0,0,0.7); }
+            .inspector-dock .panel-box { flex: none !important; }  /* the dock scrolls instead of squashing panels */
+            .hamburger-modal { width: calc(100vw - 32px); max-width: 460px; max-height: calc(100vh - 32px); overflow-y: auto; }
+        }
+
+        /* Phones and tablets in portrait: ask for landscape (index.html is the portrait page) */
+        .rotate-overlay { display: none; }
+        @media (orientation: portrait) and (max-width: 1024px) and (pointer: coarse) {
+            .rotate-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 3000;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 1rem;
+                padding: 2rem;
+                background: var(--bg-darkest);
+                color: var(--text-primary);
+                font-size: 1.1rem;
+                font-weight: 700;
+                text-align: center;
+            }
+            .rotate-overlay a { color: var(--accent-cyan); font-size: 0.85rem; font-weight: 600; }
+            body > :not(.rotate-overlay) { visibility: hidden; }
+        }
+
+        /* Referee-rules bypass: confirmation modal, and a red banner while it is on */
+        .bypass-banner { position: sticky; top: 0; z-index: 1500; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0.4rem 0.8rem; padding: 0.35rem 0.8rem; background: #b91c1c; color: #fff; font-size: 0.78rem; font-weight: 700; text-align: center; }
+        .bypass-banner button { background: #fff; color: #b91c1c; border: none; border-radius: 4px; padding: 0.3rem 0.9rem; min-height: 32px; font-weight: 700; cursor: pointer; }
+        .bypass-modal { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(0, 0, 0, 0.75); }
+        .bypass-modal[hidden], .bypass-banner[hidden] { display: none; }
+        .bypass-card { max-width: 420px; display: flex; flex-direction: column; gap: 0.8rem; padding: 1.2rem; background: var(--bg-panel); border: 1px solid #ef4444; border-radius: 10px; color: var(--text-primary); font-size: 0.85rem; line-height: 1.45; }
+        .bypass-card h2 { margin: 0; font-size: 1rem; color: #fca5a5; }
+        .bypass-card p { margin: 0; }
+        .bypass-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 0.6rem; }
+        .bypass-actions button { min-height: 40px; padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--bg-card); color: var(--text-primary); font-weight: 700; cursor: pointer; }
+        .bypass-actions .bypass-enable { background: #b91c1c; border-color: #b91c1c; color: #fff; }
+        /* MANUAL ticked: a yellow banner with the same layout (dark text: 12:1) */
+        .bypass-banner.manual-banner { background: #facc15; color: #1c1917; }
+        .bypass-banner.manual-banner button { color: #1c1917; }
+        body.stale-data #robotList, body.stale-data #viewport2d, body.stale-data #textDataList { opacity: 0.45; filter: grayscale(1); }  /* no filter on the 3D canvas: costly */
+        .bypass-banner.manual-banner { position: fixed; top: auto; bottom: 0; left: 0; right: 0; }  /* fixed: the page does not jump when MANUAL turns on */
+        #gcState, #gcTime, #gcScore { white-space: nowrap; }
+        @media (max-width: 1024px) {  /* phones: the header wraps instead of scrolling the page sideways */
+            .bar-section { flex-wrap: wrap; row-gap: 0.3rem; min-width: 0; }
+            #statusText { max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            body:has(#manualBanner:not([hidden])) { padding-bottom: 72px; }  /* the fixed MANUAL banner must not hide the page end */
+        }
+        #rerunTimelineBar { display: none; }  /* no recording player yet: no empty 00:00 / 10:00 timeline */
+        #textDataList { overflow-y: auto; }  /* the inspector's last line was clipped */
+        .manual-toggle { white-space: nowrap; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.7rem; min-height: 32px; border-radius: 6px; border: 1px solid var(--border-strong, #3b3f4a); font: 700 0.75rem var(--font-mono, monospace); color: var(--text-primary, #eceef2); cursor: pointer; }
+        .manual-toggle:has(input:checked) { background: #facc15; border-color: #facc15; color: #1c1917; }
+        .manual-toggle:has(input:disabled) { opacity: 0.55; cursor: not-allowed; }
+        .manual-target { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-secondary); }
+        /* Limp-arms button: one colour per state this page sends (white text: 10:1 stiff, 5.0:1 limp) */
+        .btn.limp-btn { background: #334155; color: #fff; border-color: transparent; }
+        .btn.limp-btn[aria-pressed="true"] { background: #b45309; }
+    </style>
+</head>
+<body>
+
+    <!-- Phones in portrait: covers the app until the device turns -->
+    <div class="rotate-overlay" id="rotateOverlay" role="alert">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="16" rx="2"></rect><path d="M3 15a9 9 0 0 0 7 7"></path><polyline points="7 22 10 22 10 19"></polyline></svg>
+        <div>Turn your device to landscape</div>
+        <a href="/index.html">Or open the portrait page</a>
+        <span id="overlayStop" style="visibility: visible;"></span>
+    </div>
+
+    <!-- Shown while the referee-rules bypass is on -->
+    <div class="bypass-banner" id="bypassBanner" role="alert" hidden>
+        <span>Referee rules bypassed — manual commands reach the robot during play</span>
+        <button onclick="setBypass(false)">Turn off</button>
+    </div>
+
+    <!-- Shown while MANUAL is ticked: names the robot the joystick drives -->
+    <div class="bypass-banner manual-banner" id="manualBanner" role="alert" hidden>
+        <span id="manualBannerText">MANUAL on</span>
+        <button onclick="toggleManualMode(false)">Turn off</button>
+    </div>
+
+    <!-- 52px Studio Application Top Status Bar -->
+    <div class="app-status-bar">
+        <div class="bar-section">
+            <button class="activity-icon" onclick="toggleHamburgerMenu()" title="Open System Configuration">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            </button>
+            <div class="app-title-badge">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="url(#cyanGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <defs>
+                        <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#06b6d4" />
+                            <stop offset="100%" stop-color="#6366f1" />
+                        </linearGradient>
+                    </defs>
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                </svg>
+                ORACULUM
+            </div>
+            <nav aria-label="Pages" style="display: flex; gap: 4px;"><a class="page-link" href="/index.html">Field</a><a class="page-link" href="/dashboard.html" aria-current="page" style="color: var(--text-primary);">Dashboard</a><a class="page-link" href="/fleet.html">Fleet</a></nav>
+        </div>
+
+        <div class="bar-section">
+            <span id="controlBar"></span>
+            <div class="connection-status" style="display: flex; gap: 0.5rem; align-items: center; font-family: var(--font-mono); font-size: 0.75rem;">
+                <div class="status-dot" id="statusDot" style="width: 9px; height: 9px; border-radius: 50%;"></div>
+                <span id="statusText" style="color: var(--text-secondary); font-weight: 600;">GATEWAY ONLINE</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Studio Layout Shell -->
+    <div class="app-studio-shell">
+
+        <!-- Activity Bar (52px Left Strip) -->
+        <div class="activity-bar">
+            <!-- View Mode Switchers -->
+            <button class="activity-icon active" data-mode="3d" onclick="switchView('3d')" title="3D Field View">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+            </button>
+            <button class="activity-icon" data-mode="2d" onclick="switchView('2d')" title="2D Arena View">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+            </button>
+            <button class="activity-icon" data-mode="rerun" onclick="switchView('rerun')" title="Rerun Log Stream">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+            </button>
+
+            <div class="activity-divider"></div>
+
+            <!-- Tool Panel Toggles -->
+            <button class="activity-icon active" data-panel="hierarchy" onclick="toggleToolPanel('hierarchy')" title="Robot Hierarchy Tree">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            </button>
+            <button class="activity-icon" data-panel="drawings" onclick="toggleToolPanel('drawings')" title="Debug Drawings Checklist">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            </button>
+
+            <div class="activity-spacer"></div>
+
+            <!-- Inspector Panel Toggle & Settings -->
+            <button class="activity-icon" onclick="toggleInspectorDock()" title="Toggle Inspector Side Dock">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+            </button>
+            <button class="activity-icon" onclick="toggleHamburgerMenu()" title="System Configuration">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            </button>
+        </div>
+
+        <!-- Left Tool Panel Dock (300px) -->
+        <div class="tool-panel-dock" id="toolPanelDock">
+            <div class="dock-header">
+                <span id="dockPanelTitle">ROBOT HIERARCHY</span>
+                <button class="activity-icon" style="width: 28px; height: 28px;" onclick="toggleToolPanel()" title="Collapse Panel">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            
+            <div class="dock-content">
+                <!-- Section 1: Robot Hierarchy -->
+                <div class="dock-panel-section" id="panelSection_hierarchy" data-title="ROBOT HIERARCHY">
+                    <div id="robotList">
+                        <div style="text-align: center; color: var(--text-muted); padding: 1.2rem; font-size: 0.78rem;">Waiting for robot packets...</div>
+                    </div>
+                </div>
+
+                <!-- Section 2: Debug Drawings -->
+                <div class="dock-panel-section" id="panelSection_drawings" data-title="DEBUG DRAWINGS" style="display: none;">
+                    <div id="drawingFilterList">
+                        <div style="text-align: center; color: var(--text-muted); padding: 1.2rem; font-size: 0.78rem;">No drawings streams found.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center Viewport Stage -->
+        <div class="viewport-stage">
+            <div class="viewport-header-tabs">
+                <div style="display:flex; gap:6px;">
+                    <button class="v-tab active" data-mode="3d" onclick="switchView('3d')">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                        3D FIELD
+                    </button>
+                    <button class="v-tab" data-mode="2d" onclick="switchView('2d')">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+                        2D ARENA
+                    </button>
+                    <button class="v-tab" data-mode="rerun" onclick="switchView('rerun')">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                        RERUN LOGS
+                    </button>
+                </div>
+                
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.6px;">ENGINE:</span>
+                    <select id="rendererSelect" onchange="switchRendererEngine(this.value)" style="-webkit-appearance:none; appearance:none; background:var(--bg-panel); color:var(--accent-cyan); border:1px solid var(--border-subtle); font-size:0.75rem; padding:4px 10px; border-radius:6px; cursor:pointer; font-weight:600; outline:none;">
+                        <option value="circus">Circus (exact)</option>
+                        <option value="wasm">MuJoCo WASM (T1 model)</option>
+                        <option value="threejs">Three.js</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="viewport-canvas-container">
+                <!-- In-Simulation Window GameController HUD Overlay (Conforms dynamically to active view/renderer) -->
+                <div class="sim-gc-overlay" id="simGcOverlay">
+                    <span class="sim-gc-badge offline" id="gcState">GC: OFFLINE</span>
+                    <span class="sim-gc-time" id="gcTime">00:00</span>
+                    <span class="sim-gc-score" id="gcScore">0 - 0</span>
+                </div>
+
+                <!-- 3D Layer -->
+                <div class="viewport-layer active" id="viewport3d">
+                    <div id="threejsContainer" style="position:relative; width:100%; height:100%;"></div>
+                    <div id="circusContainer" style="position:relative; width:100%; height:100%; display:none;"></div>
+                </div>
+
+                <!-- 2D Layer -->
+                <div class="viewport-layer" id="viewport2d">
+                    <canvas id="fieldCanvas" width="1280" height="720" style="width:100%; height:100%; object-fit: contain;"></canvas>
+                </div>
+
+                <!-- Rerun Layer -->
+                <div class="viewport-layer" id="viewportRerun">
+                    <iframe id="rerunIframe" srcdoc="<body style='margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#121316;color:#9fa4b2;font:14px system-ui;text-align:center;padding:16px'><div><b style='color:#eceef2'>No recording loaded.</b><br>This tab will show a Rerun recording. The gateway's own recordings are telemetry (.jsonl): list and download them on the <a href='/fleet.html' target='_top' style='color:#93c5fd'>Fleet page</a>.</div></body>" style="width: 100%; height: 100%; border: none;"></iframe>
+                </div>
+            </div>
+
+            <!-- Contextual Rerun Timeline Scrubber Bar (Progressive Disclosure - Revealed only in Rerun mode) -->
+            <div class="rerun-timeline-bar" id="rerunTimelineBar">
+                <div class="timeline-controls">
+                    <button class="timeline-btn" id="btnTimelinePlay" onclick="toggleTimelinePlay()" title="Play / Pause Replay">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    </button>
+                    <button class="timeline-btn" onclick="stepTimeline(-1)" title="Step -1 Frame">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 19 2 12 11 5 11 19"></polygon><polygon points="22 19 13 12 22 5 22 19"></polygon></svg>
+                    </button>
+                    <button class="timeline-btn" onclick="stepTimeline(1)" title="Step +1 Frame">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 19 22 12 13 5 13 19"></polygon><polygon points="2 19 11 12 2 5 2 19"></polygon></svg>
+                    </button>
+                </div>
+
+                <div class="timeline-slider-wrapper">
+                    <span class="timeline-time-display" id="timeCurrent">00:00.00</span>
+                    <input type="range" class="timeline-slider" id="timelineScrubber" min="0" max="600" value="0" oninput="onTimelineScrub(this.value)">
+                    <span class="timeline-time-display" id="timeTotal" style="text-align: right;">10:00.00</span>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 0.7rem; color: var(--text-muted); font-weight: bold;">SPEED:</span>
+                    <select id="playbackSpeedSelect" onchange="setPlaybackSpeed(this.value)" style="background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-subtle); font-size: 0.72rem; padding: 3px 8px; border-radius: 6px; font-family: var(--font-mono);">
+                        <option value="0.25">0.25x</option>
+                        <option value="0.5">0.5x</option>
+                        <option value="1.0" selected>1.0x</option>
+                        <option value="2.0">2.0x</option>
+                        <option value="5.0">5.0x</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Secondary Inspector Dock (Right 340px) -->
+        <div class="inspector-dock" id="inspectorDock">
+            <div class="dock-header">
+                <span>INSPECTOR & CONTROLS</span>
+                <button class="activity-icon" style="width: 28px; height: 28px;" onclick="toggleInspectorDock()" title="Collapse Inspector">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+
+            <div class="dock-content" style="padding: 1rem;">
+                
+                <!-- Manual Joystick Override Panel -->
+                <div class="panel-box">
+                    <div class="panel-title">
+                        <span style="display: flex; align-items: center; gap: 0.5rem;">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="12" x2="10" y2="12"></line><line x1="8" y1="10" x2="8" y2="14"></line><circle cx="15" cy="13" r="1"></circle><circle cx="18" cy="11" r="1"></circle><rect x="2" y="6" width="20" height="12" rx="6"></rect></svg>
+                            MANUAL JOYSTICK OVERRIDE
+                        </span>
+                        <label class="manual-toggle"><input type="checkbox" id="checkManualMode" onchange="toggleManualMode(this.checked)" disabled aria-describedby="manualTarget"><span id="manualToggleText">MANUAL: OFF</span></label>
+                    </div>
+                    <div class="panel-body">
+                        <div class="manual-target" id="manualTarget">select a robot first</div>
+                        <div class="joystick-panel-grid">
+                            <div class="joy-boundary" id="joyBoundary">
+                                <div class="joy-stick" id="joyStick"></div>
+                            </div>
+                            <div style="flex: 1; display: flex; flex-direction: column; gap: 0.5rem;">
+                                <div style="font-size: 0.72rem; color: var(--text-secondary); display: flex; justify-content: space-between;">
+                                    <span>STRAFE (VY)</span>
+                                    <span id="labelVy">1.0</span>
+                                </div>
+                                <input type="range" id="sliderVy" min="0.1" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('labelVy').textContent=this.value">
+                                <div style="font-size: 0.72rem; color: var(--text-secondary); display: flex; justify-content: space-between;">
+                                    <span>WALK (VX)</span>
+                                    <span id="labelVx">1.0</span>
+                                </div>
+                                <input type="range" id="sliderVx" min="0.1" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('labelVx').textContent=this.value">
+                            </div>
+                        </div>
+                        <button class="btn limp-btn" id="limpBtn" aria-pressed="false" style="margin-top: 0.5rem;" onclick="toggleLimpArms()"
+                            title="Last arm state commanded by this page (lt in the manual commands, sent only while MANUAL is ticked). The page cannot read the real robot state.">ARMS: STIFF</button>
+                    </div>
+                </div>
+
+                <!-- Selective Robot Telemetry Inspector Panel (Progressive Disclosure) -->
+                <div class="panel-box" style="flex: 1;">
+                    <div class="panel-title">
+                        <span style="display: inline-flex; align-items: center; gap: 0.5rem;">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect></svg>
+                            TELEMETRY INSPECTOR
+                        </span>
+                    </div>
+                    <div class="panel-body" id="textDataList">
+                        <div style="text-align: center; color: var(--text-muted); padding: 1.8rem; font-size: 0.78rem; font-family: var(--font-main);">
+                            Select a robot from hierarchy to inspect live telemetry & health metrics.
+                        </div>
+                    </div>
+                    <div id="inspectorLinks" style="padding: 0 1rem 0.8rem;"></div>
+                </div>
+
+                <!-- Network Budget Analyzer Panel -->
+                <div class="panel-box">
+                    <div class="panel-title">
+                        <span style="display: inline-flex; align-items: center; gap: 0.5rem;">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                            NETWORK BUDGET ANALYZER
+                        </span>
+                    </div>
+                    <div class="panel-body">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 3px;">
+                            <span>TEAM COMM BUDGET</span>
+                            <span id="budgetUsage">0 / 12,000</span>
+                        </div>
+                        <div style="height: 7px; background: var(--bg-dark); border-radius: 4px; overflow: hidden;">
+                            <div id="budgetProgressBar" style="width: 0%; height: 100%; background: var(--accent-indigo);"></div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Modal System Settings Window -->
+    <div class="modal-backdrop" id="modalBackdrop" onclick="toggleHamburgerMenu()"></div>
+    <div class="hamburger-modal" id="hamburgerModal">
+        <div style="font-weight: 800; font-size: 0.9rem; color: var(--text-primary); border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.6rem; letter-spacing: 0.9px;">SYSTEM GATEWAY CONFIGURATION</div>
+        
+        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <label style="font-size: 0.75rem; color: var(--text-secondary);">GATEWAY API ENDPOINT:</label>
+            <div style="display: flex; gap: 0.5rem;">
+                <input type="text" id="gatewayIp" value="" placeholder="localhost:8080" style="background: var(--bg-input); border: 1px solid var(--border-subtle); color: var(--text-primary); padding: 7px 12px; border-radius: 8px; flex: 1; font-family: var(--font-mono); font-size: 0.8rem;">
+                <button onclick="updateGatewayUrl()" style="background: #4f46e5; color: #fff; border: none; padding: 7px 16px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 0.78rem;">SET</button>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; color: var(--text-secondary);">
+            <label for="checkTestingOverride">BYPASS REFEREE RULES</label>
+            <input type="checkbox" id="checkTestingOverride" autocomplete="off" aria-describedby="bypassHelp">
+        </div>
+        <div id="bypassHelp" style="font-size: 0.7rem; line-height: 1.4; color: var(--text-muted);">Engineers only, lab only: manual commands
+            then also reach the robot in READY, SET and PLAYING. Only this tab; a reload turns it off. STOP needs no bypass.</div>
+
+        <button class="btn danger" style="padding: 0.65rem; margin-top: 0.5rem;" onclick="toggleHamburgerMenu()">CLOSE SETTINGS</button>
+    </div>
+
+    <!-- Confirmation before the referee-rules bypass turns on -->
+    <div class="bypass-modal" id="bypassModal" role="dialog" aria-modal="true" aria-labelledby="bypassTitle" hidden onkeydown="if (event.key === 'Escape') setBypass(false)">
+        <div class="bypass-card">
+            <h2 id="bypassTitle">Bypass referee rules?</h2>
+            <p>Manual commands will reach the robot during READY, SET and PLAYING. Use only in lab tests, never in a match.</p>
+            <div class="bypass-actions">
+                <button id="bypassCancel" onclick="setBypass(false)">Cancel</button>
+                <button class="bypass-enable" onclick="setBypass(true)">Enable bypass</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Controller Script Module -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/OrbitControls.js';
+        import { createCircusView, leaderLines, placeLabels, showNote } from '/static/circus_view.js';
+        import { FIELD, beliefDrawings, drawDrawings2D, drawRobot2D, fieldLines, gcSummary, loadField, penaltyOf, robotName, roleState, teamRgb } from '/static/field_model.js';
+        import { mountControlBar, robotActions, sendStop, stateUrl, withOperator } from '/static/control_bar.js';
+        import { renderInspector as renderInspectorPanel } from '/static/inspector.js';
+        await loadField(location.origin);  // the field of the gateway's config.yaml, before the scenes are built
+
+        // Global state variables
+        let API_URL = window.location.origin;
+        // STOP ALL + control lock; when the holder keeps control after our request, MANUAL turns off
+        const ctl = mountControlBar(document.getElementById("controlBar"), () => API_URL,
+                                    { onDenied: () => { if (isManualMode) window.toggleManualMode(false); } });
+        const cardActions = new Map();  // STOP / Resume per robot address, moved into each rebuilt card
+        {   // STOP ALL stays reachable over the "turn your device" overlay (phones in portrait)
+            const b = Object.assign(document.createElement("button"), { className: "ctl-stop ctl-stopall", textContent: "STOP ALL" });
+            b.onclick = () => sendStop(() => API_URL, "all", "stop");
+            document.getElementById("overlayStop").append(b);
+        }
+        document.getElementById("gatewayIp").value = window.location.host;
+        
+        let isOnline = false;
+        let selectedRobotId = null;
+        let selectedRobotIp = "";
+        let isManualMode = false;
+        let isLimpArms = false;
+        let isTimelinePlaying = false;
+        let playbackSpeed = 1.0;
+        const knownDrawingPaths = new Set();
+        const disabledDrawingPaths = new Set();
+
+        // Field size constants
+        const FIELD_WIDTH = FIELD.width;    // x, goal to goal (m)
+        const FIELD_HEIGHT = FIELD.height;  // y (m)
+        const CANVAS_MARGIN = 50;
+
+        // Elements
+        const statusDot = document.getElementById("statusDot");
+        const statusText = document.getElementById("statusText");
+        const gcState = document.getElementById("gcState");
+        const gcTime = document.getElementById("gcTime");
+        const gcScore = document.getElementById("gcScore");
+        const robotList = document.getElementById("robotList");
+        const textDataList = document.getElementById("textDataList");
+        const budgetUsage = document.getElementById("budgetUsage");
+        const budgetProgressBar = document.getElementById("budgetProgressBar");
+
+        // 2D Canvas setup
+        const canvas = document.getElementById("fieldCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // 3D Scene setup
+        let renderer, scene, camera, orbitControls;
+        let fieldAnchor;  // field, robots, ball and drawings
+
+        // Renderer engine, same code in index.html and dashboard.html.
+        // "circus": the exact circus image (src/static/circus_view.js, B2 renderer, needs WebGL2).
+        // "wasm": Three.js scene, MuJoCo (WebAssembly, src/static/mujoco_robots.js) poses the Booster T1 model.
+        // "threejs": Three.js scene with simple robot shapes.
+        // Fallback: circus -> wasm -> simple robots -> the WebGL message (with the 2D button). Only a choice in
+        // the select box is saved (key _v2: the old key was written on every load, so it held no choice).
+        const ENGINE_KEY = "oraculum_renderer_engine_v2";
+        let activeRendererEngine = localStorage.getItem(ENGINE_KEY) || "circus";
+        let mjRobots = null;   // {makeRobot, pose} after the MuJoCo model is loaded
+        let mjLoading = null;
+        let circusView = null;  // createCircusView() result once the circus scene is loaded
+        let circusLoading = null;
+        let lastState = null;   // the last /state, for an engine that finishes loading later
+        let lastPolledState = null;  // the last /state of fetchState, for the robot inspector
+
+        function startCircus() {
+            if (circusView || circusLoading) return;
+            const opt = document.querySelector('#rendererSelect option[value="circus"]');
+            const label = "Circus (exact)";
+            opt.textContent = label + " (loading…)";
+            showNote(document.getElementById("viewport3d"), "");
+            circusLoading = createCircusView(document.getElementById("circusContainer"),
+                    { badge: makeBadgeCanvas, labelPx: LABEL_PX, hiddenPaths: disabledDrawingPaths, labelTop: gcPillRect })
+                .then(view => {
+                    circusView = window.circusView = view;  // window: for console debugging and page tests
+                    opt.textContent = label;
+                    if (lastState) view.update(lastState);
+                })
+                .catch(e => {
+                    console.error("[Circus] renderer not available (" + (e.code || "error") + "), using MuJoCo WASM:", e);
+                    opt.textContent = label + " (failed)";
+                    circusLoading = null;  // a new choice in the select box tries again
+                    if (activeRendererEngine !== "circus") return;
+                    // the WebGL message covers a missing WebGL2 (B2_NO_WEBGL2); other failures get a visible line
+                    if (e.code !== "B2_NO_WEBGL2") showNote(document.getElementById("viewport3d"), "Circus view not available ("
+                        + (e.code || "error") + "): showing MuJoCo WASM. Choose Circus (exact) to try again.");
+                    switchRendererEngine("wasm", false);
+                });
+        }
+
+        window.switchRendererEngine = function(engine, save = true) {
+            activeRendererEngine = engine;
+            if (save) localStorage.setItem(ENGINE_KEY, engine);
+            if (save) showNote(document.getElementById("viewport3d"), "");  // a user choice ends the fallback note
+            console.log("[Renderer Engine] Switched active engine to:", engine);
+
+            const selectEl = document.getElementById("rendererSelect");
+            if (selectEl) selectEl.value = engine;
+
+            const circus = engine === "circus";
+            document.getElementById("circusContainer").style.display = circus ? "block" : "none";
+            document.getElementById("threejsContainer").style.display = circus ? "none" : "block";
+            if (circus) return startCircus();
+
+            if (!renderer) init3D();
+            if (!renderer) return;  // WebGL blocked: no 3D view, no model download
+            // Each robot is swapped to the selected model at the next state update (getOrCreateRobotMesh).
+            if (engine === "wasm" && !mjRobots && !mjLoading) {
+                const opt = document.querySelector('#rendererSelect option[value="wasm"]');
+                const label = opt ? opt.textContent : "";
+                if (opt) opt.textContent = label + " (loading…)";
+                mjLoading = import("/static/mujoco_robots.js")
+                    .then(m => m.loadT1())
+                    .then(r => { mjRobots = r; if (opt) opt.textContent = label; })
+                    .catch(e => {
+                        console.error("[WASM] MuJoCo model not loaded, simple robots stay:", e);
+                        if (opt) opt.textContent = label + " (failed)";
+                    });
+            }
+        }
+
+        // Robots are keyed by sender IP and player number: two teams can both have a robot 1.
+        function robotKey(agent) {
+            return `${agent.ip || ""}|${agent.id}`;
+        }
+
+        // 3D entities
+        let ballMesh = null;
+        const robotMeshes = {};
+        let drawingsGroup = null;
+        // One material per kind and colour, shared by all drawings: a new material per poll recompiled shaders
+        const drawingMaterials = new Map();
+        const drawingMaterial = (key, make) => {
+            if (!drawingMaterials.has(key)) drawingMaterials.set(key, make());
+            return drawingMaterials.get(key);
+        };
+        const textBillboards = {};
+        const LABEL_PX = Math.min(innerWidth, innerHeight) < 600 ? 18 : 26;  // R<id> label height, CSS px (smaller on phones)
+        const BALL_RADIUS = 0.11; // size-5 ball, as in circus resources/includes/ball.xml
+
+        // needWebGL2: the browser has WebGL 1 only (the 3D engines need WebGL2).
+        function showWebGLDisabledWarning(container, needWebGL2 = false) {
+            if (!container) return;
+            // Same text in index.html and dashboard.html; scrolls on short (phone landscape) views
+            const ff = /firefox/i.test(navigator.userAgent);
+            container.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:safe center; box-sizing:border-box; height:100%; overflow:auto; color:#e0e6ed; background:#0f172a; text-align:center; padding:1.5rem; font-family:sans-serif;">
+                    <div style="font-size:2.5rem; margin-bottom:1rem; color:#f59e0b;">⚠️</div>
+                    <h3 style="margin:0 0 0.75rem 0; color:#f8fafc; font-size:1.25rem;">${needWebGL2 ? "The 3D view needs WebGL2" : "WebGL Graphics Disabled in Browser"}</h3>
+                    <p style="max-width:480px; margin:0 0 1.25rem 0; font-size:0.9rem; color:#94a3b8; line-height:1.5;">
+                        ${needWebGL2 ? "This browser offers WebGL 1 only. Update the browser, or use the 2D view." : `Your browser or graphics driver blocked WebGL context creation (<code style="background:#1e293b; padding:2px 6px; border-radius:4px; color:#f43f5e;">GL_VENDOR = Disabled</code>).`}
+                    </p>
+                    <div style="background:#1e293b; border:1px solid #334155; border-radius:8px; padding:1rem; text-align:left; max-width:480px; margin-bottom:1.25rem; font-size:0.85rem; color:#cbd5e1;">
+                        ${ff ? `<strong style="color:#38bdf8;">How to enable WebGL in Firefox:</strong>
+                        <ol style="margin:0.5rem 0 0 1.2rem; padding:0;">
+                            <li>Open <code>about:config</code> in a new tab.</li>
+                            <li>Set <strong>webgl.disabled</strong> to false (or <strong>webgl.force-enabled</strong> to true).</li>
+                            <li>Restart Firefox.</li>
+                        </ol>` : `<strong style="color:#38bdf8;">How to enable WebGL in Chrome / Edge:</strong>
+                        <ol style="margin:0.5rem 0 0 1.2rem; padding:0;">
+                            <li>Open <code>chrome://settings/system</code> in a new tab.</li>
+                            <li>Enable <strong>"Use graphics acceleration when available"</strong>.</li>
+                            <li>Relaunch your browser.</li>
+                        </ol>`}
+                        <p style="margin:0.75rem 0 0 0; line-height:1.5;">
+                            If your organisation manages this browser, a policy can block WebGL.
+                            Chrome may also switch the GPU off after a GPU crash until it is fully restarted.
+                            ${ff ? 'Try Chrome or a personal browser profile.' : 'Try Firefox or a personal browser profile.'}
+                        </p>
+                    </div>
+                    <button onclick="switchView('2d')" style="background:#2563eb; color:#ffffff; border:none; padding:0.6rem 1.2rem; border-radius:6px; font-weight:600; cursor:pointer; transition:background 0.2s;">
+                        Switch to 2D Arena View
+                    </button>
+                </div>
+            `;
+        }
+
+        function init3D() {
+            const container = document.getElementById("threejsContainer");
+            if (!container) return;
+
+            let canvas = document.createElement("canvas");
+            let glContext = null;
+            const ctxOpts = { antialias: window.devicePixelRatio < 2, alpha: true, powerPreference: "default", failIfMajorPerformanceCaveat: false };
+
+            try { glContext = canvas.getContext("webgl2", ctxOpts); } catch(e) {}
+            if (!glContext) {
+                try { glContext = canvas.getContext("webgl", ctxOpts); } catch(e) {}
+            }
+            if (!glContext) {
+                try { glContext = canvas.getContext("experimental-webgl", ctxOpts); } catch(e) {}
+            }
+
+            if (glContext) {
+                try {
+                    renderer = new THREE.WebGLRenderer({ canvas: canvas, context: glContext, antialias: window.devicePixelRatio < 2, alpha: true });
+                } catch(e) {
+                    renderer = null;
+                }
+            } else {
+                try {
+                    renderer = new THREE.WebGLRenderer({ antialias: window.devicePixelRatio < 2, alpha: true, failIfMajorPerformanceCaveat: false });
+                } catch(e) {
+                    renderer = null;
+                }
+            }
+            
+            if (!renderer) {
+                console.error("[WebGL] WebGL Context Creation Failed completely");
+                showWebGLDisabledWarning(container);
+                return;
+            }
+            if (!renderer.capabilities.isWebGL2) {  // WebGL 1: the Three.js shaders here do not compile (textureLod)
+                console.error("[WebGL] WebGL 1 only; the 3D view needs WebGL2");
+                renderer.dispose();
+                renderer = null;
+                showWebGLDisabledWarning(container, true);
+                return;
+            }
+
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+            // 1 px leader lines of lifted R<id> labels (layoutLabels), over the canvas
+            labelLines = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            labelLines.style.cssText = "position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:hidden;";
+            container.appendChild(labelLines);
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111422);  // floor colour: no black band at the horizon
+
+            // fov 35, not 50: a wide angle made robots near the corners look tipped over.
+            // The distance grows by tan(25°) / tan(17.5°) ≈ 1.48, so the whole field still fits.
+            camera = new THREE.PerspectiveCamera(35, container.clientWidth / container.clientHeight, 0.1, 100);
+            const camDist = fitDist(camera.aspect);
+            camera.position.set(0, camDist / Math.SQRT2, camDist / Math.SQRT2);
+
+            orbitControls = new OrbitControls(camera, renderer.domElement);
+            orbitControls.enableDamping = true;
+            orbitControls.dampingFactor = 0.05;
+            orbitControls.maxPolarAngle = Math.PI / 2.1;
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(5, 10, 5);
+            scene.add(dirLight);
+
+            fieldAnchor = new THREE.Group();
+            scene.add(fieldAnchor);
+
+            build3DField();
+
+            drawingsGroup = new THREE.Group();
+            fieldAnchor.add(drawingsGroup);
+
+            // Window resize and the dock open/close transitions
+            new ResizeObserver(onWindowResize).observe(container);
+            renderer.setAnimationLoop(renderFrame);
+        }
+
+        function build3DField() {
+            const outerFloorGeo = new THREE.PlaneGeometry(22, 22);  // the size of the grid
+            const outerFloorMat = new THREE.MeshStandardMaterial({
+                color: 0x111422,
+                roughness: 0.8,
+                metalness: 0.1
+            });
+            const outerFloor = new THREE.Mesh(outerFloorGeo, outerFloorMat);
+            outerFloor.rotateX(-Math.PI / 2);
+            outerFloor.position.y = -0.01;
+            fieldAnchor.add(outerFloor);
+
+            const gridHelper = new THREE.GridHelper(22, 22, 0x2e354f, 0x1f2436);
+            gridHelper.position.y = -0.05;
+            fieldAnchor.add(gridHelper);
+
+            const grassGeo = new THREE.PlaneGeometry(FIELD_WIDTH + 1.5, FIELD_HEIGHT + 1.5);
+            const grassMat = new THREE.MeshStandardMaterial({ 
+                color: 0x15803d, 
+                roughness: 0.85,
+                metalness: 0.05
+            });
+            const grassMesh = new THREE.Mesh(grassGeo, grassMat);
+            grassMesh.rotateX(-Math.PI / 2);
+            grassMesh.position.y = -0.005;
+            fieldAnchor.add(grassMesh);
+
+            const lineMat = new THREE.MeshStandardMaterial({ 
+                color: 0xffffff, 
+                roughness: 0.4,
+                opacity: 0.95
+            });
+            const drawLine = (w, h, x, z) => {
+                const geo = new THREE.PlaneGeometry(w, h);
+                const mesh = new THREE.Mesh(geo, lineMat);
+                mesh.rotateX(-Math.PI / 2);
+                mesh.position.set(x, 0.001, z);
+                fieldAnchor.add(mesh);
+            };
+
+            const lineWidth = 0.05;
+
+            drawLine(FIELD_WIDTH, lineWidth, 0, -FIELD_HEIGHT/2);
+            drawLine(FIELD_WIDTH, lineWidth, 0, FIELD_HEIGHT/2);
+            drawLine(lineWidth, FIELD_HEIGHT, -FIELD_WIDTH/2, 0);
+            drawLine(lineWidth, FIELD_HEIGHT, FIELD_WIDTH/2, 0);
+            drawLine(lineWidth, FIELD_HEIGHT, 0, 0);
+
+            const circGeo = new THREE.RingGeometry(FIELD.center_radius - lineWidth/2, FIELD.center_radius + lineWidth/2, 64);
+            const circ = new THREE.Mesh(circGeo, lineMat);
+            circ.rotateX(-Math.PI / 2);
+            circ.position.set(0, 0.001, 0);
+            fieldAnchor.add(circ);
+
+            // Goal areas and penalty areas (Left & Right), sizes from FIELD; scene z = -field y
+            for (const [boxLen, boxWid] of [[FIELD.goal_area_width, FIELD.goal_area_height], [FIELD.penalty_area_width, FIELD.penalty_area_height]]) {
+                for (const s of [-1, 1]) {
+                    drawLine(boxLen, lineWidth, s * (FIELD_WIDTH/2 - boxLen/2), -boxWid/2);
+                    drawLine(boxLen, lineWidth, s * (FIELD_WIDTH/2 - boxLen/2), boxWid/2);
+                    drawLine(lineWidth, boxWid, s * (FIELD_WIDTH/2 - boxLen), 0);
+                }
+            }
+
+            const markGeo = new THREE.CircleGeometry(0.04, 16);
+            const pMarkLeft = new THREE.Mesh(markGeo, lineMat);
+            pMarkLeft.rotateX(-Math.PI / 2);
+            pMarkLeft.position.set(-FIELD_WIDTH/2 + FIELD.penalty_mark_distance, 0.002, 0);
+            fieldAnchor.add(pMarkLeft);
+
+            const pMarkRight = pMarkLeft.clone();
+            pMarkRight.position.set(FIELD_WIDTH/2 - FIELD.penalty_mark_distance, 0.002, 0);
+            fieldAnchor.add(pMarkRight);
+
+            // Complete goal (same code in index.html and dashboard.html): front posts and crossbar on the
+            // goal line, back posts and crossbar 0.5 m behind it (outside the field), top bars joining
+            // them, and light see-through back, side and top nets.
+            const buildGoal = (xSign) => {
+                const r = 0.05, h = FIELD.goal_height, w = FIELD.goal_width, d = FIELD.goal_depth;  // post radius, height, width, depth (m)
+                const goal = new THREE.Group();
+                goal.position.set(xSign * FIELD_WIDTH / 2, 0, 0);
+                const postMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.1 });
+                const up = new THREE.Vector3(0, 1, 0);
+                const bar = (x1, y1, z1, x2, y2, z2) => {
+                    const a = new THREE.Vector3(x1, y1, z1), v = new THREE.Vector3(x2, y2, z2).sub(a);
+                    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, v.length(), 12), postMat);
+                    m.position.copy(a).addScaledVector(v, 0.5);
+                    m.quaternion.setFromUnitVectors(up, v.normalize());
+                    goal.add(m);
+                };
+                const bx = xSign * d;  // back frame, outside the field
+                for (const z of [-w / 2, w / 2]) {
+                    bar(0, 0, z, 0, h, z);    // front post
+                    bar(bx, 0, z, bx, h, z);  // back post
+                    bar(0, h, z, bx, h, z);   // top bar, front to back
+                }
+                bar(0, h, -w / 2, 0, h, w / 2);    // crossbar
+                bar(bx, h, -w / 2, bx, h, w / 2);  // back crossbar
+
+                // Nets: a faint fill plus a light mesh (10 cells per metre)
+                const fillMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false });
+                const meshMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0, wireframe: true, transparent: true, opacity: 0.3 });
+                const net = (sx, sy, x, y, z, rx, ry) => {
+                    const geo = new THREE.PlaneGeometry(sx, sy, Math.round(sx * 10), Math.round(sy * 10));
+                    for (const mat of [fillMat, meshMat]) {
+                        const m = new THREE.Mesh(geo, mat);
+                        m.position.set(x, y, z);
+                        m.rotation.set(rx, ry, 0);
+                        goal.add(m);
+                    }
+                };
+                net(w, h, bx, h / 2, 0, 0, Math.PI / 2);   // back
+                net(d, h, bx / 2, h / 2, -w / 2, 0, 0);    // sides
+                net(d, h, bx / 2, h / 2, w / 2, 0, 0);
+                net(d, w, bx / 2, h, 0, -Math.PI / 2, 0);  // top
+
+                fieldAnchor.add(goal);
+            };
+
+            buildGoal(-1);
+            buildGoal(1);
+        }
+
+        function renderFrame() {
+            if (!renderer.domElement.clientHeight) return;  // 3D view hidden; the ResizeObserver redraws on return
+            orbitControls.update();
+            updateTextBillboards();
+            camera.updateMatrixWorld();
+            layoutLabels();
+            renderer.render(scene, camera);
+        }
+
+        function updateTextBillboards() {
+            const camPosition = new THREE.Vector3();
+            camera.getWorldPosition(camPosition);
+            Object.values(textBillboards).forEach(billboard => {
+                billboard.lookAt(camPosition);
+            });
+        }
+
+        // Labels stay below the GameController pill over the top of the 3D view, only in the pill's columns:
+        // its rect in view pixels (placeLabels top), 0 when it is hidden.
+        function gcPillRect() {
+            const pill = document.getElementById("simGcOverlay"), view = document.getElementById("viewport3d");
+            if (!pill || !view || !pill.offsetParent) return 0;
+            const p = pill.getBoundingClientRect(), v = view.getBoundingClientRect();
+            return { left: p.left - v.left, right: p.right - v.left, bottom: Math.max(0, p.bottom - v.top) };
+        }
+
+        // R<id> labels: placeLabels (src/static/circus_view.js, shared by all engines) keeps them apart and
+        // inside the canvas; here it moves the Three.js sprites.
+        const _labelPos = new THREE.Vector3();
+        let labelLines = null, shownLines = "";  // SVG of the leader lines (init3D) and its last content
+        function layoutLabels() {
+            const size = renderer.getSize(new THREE.Vector2());  // CSS pixels, as LABEL_PX
+            const lw = 2 * LABEL_PX, lh = LABEL_PX;
+            const items = [];
+            for (const sp of Object.values(textBillboards)) {
+                if (!sp.parent || !sp.parent.visible || !sp.parent.parent) continue;  // hidden or removed robot
+                sp.getWorldPosition(_labelPos).project(camera);
+                if (_labelPos.z > 1) continue;  // behind the camera
+                items.push({ sp, x: (_labelPos.x + 1) / 2 * size.x, y: (1 - _labelPos.y) / 2 * size.y, z: _labelPos.z });
+            }
+            for (const it of placeLabels(items, size.x, size.y, lh, gcPillRect())) {
+                // Sprite centre in badge units: x shifts the badge sideways, a negative y lifts it
+                it.sp.center.set(0.5 - (it.left - (it.x - lw / 2)) / lw, -it.up / lh);
+            }
+            const lines = leaderLines(items, lh);
+            if (lines !== shownLines) labelLines.innerHTML = shownLines = lines;
+        }
+
+        // Camera distance that fits the field for a view aspect (fov 35; tan25/tan17.5 keeps the old fov-50 fit).
+        function fitDist(aspect) {
+            const k = (FIELD.width + 1.5) / (9 + 1.5);  // the constants below fit the old 9 x 6 m field; scale to GET /field
+            return k * Math.max(11.3, 13 / aspect) * Math.tan(25 * Math.PI / 180) / Math.tan(17.5 * Math.PI / 180);
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById("threejsContainer");
+            if (container && camera && renderer && container.clientHeight) {  // 0 while the 3D view is hidden
+                const oldAspect = camera.aspect;
+                camera.aspect = container.clientWidth / container.clientHeight;
+                // Rotation/resize: rescale the orbit radius so the field fits the new aspect; keeps the user's zoom ratio.
+                const k = fitDist(camera.aspect) / fitDist(oldAspect);
+                if (k !== 1) camera.position.sub(orbitControls.target).multiplyScalar(k).add(orbitControls.target);
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+                const s = labelScale();
+                Object.values(textBillboards).forEach(b => b.scale.set(2 * s, s, 1));
+                renderer.render(scene, camera);  // setSize clears the canvas: redraw before the browser paints
+            }
+        }
+
+        // Sprite scale that gives LABEL_PX: with sizeAttenuation false, scale s covers s / (2 tan(fov/2)) of the canvas height.
+        function labelScale() {
+            return 2 * Math.tan(camera.fov * Math.PI / 360) * LABEL_PX / Math.max(renderer.getSize(new THREE.Vector2()).y, 1);
+        }
+
+        function getOrCreateRobotMesh(agent) {
+            const id = agent.id;
+            const key = robotKey(agent);
+            // Swap in place when the engine changed, so no frame is drawn without robots.
+            const old = robotMeshes[key];
+            const wantMj = activeRendererEngine === "wasm" && !!mjRobots;
+            if (old && !!old.userData.mj === wantMj) return old;
+            if (old) old.removeFromParent();
+            if (wantMj) {
+                const robot = mjRobots.makeRobot(agent);
+                const label = createTextBillboard(`R${id}`);
+                label.position.set(0, robot.userData.height + 0.15, 0);
+                robot.add(label);
+                textBillboards[key] = label;
+                fieldAnchor.add(robot);
+                robotMeshes[key] = robot;
+                return robot;
+            }
+
+            const group = new THREE.Group();
+            const isRedTeam = (agent.team === 19 || agent.team === "red" || id <= 2);
+            const teamColorHex = agent.color || (isRedTeam ? 0xef4444 : 0x3b82f6);
+            const darkBodyMat = new THREE.MeshStandardMaterial({ color: 0x8a8f98, roughness: 0.6, metalness: 0.2 });
+            const teamJerseyMat = new THREE.MeshStandardMaterial({ color: teamColorHex, roughness: 0.5 });
+
+            const torsoGeo = new THREE.BoxGeometry(0.18, 0.25, 0.12);
+            const torso = new THREE.Mesh(torsoGeo, teamJerseyMat);
+            torso.position.y = 0.45;
+            group.add(torso);
+
+            const headGeo = new THREE.SphereGeometry(0.07, 16, 16);
+            const head = new THREE.Mesh(headGeo, darkBodyMat);
+            head.position.set(0, 0.63, 0);
+            group.add(head);
+
+            const legGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.32, 12);
+            const leftLeg = new THREE.Mesh(legGeo, darkBodyMat);
+            leftLeg.position.set(-0.06, 0.16, 0);
+            group.add(leftLeg);
+
+            const rightLeg = leftLeg.clone();
+            rightLeg.position.set(0.06, 0.16, 0);
+            group.add(rightLeg);
+
+            const noseGeo = new THREE.BoxGeometry(0.04, 0.04, 0.08);
+            const noseMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 });
+            const nose = new THREE.Mesh(noseGeo, noseMat);
+            nose.position.set(0, 0.63, -0.09);
+            group.add(nose);
+
+            const billboard = createTextBillboard(`R${id}`);
+            billboard.position.set(0, 0.78, 0);
+            group.add(billboard);
+            textBillboards[key] = billboard;
+
+            fieldAnchor.add(group);
+            robotMeshes[key] = group;
+            return group;
+        }
+
+        // R<id> badge image, used by the Three.js sprites and by the circus overlay
+        function makeBadgeCanvas(text) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            
+            ctx.fillStyle = 'rgba(17, 20, 32, 0.35)';  // mostly see-through: robots behind stay visible
+            ctx.strokeStyle = '#6366f1';
+            ctx.lineWidth = 4;
+            ctx.roundRect(4, 4, 120, 56, 12);
+            ctx.fill();
+            ctx.stroke();
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 44px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.strokeStyle = '#000000';  // dark outline keeps the text readable on any background
+            ctx.lineWidth = 8;
+            ctx.lineJoin = 'round';
+            ctx.strokeText(text, 64, 32);
+            ctx.fillText(text, 64, 32);
+            return canvas;
+        }
+
+        function createTextBillboard(text) {
+            const texture = new THREE.CanvasTexture(makeBadgeCanvas(text));
+            const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, alphaTest: 0.05, sizeAttenuation: false, depthTest: false });
+            const sprite = new THREE.Sprite(mat);
+            sprite.center.set(0.5, 0);  // grows upward from its anchor, so it does not cover the head
+            // layoutLabels moves badges on screen: draw them over the field and goals, even when the anchor is just off screen
+            sprite.renderOrder = 1;
+            sprite.frustumCulled = false;
+            const s = labelScale();
+            sprite.scale.set(2 * s, s, 1.0);
+            return sprite;
+        }
+
+        function update3DScene(state) {
+            lastState = state;
+            if (circusView) circusView.update(state);
+            if (!fieldAnchor) return;
+            if (state.ball) {
+                if (!ballMesh) {
+                    const ballGeo = new THREE.SphereGeometry(BALL_RADIUS, 32, 32);
+                    const ballMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.3 });
+                    ballMesh = new THREE.Mesh(ballGeo, ballMat);
+                    fieldAnchor.add(ballMesh);
+                }
+                ballMesh.position.set(state.ball.x, BALL_RADIUS, -state.ball.y);  // field (x, y) -> scene (x, ., -y)
+                ballMesh.visible = true;
+            } else if (ballMesh) {
+                ballMesh.visible = false;
+            }
+
+            const activeIds = new Set();
+            if (state.agents) {
+                state.agents.forEach(agent => {
+                    activeIds.add(robotKey(agent));
+                    const mesh = getOrCreateRobotMesh(agent);
+                    mesh.position.set(agent.x, 0, -agent.y);
+                    mesh.rotation.y = agent.angle - Math.PI / 2;  // robots face local -z; heading 0 = scene +x
+                    if (mesh.userData.mj) mjRobots.pose(mesh, agent.joints);
+                    mesh.visible = true;
+                });
+            }
+
+            Object.keys(robotMeshes).forEach(key => {
+                if (!activeIds.has(key)) {
+                    robotMeshes[key].visible = false;
+                }
+            });
+
+            // Free GPU buffers: each drawing owns its geometry; materials are shared (drawingMaterial)
+            drawingsGroup.children.forEach(o => o.geometry?.dispose());
+            drawingsGroup.clear();
+            if (state.drawings) {
+                state.drawings.forEach(dr => {
+                    if (dr.path && disabledDrawingPaths.has(dr.path)) return;
+                    const color = dr.color ? (dr.color[0] << 16 | dr.color[1] << 8 | dr.color[2]) : 0xffffff;
+                    const material = drawingMaterial(`line${color}`, () => new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.8 }));
+                    const coords = dr.coords;
+                    if (!coords || coords.length === 0) return;
+                    const frame = dr.frame || "field";
+                    const getPoint = (cx, cy) => (frame === "field") ? new THREE.Vector3(cx, 0.02, -cy) : null;
+
+                    if (dr.type === "point") {
+                        const pt = getPoint(coords[0], coords[1]);
+                        if (!pt) return;
+                        const geo = new THREE.SphereGeometry(dr.size || 0.05, 8, 8);
+                        const fillMaterial = drawingMaterial(`fill${color}`, () => new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.55 }));
+                        const mesh = new THREE.Mesh(geo, fillMaterial);
+                        mesh.position.copy(pt);
+                        drawingsGroup.add(mesh);
+                    } else if (dr.type === "line" && coords.length >= 4) {
+                        const pt1 = getPoint(coords[0], coords[1]);
+                        const pt2 = getPoint(coords[2], coords[3]);
+                        if (!pt1 || !pt2) return;
+                        const geo = new THREE.BufferGeometry().setFromPoints([pt1, pt2]);
+                        const line = new THREE.Line(geo, material);
+                        drawingsGroup.add(line);
+                    } else {
+                        // circle [x, y] (radius = size), arc [x, y, r, start_deg, end_deg], box [cx, cy, w, h]: one polyline each
+                        const ring = (cx, cy, r, a0, a1) => Array.from({ length: 33 }, (_, i) => {
+                            const a = a0 + (a1 - a0) * i / 32;
+                            return getPoint(cx + r * Math.cos(a), cy + r * Math.sin(a));
+                        });
+                        let pts = null;
+                        if (dr.type === "circle") pts = ring(coords[0], coords[1], dr.size || 0.15, 0, 2 * Math.PI);
+                        else if (dr.type === "arc" && coords.length >= 5) pts = ring(coords[0], coords[1], coords[2], coords[3] * Math.PI / 180, coords[4] * Math.PI / 180);
+                        else if (dr.type === "box" && coords.length >= 4) {
+                            const [cx, cy, w, h] = coords;
+                            pts = [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]].map(([sx, sy]) => getPoint(cx + sx * w / 2, cy + sy * h / 2));
+                        }
+                        if (pts && pts.every(Boolean)) drawingsGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), material));
+                    }
+                });
+            }
+        }
+
+        let activePanelId = "hierarchy";
+
+        window.toggleToolPanel = (panelId = activePanelId) => {  // no argument = the open panel (close button)
+            const dock = document.getElementById("toolPanelDock");
+            const activeBtn = document.querySelector(`.activity-icon[data-panel="${panelId}"]`);
+            
+            if (activePanelId === panelId && !dock.classList.contains("collapsed")) {
+                dock.classList.add("collapsed");
+                document.querySelectorAll(".activity-icon[data-panel]").forEach(b => b.classList.remove("active"));
+                activePanelId = null;
+                return;
+            }
+
+            dock.classList.remove("collapsed");
+            document.querySelectorAll(".activity-icon[data-panel]").forEach(b => b.classList.remove("active"));
+            if (activeBtn) activeBtn.classList.add("active");
+
+            document.querySelectorAll(".dock-panel-section").forEach(sec => sec.style.display = "none");
+            const targetSec = document.getElementById(`panelSection_${panelId}`);
+            if (targetSec) {
+                targetSec.style.display = "flex";
+                document.getElementById("dockPanelTitle").textContent = targetSec.getAttribute("data-title") || "TOOL PANEL";
+            }
+            activePanelId = panelId;
+        };
+
+        window.toggleInspectorDock = () => {
+            const dock = document.getElementById("inspectorDock");
+            dock.classList.toggle("collapsed");
+        };
+
+        addEventListener("keydown", (e) => {  // Escape closes the settings menu
+            if (e.key === "Escape") document.getElementById("hamburgerModal").classList.remove("open");
+        });
+        window.toggleHamburgerMenu = () => {
+            const modal = document.getElementById("hamburgerModal");
+            const backdrop = document.getElementById("modalBackdrop");
+            modal.classList.toggle("open");
+            backdrop.classList.toggle("open");
+        };
+
+        // Contextual Rerun Timeline Scrubber Bar Toggle (Progressive Disclosure)
+        window.switchView = (mode) => {
+            document.querySelectorAll(".activity-icon[data-mode], .v-tab[data-mode]").forEach(b => {
+                b.classList.toggle("active", b.getAttribute("data-mode") === mode);
+            });
+            document.getElementById("viewport2d").classList.toggle("active", mode === '2d');
+            document.getElementById("viewport3d").classList.toggle("active", mode === '3d');
+            document.getElementById("viewportRerun").classList.toggle("active", mode === 'rerun');
+
+            // Timeline bar is only visible contextually in Rerun mode
+            const timelineBar = document.getElementById("rerunTimelineBar");
+            if (timelineBar) {
+                timelineBar.classList.toggle("active", mode === 'rerun');
+            }
+
+            if (mode === '3d') onWindowResize();
+        };
+
+        // Timeline Scrubber handlers
+        window.toggleTimelinePlay = () => {
+            isTimelinePlaying = !isTimelinePlaying;
+            const btn = document.getElementById("btnTimelinePlay");
+            if (btn) {
+                btn.innerHTML = isTimelinePlaying 
+                    ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`
+                    : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
+            }
+        };
+
+        window.stepTimeline = (deltaFrames) => {
+            const scrubber = document.getElementById("timelineScrubber");
+            if (scrubber) {
+                const val = parseInt(scrubber.value) + deltaFrames;
+                scrubber.value = Math.max(0, Math.min(parseInt(scrubber.max), val));
+                onTimelineScrub(scrubber.value);
+            }
+        };
+
+        window.onTimelineScrub = (val) => {
+            const mins = Math.floor(val / 60);
+            const secs = val % 60;
+            document.getElementById("timeCurrent").textContent = `${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}.00`;
+        };
+
+        window.setPlaybackSpeed = (spd) => {
+            playbackSpeed = parseFloat(spd);
+            console.log("[Replay] Playback speed set to:", playbackSpeed);
+        };
+
+        window.addEventListener('message', (event) => {
+            if (event.data && (event.data.type === 'rerun_timepoint' || event.data.type === 'telemetry_frame')) {
+                const stateData = event.data.payload || event.data;
+                if (stateData.agents || stateData.ball) {
+                    update3DScene(stateData);
+                    draw2DField(stateData);
+                }
+            }
+        });
+
+        window.updateGatewayUrl = () => {
+            const inputVal = document.getElementById("gatewayIp").value.trim();
+            if (inputVal) {
+                API_URL = inputVal.startsWith("http") ? inputVal : `http://${inputVal}`;
+                console.log("[Gateway] Updated API Endpoint target: ", API_URL);
+            }
+        };
+
+        // The module waits for GET /field first, so 'load' may have fired already.
+        const onPageLoad = (fn) => document.readyState === 'complete' ? fn() : window.addEventListener('load', fn);
+        onPageLoad(() => {
+            switchRendererEngine(activeRendererEngine, false);
+            
+            if (!document.getElementById("gatewayIp").value) {
+                const host = window.location.host || "localhost:8080";
+                document.getElementById("gatewayIp").value = host;
+                API_URL = `${window.location.protocol}//${host}`;
+            }
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const modeParam = urlParams.get('mode');
+            if (modeParam && ['2d', '3d', 'rerun'].includes(modeParam)) {
+                switchView(modeParam);
+            } else {
+                switchView('3d');
+            }
+
+            // Narrow screens: start with both docks closed so the 3D view gets the space
+            if (matchMedia("(max-width: 900px)").matches) {
+                if (activePanelId) toggleToolPanel(activePanelId);
+                document.getElementById("inspectorDock").classList.add("collapsed");
+            }
+
+            fetchState();
+            sendControlLoop();
+        });
+
+        // Phones: try to lock landscape on the first touch (works only in fullscreen or installed apps)
+        document.addEventListener("pointerdown", () => {
+            try { screen.orientation.lock("landscape").catch(() => {}); } catch (e) {}
+        }, { once: true });
+
+        // One scale for x and y, so circles stay round on any canvas shape
+        const fieldScale = () => Math.min((canvas.width - CANVAS_MARGIN * 2) / FIELD_WIDTH, (canvas.height - CANVAS_MARGIN * 2) / FIELD_HEIGHT);
+        function toCanvasCoords(fx, fy) {
+            const k = fieldScale();
+            return { x: canvas.width / 2 + fx * k, y: canvas.height / 2 - fy * k };
+        }
+        const mapCoords = (x, y, frame) => frame === "viewport" ? { x: x * canvas.width, y: (1 - y) * canvas.height } : toCanvasCoords(x, y);
+        const mapSize = (s, frame) => frame === "viewport" ? s * canvas.width : s * fieldScale();
+
+        function draw2DField(state) {
+            ctx.fillStyle = "#111420";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.strokeStyle = "rgba(255,255,255,0.45)";
+            ctx.lineWidth = 2.5;
+
+            const tl = toCanvasCoords(-FIELD_WIDTH/2, FIELD_HEIGHT/2);
+            const br = toCanvasCoords(FIELD_WIDTH/2, -FIELD_HEIGHT/2);
+            ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+
+            // Halfway line, centre circle, goal and penalty areas (FIELD), penalty marks
+            ctx.beginPath();
+            for (const line of fieldLines(FIELD).slice(1)) {
+                line.forEach(([x, y], i) => { const q = toCanvasCoords(x, y); i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); });
+            }
+            ctx.stroke();
+
+            drawDrawings2D(ctx, state.drawings, mapCoords, mapSize, disabledDrawingPaths, Math.max(1, canvas.width / Math.max(1, canvas.clientWidth)));
+
+            if (state.ball) {
+                const pt = toCanvasCoords(state.ball.x, state.ball.y);
+                ctx.fillStyle = "#f97316";
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, 9, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.strokeStyle = "#fff";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            if (state.agents) {
+                const px = Math.max(1, canvas.width / Math.max(1, canvas.clientWidth));  // canvas px per CSS px
+                state.agents.forEach(agent => {
+                    const pt = toCanvasCoords(agent.x, agent.y);
+                    drawRobot2D(ctx, agent, pt.x, pt.y, px, agent.id === selectedRobotId ? "rgba(99, 102, 241, 0.8)" : null);
+                });
+            }
+        }
+
+        // Gateway status: OFFLINE only after 3 failed polls in a row, so one lost poll (e.g. while a phone
+        // loads the 21 MB circus scene) does not flicker; the age is the time since the last good /state.
+        let failedPolls = 0;
+        let lastStateAt = 0;  // performance.now() of the last good /state, 0 = none yet
+        function showGatewayStatus() {
+            // data older than 3 s also counts as offline: a hung request never fails
+            const ageS = lastStateAt ? (performance.now() - lastStateAt) / 1000 : Infinity;
+            const online = failedPolls < 3 && ageS < 3;
+            statusDot.className = online ? "status-dot online" : "status-dot";
+            const text = online ? `GATEWAY ONLINE · data ${ageS.toFixed(1)} s old` : lastStateAt ? `NO DATA FOR ${ageS.toFixed(0)} s` : "GATEWAY OFFLINE";
+            if (statusText.textContent !== text) statusText.textContent = text;
+            statusText.title = online ? "" : `Is the gateway running on ${new URL(API_URL).host}?`;
+            const stale = !!lastStateAt && !online;
+            if (stale && !document.body.classList.contains("stale-data")) {  // the old GameController values must not look live
+                gcState.textContent = "—";
+                for (const id of ["gcTime", "gcScore"]) document.getElementById(id).hidden = true;
+            }
+            document.body.classList.toggle("stale-data", stale);  // greys the robots: their data is old
+        }
+        setInterval(showGatewayStatus, 250);
+
+        async function fetchState() {
+            let nextDelay = 100;
+            try {
+                const res = await fetch(stateUrl(API_URL), { signal: AbortSignal.timeout(5000) });
+                const state = await res.json();
+                ctl.update(state);
+                showManualTarget();  // the MANUAL text follows the lock state
+                // Each robot's own ball estimate and seen obstacles: drawings "beliefs/ball", "beliefs/obstacles"
+                state.drawings = (state.drawings || []).concat(beliefDrawings(state.agents));
+                lastPolledState = state;
+                
+                isOnline = true;
+                failedPolls = 0;
+                lastStateAt = performance.now();
+                showGatewayStatus();
+
+                if (state.gamecontroller) {
+                    const g = gcSummary(state.gamecontroller);  // "No GameController" instead of a fake 00:00 0 - 0
+                    gcState.className = g.online ? "sim-gc-badge" : "sim-gc-badge offline";
+                    gcState.textContent = g.state;
+                    gcState.parentElement.title = g.title;
+                    for (const [id, text] of [["gcTime", g.detail], ["gcScore", g.score]]) {
+                        const el = document.getElementById(id);
+                        el.textContent = text;
+                        el.hidden = !g.online;
+                        el.style.whiteSpace = "nowrap";
+                    }
+                }
+
+                draw2DField(state);
+                update3DScene(state);
+                updateRobotsList(state);
+                renderInspector();
+                updateDrawingFilters(state.drawings || []);
+                updateNetworkDashboard(state);
+
+            } catch (err) {
+                console.error("[fetchState]", err);
+                if (++failedPolls >= 3) {
+                    isOnline = false;
+                    gcState.className = "sim-gc-badge offline";
+                    gcState.textContent = "GC: OFFLINE";
+                }
+                showGatewayStatus();
+                nextDelay = 1000;
+            }
+            
+            setTimeout(fetchState, nextDelay);
+        }
+
+        let listPointerDown = false;
+        robotList.addEventListener("pointerdown", () => { listPointerDown = true; });
+        addEventListener("pointerup", () => setTimeout(() => { listPointerDown = false; }), true);
+        addEventListener("pointercancel", () => { listPointerDown = false; }, true);
+        function updateRobotsList(state) {
+            if (!state.agents || state.agents.length === 0) {
+                robotList.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 1.2rem; font-size: 0.78rem;">No active robots broadcasted.</div>`;
+                return;
+            }
+
+            let html = "";
+            [...state.agents].sort((a, b) => ((a.team || 0) - (b.team || 0)) || (a.id - b.id)).forEach(agent => {  // grouped by team
+                const isSelected = agent.id === selectedRobotId ? "selected" : "";
+                html += `
+                    <div class="robot-item ${isSelected}" onclick="selectRobot(${agent.id}, '${agent.ip || '127.0.0.1'}')">
+                        <div class="robot-meta">
+                            <span class="robot-id"><span class="team-swatch" style="background: rgb(${teamRgb(agent)})"></span>${robotName(agent)}</span>
+                            <span class="robot-role">${roleState(agent)}${penaltyOf(agent, state.gamecontroller) ? `<b style="color: var(--accent-amber, #f59e0b);"> · ⛔ ${penaltyOf(agent, state.gamecontroller)}</b>` : ''}${agent.latch ? `<b style="color: var(--accent-red, #ef4444);"> · ${({ damp: 'DAMPED', lie: 'LYING', stop: 'STOPPED' })[agent.latch] || ''}</b>` : ''}</span>
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; font-size: 0.72rem; color: var(--text-secondary); white-space: nowrap;">
+                            <span>BATT ${typeof agent.battery === 'number' && agent.battery >= 0 ? (agent.battery < 20 ? '<b style="color: var(--accent-red);">⚠ ' + Math.round(agent.battery) + '%</b>' : Math.round(agent.battery) + '%') : 'n/a'}${agent.fallen ? ' · <b style="color: var(--accent-red);">⚠ fallen</b>' : ''}</span>
+                            <a href="/robot.html?robot=${encodeURIComponent((agent.ip || '127.0.0.1') + '|' + agent.id)}" onclick="event.stopPropagation()" style="color: #93c5fd; text-decoration: none;">Robot ›</a>
+                            <span data-act="${agent.ip || '127.0.0.1'}" data-label="${robotName(agent)}"></span>
+                        </div>
+                    </div>
+                `;
+            });
+            if (html !== robotList.dataset.html && !listPointerDown) {  // no rebuild between press and release: it lost clicks
+                robotList.innerHTML = html;
+                robotList.dataset.html = html;
+                robotList.querySelectorAll("[data-act]").forEach(el => {
+                    const key = `${el.dataset.act}|${el.dataset.label}`;
+                    if (!cardActions.has(key)) cardActions.set(key, robotActions(el.dataset.act, () => API_URL, { label: el.dataset.label }));
+                    el.append(cardActions.get(key));
+                });
+            }
+        }
+
+        const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+        // Robot inspector: static/inspector.js (shared with index.html)
+        const renderInspector = () => renderInspectorPanel(textDataList, document.getElementById("inspectorLinks"), lastPolledState, selectedRobotId, selectedRobotIp);
+
+        window.selectRobot = (id, ip) => {
+            selectedRobotId = id;
+            selectedRobotIp = ip;
+            showManualTarget();
+            renderInspector();
+        };
+
+        function updateDrawingFilters(drawings) {
+            drawings.forEach(dr => {
+                if (dr.path) knownDrawingPaths.add(dr.path);
+            });
+            if (knownDrawingPaths.size === 0) return;
+
+            let html = "";
+            knownDrawingPaths.forEach(path => {
+                const isChecked = !disabledDrawingPaths.has(path) ? "checked" : "";
+                html += `
+                    <label style="display: flex; align-items: center; gap: 0.6rem; font-size: 0.78rem; cursor: pointer;">
+                        <input type="checkbox" ${isChecked} onchange="toggleDrawingFilter('${path}', this.checked)">
+                        <span>${path}</span>
+                    </label>
+                `;
+            });
+            const filterList = document.getElementById("drawingFilterList");
+            const key = [...knownDrawingPaths].join("\n");
+            if (!filterList || filterList.dataset.key === key) return;  // the boxes keep their own state between rebuilds
+            filterList.dataset.key = key;
+            filterList.innerHTML = html;
+        }
+
+        window.toggleDrawingFilter = (path, enabled) => {
+            if (enabled) disabledDrawingPaths.delete(path);
+            else disabledDrawingPaths.add(path);
+        };
+
+        function updateNetworkDashboard(state) {
+            const usageEl = document.getElementById("budgetUsage");
+            const progressEl = document.getElementById("budgetProgressBar");
+            if (state.gamecontroller && state.gamecontroller.message_budget) {
+                const budget = state.gamecontroller.message_budget[0] || 12000;
+                usageEl.textContent = `${budget} / 12,000`;
+                const pct = Math.min(100, Math.max(0, (budget / 12000) * 100));
+                progressEl.style.width = `${pct}%`;
+            }
+        }
+
+        // Referee-rules bypass (testingOverride in /control): ticking asks first, a red banner shows while on, never persisted
+        const bypassBox = document.getElementById("checkTestingOverride");
+        const setBypass = (on) => {
+            bypassBox.checked = on;
+            document.getElementById("bypassBanner").hidden = !on;
+            document.getElementById("bypassModal").hidden = true;
+        };
+        setBypass(false);  // off on every load, even if the browser restores the form
+        bypassBox.addEventListener("change", () => {
+            if (!bypassBox.checked) return setBypass(false);
+            bypassBox.checked = false;  // stays off until "Enable bypass"
+            document.getElementById("bypassModal").hidden = false;
+            document.getElementById("bypassCancel").focus();
+        });
+        window.setBypass = setBypass;
+
+        // MANUAL drives `manualRobot`, fixed when MANUAL turns on: selecting another robot only shows it. The toggle
+        // says ON / OFF in words; after OFF the panel says the robot is released.
+        let manualRobot = null, releasedRobot = null;  // {id, ip}
+        const robotLabel = (r) => {
+            const a = (lastPolledState?.agents || []).find(x => x.id === r.id && (x.ip || "127.0.0.1") === r.ip);
+            return `${a ? robotName(a) : "R" + r.id} (${r.ip})`;
+        };
+        function showManualTarget() {
+            const box = document.getElementById("checkManualMode");
+            const selected = selectedRobotId !== null && selectedRobotId !== undefined ? { id: selectedRobotId, ip: selectedRobotIp } : null;
+            let text;
+            const waiting = isManualMode && !ctl.hasControl();  // no command leaves this page without the control lock
+            if (waiting) text = `MANUAL waits for control: ${ctl.holder() || "another operator"} has it (you asked in the header). Nothing is sent.`;
+            else if (isManualMode && manualRobot) text = `MANUAL ON → ${robotLabel(manualRobot)}. Selecting another robot does not change it.`;
+            else if (releasedRobot) text = `Released ${robotLabel(releasedRobot)}: it returns to its own control 0.5 s after the last command.`
+                + (selected ? ` Turn MANUAL on to drive ${robotLabel(selected)}.` : "");
+            else text = selected ? `MANUAL off. Turn it on to drive ${robotLabel(selected)}.` : "Select a robot first.";
+            box.disabled = !isManualMode && !selected;
+            document.getElementById("manualTarget").textContent = text;
+            document.getElementById("manualToggleText").textContent = isManualMode ? "MANUAL: ON" : "MANUAL: OFF";
+            document.getElementById("manualBannerText").textContent = !manualRobot ? ""
+                : waiting ? `MANUAL waits for control (${ctl.holder() || "another operator"} has it): nothing is sent`
+                : `MANUAL on → ${robotLabel(manualRobot)}: the joystick drives it`;
+            document.getElementById("manualBanner").hidden = !isManualMode;
+        }
+
+        window.toggleManualMode = (enabled) => {
+            if (enabled && !ctl.hasControl()) ctl.take();  // engineer mode: driving needs the control lock
+            if (enabled && !isManualMode) {
+                manualRobot = { id: selectedRobotId, ip: selectedRobotIp };
+                releasedRobot = null;
+                if (isLimpArms) toggleLimpArms();  // every manual session starts with stiff arms
+            } else if (!enabled && isManualMode) {
+                releasedRobot = manualRobot;
+                manualRobot = null;
+            }
+            isManualMode = enabled;
+            document.getElementById("checkManualMode").checked = enabled;  // the banner's "Turn off" unticks the box
+            showManualTarget();
+        };
+        toggleManualMode(false);  // off on every load, even if the browser restores the form
+
+        // The button shows the arm state this page sends (lt); it cannot read the robot's real state
+        window.toggleLimpArms = () => {
+            isLimpArms = !isLimpArms;
+            const btn = document.getElementById("limpBtn");
+            btn.textContent = isLimpArms ? "ARMS: LIMP" : "ARMS: STIFF";
+            btn.setAttribute("aria-pressed", isLimpArms);
+            console.log("[Joystick] Limp arms:", isLimpArms);
+        };
+
+        // Joystick pad (same as index.html): the sliders only scale the knob position, so a pad at rest sends 0
+        const joyStickEl = document.getElementById("joyStick");
+        const joyBoundaryEl = document.getElementById("joyBoundary");
+        let joyActive = false;
+        let joyX = 0;
+        let joyY = 0;
+        // Knob offset that centres it in the pad, from the real sizes
+        const joyCentre = () => (joyBoundaryEl.clientWidth - joyStickEl.offsetWidth) / 2;
+
+        const handleJoystickStart = () => {
+            joyActive = true;  // the manual override checkbox stays the user's choice
+        };
+
+        const handleJoystickMove = (e) => {
+            if (!joyActive) return;
+            e.preventDefault();
+
+            const touch = e.touches ? e.touches[0] : e;
+            const rect = joyBoundaryEl.getBoundingClientRect();
+            const rawX = touch.clientX - (rect.left + rect.width / 2);
+            const rawY = touch.clientY - (rect.top + rect.height / 2);
+            const distance = Math.min(60, Math.sqrt(rawX * rawX + rawY * rawY));
+            const angle = Math.atan2(rawY, rawX);
+
+            joyX = (distance / 60) * Math.cos(angle);
+            joyY = (distance / 60) * Math.sin(angle);
+
+            const c = joyCentre();
+            joyStickEl.style.left = `${c + joyX * c}px`;
+            joyStickEl.style.top = `${c + joyY * c}px`;
+        };
+
+        const handleJoystickEnd = () => {
+            joyActive = false;
+            joyX = 0;
+            joyY = 0;
+            joyStickEl.style.left = joyStickEl.style.top = `${joyCentre()}px`;
+        };
+
+        joyBoundaryEl.addEventListener("mousedown", handleJoystickStart);
+        window.addEventListener("mousemove", handleJoystickMove);
+        window.addEventListener("mouseup", handleJoystickEnd);
+
+        joyBoundaryEl.addEventListener("touchstart", handleJoystickStart, {passive:false});
+        window.addEventListener("touchmove", handleJoystickMove, {passive:false});
+        window.addEventListener("touchend", handleJoystickEnd);
+        window.addEventListener("touchcancel", handleJoystickEnd);
+        window.addEventListener("blur", handleJoystickEnd);  // a lost release must not keep the robot walking
+
+        async function sendControlLoop() {
+            if (isManualMode && manualRobot && ctl.hasControl()) {  // without the lock nothing is sent (no 423 flood)
+                const sliderVxVal = parseFloat(document.getElementById("sliderVx").value);
+                const sliderVyVal = parseFloat(document.getElementById("sliderVy").value);
+                try {
+                    const res = await fetch(`${API_URL}/control`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(withOperator({
+                            ip: manualRobot.ip,
+                            port: 10007,
+                            vx: -joyY * sliderVxVal,
+                            vy: -joyX * sliderVyVal,
+                            vtheta: 0.0,
+                            isManual: true,
+                            lt: isLimpArms,
+                            testingOverride: document.getElementById("checkTestingOverride").checked
+                        }))
+                    });
+                    if (res.status === 423) ctl.locked(await res.json());
+                } catch(e){}
+            }
+            setTimeout(sendControlLoop, 100);
+        }
+    </script>
+</body>
+</html>

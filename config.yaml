@@ -29,6 +29,13 @@ display:
   # Window title
   title: "Oraculum"
 
+frames:
+  # Robots send (x, y, angle) in their own team's frame (own goal at -x). Packets from the team with this
+  # colour (as DebugMessageSender sends it, lowercase) are point-mirrored into the shared field frame, where
+  # it defends +x (circus world: red left, blue right). Set to "" when every sender already uses one frame
+  # (e.g. spqrbooster2026 main simulation before PR #169, whose OracleBridge sends circus world coordinates).
+  mirror_team_color: "blue"
+
 socket:
   enabled: true        # set to true to receive live data via UDP
   host: "0.0.0.0"      # bind address (0.0.0.0 = all interfaces)

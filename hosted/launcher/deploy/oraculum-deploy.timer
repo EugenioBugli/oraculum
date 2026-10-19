@@ -1,0 +1,10 @@
+# /etc/systemd/system/oraculum-deploy.timer: check the repo every 5 minutes
+[Unit]
+Description=Check the oraculum repo for a new commit every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

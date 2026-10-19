@@ -1,0 +1,4 @@
+# circus needs "image" and "volumes" even when it starts the robots as processes (CIRCUS_ROBOT_LAUNCHER); unused there.
+image: spqr_maximus_bridge
+volumes:
+  - ":/workspace"

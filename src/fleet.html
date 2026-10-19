@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oraculum · Fleet</title>
+<style>
+:root {
+    --bg-dark: #121316; --bg-panel: #1e2025; --bg-card: #24272e; --bg-input: #2b2e37;
+    --border: #2d3038; --border-strong: #3b3f4a;
+    --text: #eceef2; --text-2: #9fa4b2; --muted: #9095a3;
+    --green: #10b981; --amber: #f59e0b; --red: #ef4444; --blue: #3b82f6; --indigo: #6366f1;
+    --font: 'Inter', system-ui, -apple-system, sans-serif; --mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg-dark); color: var(--text); font: 14px/1.4 var(--font); min-height: 100vh; }
+header { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
+    padding: 10px 16px; background: var(--bg-panel); border-bottom: 1px solid var(--border); }
+.logo { font-weight: 800; letter-spacing: 1px; color: var(--text); text-decoration: none; }
+nav { display: flex; gap: 4px; }
+nav a { color: var(--text-2); text-decoration: none; padding: 6px 10px; border-radius: 6px; }
+nav a[aria-current] { background: var(--bg-card); color: var(--text); }
+nav a:hover { color: var(--text); }
+.spacer { flex: 1; }
+.pill { font-family: var(--mono); font-size: 13px; padding: 5px 10px; border-radius: 6px; background: var(--bg-card);
+    border: 1px solid var(--border); white-space: nowrap; }
+button, input, select { font: inherit; color: var(--text); background: var(--bg-input); border: 1px solid var(--border-strong);
+    border-radius: 6px; padding: 6px 10px; min-height: 34px; }
+button { cursor: pointer; }
+button:hover { border-color: var(--text-2); }
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.rec-btn.on { background: #3a1517; border-color: var(--red); }
+.referee { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.referee[hidden] { display: none; }  /* no simulated referee (a real field): no referee buttons */
+.referee button { padding: 4px 8px; min-height: 30px; font-size: 13px; }
+.referee button[aria-pressed="true"] { background: var(--indigo); border-color: var(--indigo); }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px;
+    border: 1px solid rgba(255,255,255,.35); }
+.rec-dot { background: var(--red); animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: .25; } }
+main { padding: 16px; display: grid; gap: 16px; max-width: 1500px; margin: 0 auto; }
+section { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+section > h2 { font-size: 13px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; color: var(--text-2);
+    padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+section > h2 .note { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--muted); }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { font-size: 12px; font-weight: 600; color: var(--text-2); background: var(--bg-panel); position: sticky; top: 0; }
+td.num, th.num { text-align: right; }
+tbody tr:hover { background: var(--bg-card); }
+#fleet tr.offline td { opacity: 0.55; } #fleet tr.offline td:nth-last-child(3) { opacity: 1; }  /* keep the red Link cell */
+#fleet td:first-child, #fleet th:first-child { position: sticky; left: 0; background: var(--bg-panel); }
+#fleet tbody tr:hover td:first-child { background: var(--bg-card); }
+#fleet th:first-child { z-index: 2; } #fleet td:first-child { z-index: 1; }
+.ok { color: var(--green); } .warn { color: var(--amber); } .bad { color: var(--red); } .muted { color: var(--muted); }
+.mono { font-family: var(--mono); font-size: 13px; }
+.bar { display: inline-block; width: 46px; height: 8px; background: var(--bg-input); border-radius: 4px; margin-right: 6px; overflow: hidden; vertical-align: 0; }
+.bar > i { display: block; height: 100%; }
+.empty { padding: 18px 14px; color: var(--text-2); }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); align-items: center; }
+.chip { padding: 4px 10px; min-height: 30px; border-radius: 15px; font-size: 13px; }
+.chip[aria-pressed="true"] { background: var(--indigo); border-color: var(--indigo); }
+.mark { display: flex; gap: 6px; flex: 1; min-width: 260px; }
+.mark input { flex: 1; min-width: 0; }
+#events td.text { white-space: normal; min-width: 220px; }
+.type { font-family: var(--mono); font-size: 12px; padding: 2px 6px; border-radius: 4px; background: var(--bg-input); }
+.t-PHASE, .t-SETPLAY, .t-GC { color: #93c5fd; } .t-GOAL { color: var(--green); } .t-PENALTY, .t-FALL, .t-OFFLINE, .t-BATTERY { color: var(--amber); }
+.t-MARK { color: #c4b5fd; } .t-REC { color: var(--red); }
+.del { padding: 2px 8px; min-height: 28px; color: var(--text-2); }
+.del.confirm { color: var(--text); background: #3a1517; border-color: var(--red); }
+.log-wrap { max-height: 60vh; overflow: auto; }
+body.stale-data #fleet { opacity: 0.45; filter: grayscale(1); }
+.phone-only { display: none; }
+a.rname { color: inherit; text-decoration: none; } a.rname:hover { text-decoration: underline; }
+@media (min-width: 701px) { #fleet td:nth-child(2) { white-space: nowrap; } }  /* a badge must not grow the row */
+@media (max-width: 700px) {
+    header { padding: 8px 10px; }
+    main { padding: 10px; gap: 10px; }
+    th, td { padding: 6px 7px; }
+    #events .wide, #fleet .wide, #recordings .wide { display: none; }  /* phones: Robot (links to its page), state, Battery, Link, Control */
+    #fleet td[data-act] .ctl-act { flex-direction: column; align-items: stretch; }
+    #fleet td:nth-child(2) { white-space: normal; min-width: 80px; }
+    .phone-only { display: inline; }  /* the robot and the recording of an event, as their columns are hidden */
+    #events td.text { min-width: 0; }
+    #fleet td:first-child .mono { display: none; }  /* the IP: on the robot page and in the Camera link */
+    .mark { flex-basis: 100%; min-width: 0; flex-wrap: wrap; }
+    .mark input { flex-basis: 100%; }
+    header { position: static; }  /* the header grows to 3 rows on a phone; let it scroll away */
+}
+</style>
+</head>
+<body>
+<header>
+    <a class="logo" href="/index.html">ORACULUM</a>
+    <nav aria-label="Pages">
+        <a href="/index.html">Field</a>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="/fleet.html" aria-current="page">Fleet</a>
+    </nav>
+    <span class="spacer"></span>
+    <span class="pill" id="gc" title="GameController">GC: —</span>
+    <span class="referee" id="referee" role="group" aria-label="Session referee" hidden>
+        <button data-state="initial">Initial</button><button data-state="ready">Ready</button><button data-state="set">Set</button><button data-state="playing">Play</button><button data-state="finished">Finish</button>
+        <button data-goal="0" title="Goal for the first team">Goal A</button><button data-goal="1" title="Goal for the second team">Goal B</button>
+    </span>
+    <span id="controlBar"></span>
+    <span class="pill" id="recInfo" hidden></span>
+    <button class="rec-btn" id="recBtn" title="Record all telemetry and GameController packets to oraculum/recordings/">● Record</button>
+</header>
+<main>
+    <section aria-labelledby="fleetTitle">
+        <h2 id="fleetTitle">Fleet <span class="note" id="headNote"></span></h2>
+        <div class="scroll">
+            <table id="fleet">
+                <thead><tr>
+                    <th>Robot</th><th>Role · state</th><th class="wide">Version</th><th class="num wide">CPU</th><th class="num wide">Load</th>
+                    <th class="num wide">Temp</th><th>Battery</th><th class="num wide" title="Robot Wi-Fi traffic, kbit/s">Wi-Fi ↑ / ↓</th>
+                    <th class="num" title="As the gateway receives this robot's IP">Link</th><th class="wide">Rec</th><th class="wide">Robot page</th><th>Control</th>
+                </tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <p class="empty" id="fleetEmpty">No robot sends data. Start a robot with <span class="mono">useRerun: true</span>, or run <span class="mono">python3 tools/udp_sender.py</span>.</p>
+    </section>
+    <section aria-labelledby="eventsTitle">
+        <h2 id="eventsTitle">Events <span class="note">newest first · from the GameController, the robots and marks</span></h2>
+        <div class="toolbar">
+            <div role="group" aria-label="Filter events" id="filters"></div>
+            <form class="mark" id="markForm">
+                <input id="markText" maxlength="200" placeholder="Mark (e.g. bad kick)" aria-label="Mark text">
+                <select id="markRobot" aria-label="Robot of the mark"><option value="">no robot</option></select>
+                <button type="submit">Add mark</button>
+            </form>
+        </div>
+        <div class="log-wrap">
+            <table id="events">
+                <thead><tr><th>Time</th><th class="wide">Clock</th><th class="wide">Phase</th><th>Type</th><th class="wide">Robot</th>
+                    <th>Event</th><th class="wide" title="The recording that ran, and the seconds into it">Recording</th><th aria-label="Delete"></th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <p class="empty" id="eventsEmpty">No events yet.</p>
+    </section>
+    <section aria-labelledby="recTitle">
+        <h2 id="recTitle">Recordings <span class="note">telemetry and GameController packets (.jsonl), not video · replay: python3 tools/replay_rrd.py &lt;file&gt;</span></h2>
+        <div class="scroll"><table id="recordings"><thead><tr><th>Recording</th><th class="num">Size</th><th class="wide">Saved</th><th></th></tr></thead><tbody></tbody></table></div>
+        <p class="empty" id="recEmpty">No recording yet. ● Record in the header starts one.</p>
+    </section>
+</main>
+<script type="module">
+import { gcSummary, penaltyOf, robotName, roleState, teamRgb } from '/static/field_model.js';
+import { mountControlBar, operator, robotActions, stateUrl } from '/static/control_bar.js';
+const API = location.origin;
+const $ = id => document.getElementById(id);
+const GROUPS = { All: null, Game: ['PHASE', 'SETPLAY', 'GOAL', 'PENALTY', 'GC', 'REFEREE'], Robots: ['ONLINE', 'OFFLINE', 'FALL', 'ROLE', 'BATTERY'],
+                 Control: ['STOP', 'DAMP', 'RESUME', 'CONTROL'], Marks: ['MARK'], Recording: ['REC'] };
+const ctl = mountControlBar($('controlBar'), API);
+// One set of STOP / Resume / hold-LIE-DOWN buttons per robot (address and name), moved into each rebuilt row (keeps its listeners)
+const actions = new Map();
+const actionsFor = (ip, label) => actions.get(`${ip}|${label}`) || actions.set(`${ip}|${label}`, robotActions(ip, API, { lie: true, label })).get(`${ip}|${label}`);
+let filter = 'All', lastId = 0, events = [], pendingDelete = null, state = null;
+let wasRecording = false;  // renderHeader lists the recordings when one ends
+let recAsk = 0;  // Date.now() of the first click that asked to stop someone else's recording
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const robotKey = a => `${a.ip}|${a.id}`;
+const colorOf = a => `rgb(${teamRgb(a)})`;  // all GameController colour names; dark colours lifted
+const num = (v, d = 0, u = '') => (typeof v === 'number' && v >= 0) ? v.toFixed(d) + u : '—';
+const clock = s => s == null ? '—' : `${s < 0 ? '-' : ''}${Math.floor(Math.abs(s) / 60)}:${String(Math.abs(s) % 60).padStart(2, '0')}`;
+const hhmmss = t => new Date(t * 1000).toLocaleTimeString([], { hour12: false });
+const mb = b => b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${(b / 1e3).toFixed(0)} kB`;
+
+// The robot's own answer to POST /stop (telemetry "latch"): it holds the STOP or the damping until Resume
+const latchBadge = a => ({ damp: ' <b class="bad">⚠ DAMPED</b>', lie: ' <b class="bad">▬ LYING</b>', stop: ' <b class="bad">■ STOPPED</b>' })[a.latch] || '';
+
+function level(v, warn, bad) { return v >= bad ? 'bad' : v >= warn ? 'warn' : ''; }
+
+function versionCell(sys, head) {
+    const v = sys.version;
+    if (!v) return '<span class="muted">—</span>';
+    if (v === 'dev') return '<span class="muted" title="No config/version.txt: not installed with pixi run deploy">dev</span>';
+    const hash = v.split(/[+ ]/)[0], dirty = v.includes('+dirty'), when = v.split(' ').slice(1).join(' ');
+    if (head && hash !== head) return `<span class="bad" title="This checkout is at ${esc(head)}">✗ ${esc(hash)}</span> <span class="muted">${esc(when)}</span>`;
+    const cls = dirty ? 'warn' : 'ok', mark = dirty ? '± ' : '✓ ';
+    return `<span class="${cls}" title="${dirty ? 'deployed with uncommitted changes' : 'same commit as this checkout'}">${mark}${esc(hash)}${dirty ? '+dirty' : ''}</span> <span class="muted">${esc(when)}</span>`;
+}
+
+// A robot that stops sending stays 60 s as an "offline" row (the gateway drops it after 2 s).
+const lastSeen = new Map();  // robot key -> {agent, t}
+const OFFLINE_KEEP_MS = 60000;
+
+function renderFleet() {
+    const now = Date.now();
+    for (const a of state?.agents || []) lastSeen.set(robotKey(a), { agent: a, t: now });
+    for (const [k, v] of lastSeen) if (now - v.t > OFFLINE_KEEP_MS) lastSeen.delete(k);
+    const agents = [...lastSeen.values()].map(v => ({ ...v.agent, offlineFor: v.t === now ? 0 : (now - v.t) / 1000 }))
+        .sort((a, b) => (a.team - b.team) || (a.id - b.id));
+    const live = agents.filter(a => !a.offlineFor);
+    const head = state?.fleet?.head || '', link = state?.fleet?.link || {};
+    $('headNote').textContent = head ? `robot code checkout: ${head}` : '';
+    $('fleetEmpty').hidden = agents.length > 0;
+    const ftb = $('fleet').querySelector('tbody');
+    const focusHref = ftb.contains(document.activeElement) ? document.activeElement.getAttribute('href') : null;
+    const focusBtn = document.activeElement?.closest?.('#fleet .ctl-act') ? document.activeElement : null;  // re-focused below
+    ftb.innerHTML = agents.map(a => {
+        const s = a.sys || {}, l = link[a.ip] || {};
+        const bat = a.battery, batCls = bat < 0 ? 'muted' : bat < 20 ? 'bad' : bat < 40 ? 'warn' : 'ok';
+        const cpuCls = level(s.cpu, 85, 95), tCls = level(s.temp, 80, 90), ageCls = a.offlineFor ? 'bad' : level(l.age, 1, 2);
+        const warn = c => c ? (c === 'bad' ? '⚠ ' : '! ') : '';
+        const linkText = a.offlineFor ? `offline · ${a.offlineFor.toFixed(0)} s` : `${num(l.hz, 0, ' Hz')} · ${num(l.age, 1, ' s')}`;
+        return `<tr${a.offlineFor ? ' class="offline" title="No data from this robot: last values shown"' : ''}>
+            <td><span class="dot" style="background:${colorOf(a)}"></span><a class="rname" href="/robot.html?robot=${encodeURIComponent(robotKey(a))}"><b>${esc(robotName(a))}</b></a> <span class="muted mono">${esc(a.ip)}</span></td>
+            <td${a.state === 'P' ? ' class="warn"' : ''}>${esc(roleState(a))}${a.fallen ? ' <span class="bad">⚠ fallen</span>' : ''}${latchBadge(a)}${penaltyOf(a, state?.gamecontroller) ? ` <b class="warn">⛔ ${esc(penaltyOf(a, state.gamecontroller))}</b>` : ''}</td>
+            <td class="mono wide">${versionCell(s, head)}</td>
+            <td class="num wide ${cpuCls}">${warn(cpuCls)}${num(s.cpu, 0, '%')}</td>
+            <td class="num wide">${num(s.load, 1)}</td>
+            <td class="num wide ${tCls}">${warn(tCls)}${num(s.temp, 0, '°C')}</td>
+            <td class="${batCls}">${bat < 0 ? '<span class="muted">n/a</span>' : `<span class="bar"><i style="width:${Math.min(100, bat)}%;background:currentColor"></i></span>${warn(bat < 20 ? 'bad' : bat < 40 ? 'warn' : '')}${bat.toFixed(0)}%`}</td>
+            <td class="num mono wide">${num(s.tx)} / ${num(s.rx)}</td>
+            <td class="num mono ${ageCls}" title="${num(l.kbps)} kbit/s received">${warn(ageCls)}${linkText}</td>
+            <td class="wide">${s.rec ? '<span class="dot rec-dot"></span>rec' : '<span class="muted">—</span>'}</td>
+            <td class="wide"><a href="/robot.html?robot=${encodeURIComponent(robotKey(a))}" style="color:#93c5fd">Robot ›</a></td>
+            <td data-act="${esc(a.ip)}" data-label="${esc(robotName(a))}"></td></tr>`;
+    }).join('');
+    ftb.querySelectorAll('td[data-act]').forEach(td => td.append(actionsFor(td.dataset.act, td.dataset.label)));
+    if (focusBtn && focusBtn.isConnected) focusBtn.focus({ preventScroll: true });  // the moved button keeps the keyboard focus
+    if (focusHref) ftb.querySelector(`a[href="${CSS.escape(focusHref)}"]`)?.focus();  // the 1 s rebuild must not drop focus
+    const sel = $('markRobot'), cur = sel.value, names = [...new Set(live.map(robotName))];
+    if (sel.options.length - 1 !== names.length || names.some((n, i) => sel.options[i + 1].value !== n)) {
+        sel.innerHTML = '<option value="">no robot</option>' + names.map(n => `<option>${esc(n)}</option>`).join('');
+        sel.value = names.includes(cur) ? cur : '';
+    }
+}
+
+function renderHeader() {
+    const gc = state?.gamecontroller || {};
+    $('referee').hidden = !gc.sim;  // only a hosted session has its own referee (POST /gc)
+    $('referee').querySelectorAll('[data-state]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state.toUpperCase() === gc.state)));
+    const g = gcSummary(gc);
+    $('gc').textContent = g.online ? `${g.state} · ${g.score} · ${g.detail}` : g.state;
+    $('gc').title = g.title;
+    const rec = state?.rec || {};
+    $('recBtn').classList.toggle('on', !!rec.on);
+    $('recBtn').textContent = rec.on && Date.now() - recAsk < 3000 ? `Stop the recording of ${rec.by}?` : rec.on ? '■ Stop recording' : '● Record';
+    $('recInfo').hidden = !rec.on;
+    if (rec.on) $('recInfo').innerHTML = `<span class="dot rec-dot"></span>${esc(rec.name)} · by ${esc(rec.by || '?')} · ${clock(Math.round(rec.secs))} · ${mb(rec.bytes)}`;
+    if (wasRecording && !rec.on) pollRecordings();  // a recording just ended: list it
+    wasRecording = !!rec.on;
+}
+
+function renderEvents() {
+    const types = GROUPS[filter];
+    const rows = events.filter(e => !types || types.includes(e.type)).slice().reverse();
+    $('eventsEmpty').hidden = rows.length > 0;
+    $('eventsEmpty').textContent = events.length ? `No ${filter.toLowerCase()} events.` : 'No events yet.';
+    const etb = $('events').querySelector('tbody');
+    const focusId = etb.contains(document.activeElement) ? document.activeElement.dataset.id : null;
+    etb.innerHTML = rows.map(e => `<tr>
+        <td class="mono">${hhmmss(e.t)}</td><td class="wide mono">${clock(e.clock)}</td><td class="wide">${esc(e.phase) || '—'}</td>
+        <td><span class="type t-${esc(e.type)}">${esc(e.type)}</span></td><td class="wide">${esc(e.robot) || '—'}</td>
+        <td class="text">${e.robot && !String(e.text).startsWith(e.robot) ? `<span class="phone-only">${esc(e.robot)} · </span>` : ''}${esc(e.text)}${e.rec ? `<span class="phone-only muted"> · ${esc(e.rec)} +${e.rec_t.toFixed(1)} s</span>` : ''}</td>
+        <td class="mono wide" title="${e.rec ? 'the recording that ran, and the seconds into it' : ''}">${e.rec ? `${esc(e.rec)} +${e.rec_t.toFixed(1)} s` : '—'}</td>
+        <td><button class="del${pendingDelete === e.id ? ' confirm' : ''}" data-id="${e.id}" aria-label="Delete event ${e.id}">${pendingDelete === e.id ? 'Delete?' : '✕'}</button></td></tr>`).join('');
+    if (focusId) etb.querySelector(`button[data-id="${focusId}"]`)?.focus();  // a keyboard user confirms with a second Enter
+}
+
+$('filters').innerHTML = Object.keys(GROUPS).map(g => `<button class="chip" aria-pressed="${g === filter}" data-g="${g}">${g}</button>`).join(' ');
+$('filters').addEventListener('click', ev => {
+    const g = ev.target.dataset.g;
+    if (!g) return;
+    filter = g;
+    $('filters').querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', c.dataset.g === g));
+    renderEvents();
+});
+// Two clicks delete a row: the first asks, a second within 3 s confirms (no browser dialog).
+$('events').addEventListener('click', async ev => {
+    const id = Number(ev.target.dataset.id);
+    if (!id) return;
+    if (pendingDelete !== id) {
+        pendingDelete = id;
+        renderEvents();
+        setTimeout(() => { if (pendingDelete === id) { pendingDelete = null; renderEvents(); } }, 3000);
+        return;
+    }
+    pendingDelete = null;
+    await post('/events', { delete: id });
+    events = events.filter(e => e.id !== id);
+    renderEvents();
+});
+$('markForm').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const text = $('markText').value.trim();
+    if (!text) { $('markText').focus(); return; }
+    await post('/events', { add: { text, robot: $('markRobot').value } });
+    $('markText').value = '';
+    pollEvents();
+});
+$('referee').addEventListener('click', async ev => {
+    const b = ev.target.closest('button');
+    if (!b) return;
+    await post('/gc', b.dataset.state ? { state: b.dataset.state } : { goal: Number(b.dataset.goal) });
+    pollState();
+});
+// Record / Stop: the stop names the recording, so a stale page cannot stop a newer one; stopping a recording that
+// another operator started needs a second click within 3 s.
+$('recBtn').addEventListener('click', async () => {
+    state = state || {};
+    const rec = state.rec || {};
+    if (rec.on && rec.by && rec.by !== operator.name && Date.now() - recAsk > 3000) {
+        recAsk = Date.now();
+        $('recBtn').textContent = `Stop the recording of ${rec.by}?`;
+        setTimeout(renderHeader, 3000);
+        return;
+    }
+    recAsk = 0;
+    const r = await post('/record', rec.on ? { on: false, name: rec.name, by: operator.name } : { on: true, by: operator.name });
+    if ('on' in r) state.rec = { on: r.on, name: r.name, secs: r.secs, bytes: r.bytes, by: r.by };
+    renderHeader();
+    pollEvents();
+});
+
+async function pollRecordings() {
+    try {
+        const d = await (await fetch(API + '/recordings', { signal: AbortSignal.timeout(4000) })).json();
+        const done = d.recordings.filter(r => !(d.running.on && d.running.name === r.name));
+        $('recEmpty').hidden = done.length > 0;
+        $('recordings').querySelector('tbody').innerHTML = done.map(r => `<tr><td class="mono">${esc(r.name)}.jsonl</td>
+            <td class="num mono">${mb(r.bytes)}</td><td class="mono wide">${new Date(r.mtime * 1000).toLocaleString([], { hour12: false })}</td>
+            <td><a href="/recordings/${encodeURIComponent(r.name)}.jsonl" download style="color:#93c5fd">Download</a></td></tr>`).join('');
+    } catch (e) { /* the gateway status line already says it is unreachable */ }
+}
+pollRecordings();
+
+async function post(path, body) {
+    const r = await fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return r.json();
+}
+
+// No table rebuild while a mouse button or finger is down: a rebuild between pointer-down and pointer-up
+// replaced the link or button under it and the browser fired no click. The next poll redraws.
+let pointerDown = false;
+addEventListener('pointerdown', () => { pointerDown = true; }, true);
+addEventListener('pointerup', () => setTimeout(() => { pointerDown = false; }), true);
+addEventListener('pointercancel', () => { pointerDown = false; }, true);
+
+let lastGood = 0;  // Date.now() of the last good /state
+async function pollState() {
+    try {
+        state = await (await fetch(stateUrl(API), { signal: AbortSignal.timeout(5000) })).json();
+        lastGood = Date.now();
+        document.body.classList.remove('stale-data');
+    } catch (e) {
+        // the rows keep their last values, greyed, with the time since the last good answer
+        $('gc').textContent = lastGood ? `No data for ${Math.round((Date.now() - lastGood) / 1000)} s: is the gateway running on ${location.host}?` : 'Gateway offline';
+        document.body.classList.add('stale-data');
+        return;
+    }
+    renderHeader();
+    ctl.update(state);
+    // no rebuild while a pointer is down or a hold-to-LIE-DOWN runs (a rebuild would cut the hold)
+    if (!pointerDown && !document.querySelector('#fleet [data-holding]')) renderFleet();
+    if ((state.last_event || 0) < lastId) { lastId = 0; events = []; renderEvents(); }  // the gateway restarted: ids begin at 1 again
+    if ((state.last_event || 0) > lastId) pollEvents();
+}
+
+let eventsBusy = false;  // one request at a time: overlapping polls appended the same events twice
+async function pollEvents() {
+    if (eventsBusy) return;  // pollState calls again within 1 s while last_event > lastId
+    eventsBusy = true;
+    try {
+        const d = await (await fetch(`${API}/events?since=${lastId}`)).json();
+        const keep = new Set(d.ids);
+        events = events.filter(e => keep.has(e.id)).concat(d.events);
+        if (d.events.length) lastId = d.events[d.events.length - 1].id;
+        if (!pointerDown) renderEvents();
+    } catch (e) { /* next poll retries */ } finally { eventsBusy = false; }
+}
+
+pollState();
+pollEvents();
+setInterval(pollState, 1000);
+setInterval(pollEvents, 3000);  // also drops rows another user deleted
+</script>
+</body>
+</html>

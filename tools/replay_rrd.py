@@ -4,13 +4,42 @@ Rerun .rrd Log & Telemetry Replay Bridge for Oraculum
 Reads recorded .rrd or JSON telemetry log files and streams them frame-by-frame over UDP port 10006.
 """
 
-import sys
-import os
-import time
+import argparse
+import base64
 import json
 import math
+import os
 import socket
-import argparse
+import sys
+import time
+
+
+def replay_recording(lines, target_host="127.0.0.1", target_port=10006, gc=False, speed=1.0):
+    """Replays a gateway recording (recordings/rec_*.jsonl, src/session.py) at its recorded times.
+
+    Each robot IP of the recording sends from its own loopback address (127.0.0.2, .3, ...), so the gateway
+    keeps two robots with the same number apart, as it did live. --gc also replays the GameController
+    packets to UDP 3838 on target_host.
+    """
+    rows = [json.loads(line) for line in lines if line.strip()]
+    rows = [r for r in rows if "data" in r or (gc and "gc" in r)]
+    socks = {}
+    print(f"[*] Replaying {len(rows)} packets ({rows[-1]['t'] if rows else 0:.0f} s) at speed {speed}")
+    start = time.monotonic()
+    for r in rows:
+        delay = r["t"] / speed - (time.monotonic() - start)
+        if delay > 0:
+            time.sleep(delay)
+        src = r.get("src", "")
+        if src not in socks:
+            socks[src] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            if target_host.startswith("127."):
+                socks[src].bind((f"127.0.0.{len(socks) + 1}", 0))
+        if "data" in r:
+            socks[src].sendto(json.dumps(r["data"]).encode(), (target_host, target_port))
+        else:
+            socks[src].sendto(base64.b64decode(r["gc"]), (target_host, 3838))
+
 
 def replay_telemetry(log_file, target_host="127.0.0.1", target_port=10006, fps=30):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -43,7 +72,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Replay telemetry or Rerun log files to Oraculum.")
     parser.add_argument("log_file", nargs="?", default="", help="Path to .json or .rrd log file.")
     parser.add_argument("--fps", type=int, default=30, help="Replay frame rate (default: 30)")
+    parser.add_argument("--gc", action="store_true", help="recording: also replay the GameController packets")
+    parser.add_argument("--speed", type=float, default=1.0, help="recording: replay speed (default: 1.0)")
     args = parser.parse_args()
+
+    if args.log_file and os.path.exists(args.log_file):
+        with open(args.log_file) as f:
+            lines = f.readlines()
+        first = json.loads(lines[0]) if lines and lines[0].strip() else {}
+        if "t" in first:  # a gateway recording
+            try:
+                replay_recording(lines, gc=args.gc, speed=args.speed)
+            except KeyboardInterrupt:
+                print("\n[*] Replay stopped by user.")
+            sys.exit(0)
 
     if not args.log_file or not os.path.exists(args.log_file):
         print("[!] Log file not specified or not found. Generating sample match log for replay...")

@@ -1,10 +1,18 @@
-import sys
 import argparse
-import urllib.request
-import urllib.error
+import atexit
+import getpass
 import json
+import secrets
+import socket
+import sys
+import time
+import urllib.error
+import urllib.request
 
 SERVER_URL = "http://localhost:8080"
+# Engineer mode (src/control_lock.py): this run is one client; walk/stiffness need the control lock
+CLIENT = f"cli-{secrets.token_hex(6)}"
+OPERATOR = f"cli {getpass.getuser()}@{socket.gethostname()}"
 
 
 def get_state():
@@ -16,18 +24,40 @@ def get_state():
         sys.exit(1)
 
 
-def post_control(payload):
+def post(path, payload):
     try:
         req = urllib.request.Request(
-            f"{SERVER_URL}/control",
+            f"{SERVER_URL}{path}",
             data=json.dumps(payload).encode('utf-8'),
             headers={"Content-Type": "application/json"}
         )
-        with urllib.request.urlopen(req, timeout=1.0) as r:
+        with urllib.request.urlopen(req, timeout=2.0) as r:
             return json.loads(r.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:  # 423: another operator has control; 409: no robot reached
+        body = json.loads(e.read().decode('utf-8') or "{}")
+        print(f"Refused ({e.code}): {body.get('reason') or body.get('error') or body}")
+        sys.exit(1)
     except Exception as e:
         print(f"Error sending command to Control Server at {SERVER_URL}: {e}")
         sys.exit(1)
+
+
+def post_control(payload):
+    return post("/control", dict(payload, client=CLIENT, operator=OPERATOR))
+
+
+def release_lock():
+    post("/control_lock", {"action": "release", "client": CLIENT, "name": OPERATOR})
+
+
+@atexit.register
+def _release_on_exit():  # also after a refused command: a CLI run never keeps the lock
+    try:
+        urllib.request.urlopen(urllib.request.Request(
+            f"{SERVER_URL}/control_lock", data=json.dumps({"action": "release", "client": CLIENT}).encode('utf-8'),
+            headers={"Content-Type": "application/json"}), timeout=1.0).read()
+    except Exception:
+        pass
 
 
 def do_status(args):
@@ -62,6 +92,16 @@ def do_status(args):
     print()
 
 
+def send_for(payload, seconds):
+    """The robot drops UDP joystick input 500 ms after the last packet, so repeat at 10 Hz."""
+    end = time.monotonic() + seconds
+    while True:
+        post_control(payload)
+        if time.monotonic() >= end:
+            break
+        time.sleep(0.1)
+
+
 def do_walk(args):
     payload = {
         "ip": args.ip,
@@ -72,8 +112,9 @@ def do_walk(args):
         "isManual": True,
         "lt": False
     }
-    post_control(payload)
-    print(f"Sent walk command to robot at {args.ip}:{args.port} -> vx={args.vx}, vy={args.vy}, vtheta={args.vtheta}")
+    send_for(payload, args.duration)
+    release_lock()
+    print(f"Sent walk command to robot at {args.ip}:{args.port} for {args.duration}s -> vx={args.vx}, vy={args.vy}, vtheta={args.vtheta}")
 
 
 def do_stiffness(args):
@@ -88,21 +129,21 @@ def do_stiffness(args):
         "lt": lt_val
     }
     post_control(payload)
+    release_lock()
     print(f"Sent stiffness command to robot at {args.ip}:{args.port} -> stiffness mode: {args.mode}")
 
 
 def do_stop(args):
-    payload = {
-        "ip": args.ip,
-        "port": args.port,
-        "vx": 0.0,
-        "vy": 0.0,
-        "vtheta": 0.0,
-        "isManual": False,
-        "lt": False
-    }
-    post_control(payload)
-    print(f"Sent STOP manual override to robot at {args.ip}:{args.port}")
+    """STOP (stand in the Prep pose), DAMP (motors soft) or RESUME (the Play combo) through POST /stop."""
+    kind = args.command
+    if kind == "damp" and not args.really:
+        print("DAMP makes the robot fall. Repeat with --really to send it.")
+        sys.exit(1)
+    robot = "all" if getattr(args, "all", False) else args.ip
+    reply = post("/stop", {"robot": robot, "kind": kind, "client": CLIENT, "name": OPERATOR, "confirm": robot})
+    if kind == "resume":
+        release_lock()
+    print(f"Sent {kind.upper()} to {', '.join(reply['targets'])}")
 
 
 def main():
@@ -119,6 +160,7 @@ def main():
     walk_parser.add_argument("vtheta", type=float, help="Rotational velocity (-1.0 to 1.0)")
     walk_parser.add_argument("--ip", default="127.0.0.1", help="Target robot IP (default: 127.0.0.1)")
     walk_parser.add_argument("--port", type=int, default=10007, help="Target robot port (default: 10007)")
+    walk_parser.add_argument("--duration", type=float, default=1.0, help="Seconds to keep sending at 10 Hz (default: 1.0)")
 
     # Stiffness command
     stiff_parser = subparsers.add_parser("stiffness", help="Toggle arm stiffness gains")
@@ -126,10 +168,18 @@ def main():
     stiff_parser.add_argument("--ip", default="127.0.0.1", help="Target robot IP (default: 127.0.0.1)")
     stiff_parser.add_argument("--port", type=int, default=10007, help="Target robot port (default: 10007)")
 
-    # Stop command
-    stop_parser = subparsers.add_parser("stop", help="Relinquish manual override and stop")
-    stop_parser.add_argument("--ip", default="127.0.0.1", help="Target robot IP (default: 127.0.0.1)")
-    stop_parser.add_argument("--port", type=int, default=10007, help="Target robot port (default: 10007)")
+    # STOP / DAMP / RESUME: through POST /stop (STOP and DAMP need no control lock)
+    for name, text in (("stop", "STOP: the robot stands in the Prep pose until RESUME or a Play/Manual combo"),
+                       ("lie", "LIE DOWN: the firmware lays the robot on its back until RESUME"),
+                       ("damp", "DAMP: motors soft, the robot FALLS and can break (one robot, needs --really)"),
+                       ("resume", "RESUME: the Play combo (clears STOP and DAMP); needs the control lock")):
+        sp = subparsers.add_parser(name, help=text)
+        target = sp.add_mutually_exclusive_group(required=True)
+        target.add_argument("--ip", help="robot IP (one that sends telemetry)")
+        if name != "damp":  # DAMP is never sent to all robots
+            target.add_argument("--all", action="store_true", help="every robot heard in the last 60 s")
+        if name == "damp":
+            sp.add_argument("--really", action="store_true")
 
     args = parser.parse_args()
 
@@ -139,7 +189,7 @@ def main():
         do_walk(args)
     elif args.command == "stiffness":
         do_stiffness(args)
-    elif args.command == "stop":
+    elif args.command in ("stop", "lie", "damp", "resume"):
         do_stop(args)
 
 

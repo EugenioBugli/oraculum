@@ -1,2 +1,23 @@
 .pixi/
 __pycache__/
+# Large WASM view assets, fetched by tools/fetch_web_assets.sh
+src/static/mujoco/
+src/static/models/
+# B2 circus renderer (b2.js, b2_engine.*), fetched by tools/fetch_circus_scene.py
+src/static/circus/
+
+# Session recordings of the gateway (POST /record)
+recordings/
+
+# Claude Code and agent files: never part of the delivery (owner, 2026-10-19)
+CLAUDE.md
+.claude/
+.codegraph/
+.handoff/
+CHECKPOINT*.md
+
+# Old renderer (replaced by renderer/ and src/static/circus_view.js; deletion candidate, plan D8)
+src/static/colosseum_renderer.js
+src/static/colosseum_renderer.wasm
+src/static/colosseum_renderer.wasm.map
+src/wasm_test.html

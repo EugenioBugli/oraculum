@@ -1,0 +1,132 @@
+# Rebuilds the MuJoCo scene that circus builds, with circus's own code (SceneParser, MuJoCo 3.3.3),
+# for the circus commit that spqrbooster2026 main pins and with the maximus field and simulation
+# config (the scene `pixi run sim` shows). Publishes it as a release of this repository;
+# tools/fetch_circus_scene.py downloads it for the gateway. Tools: tools/circus_scene/.
+#
+# Needs the repository secret SPQR_READ_TOKEN: a fine-grained token with read-only "Contents"
+# access to SPQRTeam/spqrbooster2026 (private). Release assets of a public repository are public.
+name: circus scene export
+
+on:
+  schedule:
+    - cron: "17 3 * * *"  # nightly: picks up circus submodule bumps and config changes in spqrbooster2026
+  workflow_dispatch:
+    inputs:
+      circus_ref:
+        description: "circus commit or branch (empty: the commit spqrbooster2026 main pins)"
+        required: false
+        default: ""
+      force:
+        description: "rebuild even if a release for this scene exists"
+        type: boolean
+        default: false
+  push:
+    paths:
+      - "tools/circus_scene/**"
+      - ".github/workflows/circus-scene.yml"
+
+permissions:
+  contents: write  # create the release that holds the scene
+
+concurrency:
+  group: circus-scene
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the read token
+        env:
+          SPQR_READ_TOKEN: ${{ secrets.SPQR_READ_TOKEN }}
+        run: |
+          if [ -z "$SPQR_READ_TOKEN" ]; then
+            echo "::error::Repository secret SPQR_READ_TOKEN is missing (read-only access to SPQRTeam/spqrbooster2026)."
+            exit 1
+          fi
+
+      # Only the two folders circus reads from the framework (FRAMEWORK_PATH): scenes and fields.
+      - uses: actions/checkout@v4
+        with:
+          repository: SPQRTeam/spqrbooster2026
+          ref: main
+          token: ${{ secrets.SPQR_READ_TOKEN }}
+          path: maximus
+          sparse-checkout: |
+            src/app/sim
+            src/app/config/fields
+
+      - name: Resolve the scene version
+        id: refs
+        run: |
+          circus="${{ inputs.circus_ref }}"
+          [ -n "$circus" ] || circus=$(git -C maximus rev-parse HEAD:external/circus)
+          config=$(tools/circus_scene/scene_tag.sh maximus --config-only)
+          tag="circus-scene-${circus:0:12}-${config}"
+          echo "circus=$circus" >> "$GITHUB_OUTPUT"
+          echo "maximus=$(git -C maximus rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "scene version: $tag"
+
+      - name: Skip if already published
+        id: published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ inputs.force }}" != "true" ] && gh release view "${{ steps.refs.outputs.tag }}" > /dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Release ${{ steps.refs.outputs.tag }} exists; nothing to do."
+          fi
+
+      # ponytail: no cache of the 2.7 GB work dir; a run takes about 12 min. Add actions/cache on
+      # work/ (key: circus commit) if runs become frequent.
+      - name: Export the scenes with circus's own code
+        if: steps.published.outputs.skip != 'true'
+        run: |
+          docker build -t circus-scene-export tools/circus_scene
+          mkdir -p work
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -e HOME=/work/home -e PIXI_CACHE_DIR=/work/pixi-cache -e WORK=/work -e JOBS=4 \
+            -e FRAMEWORK_PATH=/maximus \
+            -v "$PWD/work:/work" -v "$PWD/maximus:/maximus:ro" \
+            circus-scene-export "${{ steps.refs.outputs.circus }}" /work/out \
+            /maximus/src/app/sim/1v1.yaml /maximus/src/app/sim/5v5.yaml
+
+      - name: Package
+        if: steps.published.outputs.skip != 'true'
+        working-directory: work/out
+        run: |
+          for d in circus_scene_*/; do tar czf "${d%/}.tar.gz" "${d%/}"; done
+          python3 - <<'EOF'
+          import hashlib, json, pathlib
+          files = {p.name: {"sha256": hashlib.sha256(p.read_bytes()).hexdigest(), "bytes": p.stat().st_size}
+                   for p in sorted(pathlib.Path(".").glob("circus_scene_*.tar.gz"))}
+          manifest = {"tag": "${{ steps.refs.outputs.tag }}", "circus_commit": "${{ steps.refs.outputs.circus }}",
+                      "spqrbooster2026_commit": "${{ steps.refs.outputs.maximus }}", "mujoco": "3.3.3", "files": files}
+          pathlib.Path("manifest.json").write_text(json.dumps(manifest, indent=1))
+          print(json.dumps(manifest, indent=1))
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        if: steps.published.outputs.skip != 'true'
+        with:
+          name: ${{ steps.refs.outputs.tag }}
+          path: |
+            work/out/*.tar.gz
+            work/out/manifest.json
+            work/out/circus_scene_*/reference.png
+
+      - name: Publish the release
+        if: steps.published.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: work/out
+        run: |
+          tag="${{ steps.refs.outputs.tag }}"
+          gh release delete "$tag" --yes --cleanup-tag > /dev/null 2>&1 || true  # only with force
+          gh release create "$tag" circus_scene_*.tar.gz manifest.json \
+            --title "circus scene ${tag#circus-scene-}" \
+            --notes "Exported by circus's own SceneParser (MuJoCo 3.3.3) from circus ${{ steps.refs.outputs.circus }} with the maximus scenes and fields of SPQRTeam/spqrbooster2026@${{ steps.refs.outputs.maximus }}."

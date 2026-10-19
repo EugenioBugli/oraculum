@@ -1,0 +1,8 @@
+# /etc/systemd/system/oraculum-deploy.service: one pull-and-deploy run (see deploy.sh)
+[Unit]
+Description=Deploy the oraculum launcher from the public repo
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/oraculum-launcher/deploy.sh

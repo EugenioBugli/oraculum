@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oraculum · Robot</title>
+<style>
+:root {
+    --bg-dark: #121316; --bg-panel: #1e2025; --bg-card: #24272e; --bg-input: #2b2e37;
+    --border: #2d3038; --border-strong: #3b3f4a;
+    --text: #eceef2; --text-2: #9fa4b2; --muted: #9095a3;
+    --green: #10b981; --amber: #f59e0b; --red: #ef4444; --blue: #3b82f6; --indigo: #6366f1;
+    --font: 'Inter', system-ui, -apple-system, sans-serif; --mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg-dark); color: var(--text); font: 14px/1.4 var(--font); min-height: 100vh; }
+header { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
+    padding: 10px 16px; background: var(--bg-panel); border-bottom: 1px solid var(--border); }
+.logo { font-weight: 800; letter-spacing: 1px; color: var(--text); text-decoration: none; }
+nav { display: flex; gap: 4px; }
+nav a { color: var(--text-2); text-decoration: none; padding: 6px 10px; border-radius: 6px; }
+nav a:hover { color: var(--text); }
+.spacer { flex: 1; }
+button, select { font: inherit; color: var(--text); background: var(--bg-input); border: 1px solid var(--border-strong);
+    border-radius: 6px; padding: 6px 10px; min-height: 36px; cursor: pointer; }
+button:focus-visible, select:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.picker { display: flex; gap: 6px; align-items: center; }
+.picker select { min-width: 170px; }
+main { padding: 16px; display: grid; gap: 16px; align-items: start; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); max-width: 1500px; margin: 0 auto; }
+section { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; min-width: 0; }
+section > h2 { font-size: 13px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; color: var(--text-2);
+    padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+h2 label { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--text); display: flex; gap: 5px; align-items: center; cursor: pointer; }
+h2 input { width: 16px; height: 16px; }
+.cam { position: relative; background: #000; aspect-ratio: 4 / 3; }
+.cam img, .cam svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cam img { object-fit: fill; }
+.cam img:not([src]) { display: none; }
+.cam .wait[hidden] { display: none; }
+.cam .wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+    padding: 20px; color: var(--text-2); line-height: 1.6; }
+.status { padding: 8px 14px; font-family: var(--mono); font-size: 13px; color: var(--text-2); border-top: 1px solid var(--border); }
+.status.stale { color: var(--amber); }
+#world { display: block; width: 100%; height: auto; background: #1d3b24; }
+.facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--border); border-top: 1px solid var(--border); }
+.facts div { background: var(--bg-panel); padding: 8px 12px; }
+.facts b { display: block; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.legend { padding: 8px 14px; font-size: 13px; color: var(--text-2); display: flex; flex-wrap: wrap; gap: 4px 14px; border-top: 1px solid var(--border); }
+.sw { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+.ok { color: var(--green); } .warn { color: var(--amber); } .bad { color: var(--red); }
+@media (max-width: 500px) { .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 10px; gap: 10px; } header { padding: 8px 10px; } }
+</style>
+</head>
+<body>
+<header>
+    <a class="logo" href="/index.html">ORACULUM</a>
+    <nav aria-label="Pages"><a href="/index.html">Field</a><a href="/dashboard.html">Dashboard</a><a href="/fleet.html">Fleet</a></nav>
+    <span class="spacer"></span>
+    <span id="gcPill" title="GameController" style="font: 600 12px var(--mono, monospace); padding: 4px 8px; border: 1px solid var(--border, #2d3038); border-radius: 6px; white-space: nowrap;">GC: —</span>
+    <span id="controlBar"></span>
+    <span id="robotAct" title="Commands for the robot chosen on the right"></span>
+    <div class="picker">
+        <button id="prev" aria-label="Previous robot">‹</button>
+        <select id="robotSel" aria-label="Robot"></select>
+        <button id="next" aria-label="Next robot">›</button>
+    </div>
+</header>
+<main>
+    <section aria-labelledby="camTitle">
+        <h2><span id="camTitle">Camera</span>
+            <label><input type="checkbox" id="showBoxes" checked> Detections</label>
+            <label><input type="checkbox" id="showLines" checked> Field lines from pose</label>
+        </h2>
+        <div class="cam" id="camBox">
+            <img id="camImg" alt="Robot camera image">
+            <svg id="overlay" aria-hidden="true"></svg>
+            <div class="wait" id="camWait">Asking the robot for its camera…</div>
+        </div>
+        <div class="status" id="camStatus">—</div>
+        <div class="legend"><span><span class="sw" style="border:2px solid #facc15"></span>ball</span>
+            <span><span class="sw" style="border:2px solid #ef4444"></span>robot</span>
+            <span><span class="sw" style="border:2px solid #38bdf8"></span>goal post</span>
+            <span><span class="sw" style="border:2px solid #f97316"></span>person</span>
+            <span><span class="sw" style="border:2px solid #22d3ee"></span>other</span>
+            <span><span class="sw" style="border:2px dashed #d946ef"></span>field lines from pose</span></div>
+    </section>
+    <section aria-labelledby="worldTitle">
+        <h2 id="worldTitle">What this robot believes</h2>
+        <canvas id="world" width="900" height="620" role="img" aria-label="Field with this robot's pose, ball estimate, obstacles and camera view"></canvas>
+        <div class="legend">
+            <span><span class="sw" style="background:#fff;border:2px solid #111"></span>this robot</span>
+            <span><span class="sw" style="background:#facc15"></span>its ball estimate</span>
+            <span><span class="sw" style="border:2px dashed #f97316"></span>obstacles it sees</span>
+            <span><span class="sw" style="background:rgba(147,197,253,.35)"></span>camera view</span>
+            <span><span class="sw" style="border:2px solid #9fa4b2"></span>other robots (their own pose)</span>
+        </div>
+        <div class="facts" id="facts"></div>
+    </section>
+    <section id="danger" style="grid-column: 1 / -1;" aria-label="Danger"></section>
+</main>
+<script type="module">
+import { FIELD as field, gcSummary, loadField, fieldLines, penaltyOf, robotName as nameOf, roleWord, stateWord, teamRgb } from '/static/field_model.js';
+import { dangerDamp, mountControlBar, robotActions, stateUrl } from '/static/control_bar.js';
+const API = location.origin;
+const $ = id => document.getElementById(id);
+const ctl = mountControlBar($('controlBar'), API);  // STOP ALL + control lock
+const actions = new Map();  // STOP / Resume / hold-DAMP of the robot this page shows, one set per address
+const TEAM_COLORS = { red: '#e5484d', blue: '#3b82f6' };
+const DET_COLORS = { ball: '#facc15', goalpost: '#38bdf8', robot: '#ef4444', person: '#f97316' };
+let robotKey = new URLSearchParams(location.search).get('robot') || '';
+const knownNames = new Map();  // robot key -> "T19 R3", also after it goes offline
+let state = null, frame = null, lastFrameAt = 0, askedAt = performance.now(), fps = 0;
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const keyOf = a => `${a.ip}|${a.id}`;
+const colorOf = a => TEAM_COLORS[String(a.color).toLowerCase()] || (/^#[0-9a-f]{6}$/i.test(a.color) ? a.color : '#9095a3');
+const current = () => (state?.agents || []).find(a => keyOf(a) === robotKey);
+
+// ---- camera projection: T = camera-to-field 4x4 (row-major), K = [fx, fy, cx, cy] ----
+function projector(meta) {
+    const T = meta.T, [fx, fy, cx, cy] = meta.K;
+    return (x, y, z) => {
+        const d = [x - T[3], y - T[7], z - T[11]];
+        const xc = T[0] * d[0] + T[4] * d[1] + T[8] * d[2], yc = T[1] * d[0] + T[5] * d[1] + T[9] * d[2], zc = T[2] * d[0] + T[6] * d[1] + T[10] * d[2];
+        return zc > 0.05 ? [fx * xc / zc + cx, fy * yc / zc + cy] : null;
+    };
+}
+
+// Field points seen at the four image corners (camera footprint on the ground), clipped to 10 m.
+function footprint(meta) {
+    const T = meta.T, [fx, fy, cx, cy] = meta.K, c = [T[3], T[7], T[11]];
+    return [[0, 0], [meta.w, 0], [meta.w, meta.h], [0, meta.h]].map(([u, v]) => {
+        const r = [(u - cx) / fx, (v - cy) / fy, 1];
+        const d = [T[0] * r[0] + T[1] * r[1] + T[2], T[4] * r[0] + T[5] * r[1] + T[6], T[8] * r[0] + T[9] * r[1] + T[10]];
+        let s = d[2] < -1e-6 ? -c[2] / d[2] : Infinity;
+        const horiz = Math.hypot(d[0], d[1]);
+        s = Math.min(s, 10 / Math.max(horiz, 1e-6));
+        return [c[0] + s * d[0], c[1] + s * d[1]];
+    });
+}
+
+function drawOverlay() {
+    const svg = $('overlay');
+    if (!frame) { svg.innerHTML = ''; return; }
+    const m = frame.meta, parts = [];
+    svg.setAttribute('viewBox', `0 0 ${m.w} ${m.h}`);
+    svg.setAttribute('preserveAspectRatio', 'none');
+    const sw = m.w / Math.max(1, svg.clientWidth);  // image pixels per screen pixel: strokes and text keep their screen size
+    if ($('showLines').checked && Array.isArray(m.T) && m.T.length === 16) {
+        const P = projector(m);
+        for (const line of fieldLines(field)) {
+            let seg = [];
+            const flush = () => { if (seg.length > 1) parts.push(`<polyline points="${seg.join(' ')}" fill="none" stroke="#d946ef" stroke-width="${1.5 * sw}" stroke-dasharray="${4 * sw} ${3 * sw}" opacity=".9"/>`); seg = []; };
+            for (let i = 0; i + 1 < line.length; i++) {
+                const [x0, y0] = line[i], [x1, y1] = line[i + 1], n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 0.1));
+                for (let k = (i ? 1 : 0); k <= n; k++) {
+                    const p = P(x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n, 0);
+                    if (p && Math.abs(p[0]) < 4 * m.w && Math.abs(p[1]) < 4 * m.h) seg.push(`${p[0].toFixed(1)},${p[1].toFixed(1)}`); else flush();
+                }
+            }
+            flush();
+        }
+    }
+    if ($('showBoxes').checked) {
+        // Highest confidence first. A label goes above its box, else below it; a place that covers another label
+        // or another box is not used, and without a free place the label is left out (the legend names the colours).
+        const dets = (m.det || []).slice().sort((a, b) => b[1] - a[1]);
+        const hit = (a, b) => a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];  // [x, y, w, h]
+        const placed = [];
+        dets.forEach(([name, conf, x, y, w, h], i) => {
+            const col = DET_COLORS[String(name).toLowerCase()] || '#22d3ee';
+            parts.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${col}" stroke-width="${1.5 * sw}"/>`);
+            const text = `${name} ${Number(conf).toFixed(2)}`, th = 13 * sw, tw = text.length * 7.3 * sw;
+            const lx = Math.min(Math.max(0, x), Math.max(0, m.w - tw));
+            const free = (ly) => { const r = [lx, ly - th, tw, th];
+                return ly - th >= 0 && ly <= m.h && !placed.some(p => hit(r, p)) && !dets.some((d, j) => j !== i && hit(r, d.slice(2))); };
+            const ly = [y - 3 * sw, y + h + th].find(free);
+            if (ly === undefined) return;
+            placed.push([lx, ly - th, tw, th]);
+            parts.push(`<text x="${lx}" y="${ly}" fill="${col}" font-size="${12 * sw}" font-family="ui-monospace,monospace" paint-order="stroke" stroke="#000" stroke-width="${2 * sw}">${esc(text)}</text>`);
+        });
+    }
+    svg.innerHTML = parts.join('');
+}
+
+// ---- world model canvas ----
+function drawWorld() {
+    const cv = $('world'), g = cv.getContext('2d');
+    const margin = 0.7, fw = field.width + 2 * margin, fh = field.height + 2 * margin;
+    const sc = Math.min(cv.width / fw, cv.height / fh), ox = cv.width / 2, oy = cv.height / 2;
+    const X = x => ox + x * sc, Y = y => oy - y * sc;  // field x right, y up
+    g.fillStyle = '#1d3b24'; g.fillRect(0, 0, cv.width, cv.height);
+    g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 2;
+    for (const line of fieldLines(field)) { g.beginPath(); line.forEach(([x, y], i) => i ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y))); g.stroke(); }
+    const me = current();
+    if (frame && me && Array.isArray(frame.meta.T) && frame.meta.T.length === 16 && frame.meta.K) {
+        const fp = footprint(frame.meta);
+        g.fillStyle = 'rgba(147,197,253,.22)'; g.strokeStyle = 'rgba(147,197,253,.7)'; g.lineWidth = 1;
+        g.beginPath(); fp.forEach(([x, y], i) => i ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y))); g.closePath(); g.fill(); g.stroke();
+    }
+    const robot = (a, mine) => {
+        const r = 0.25 * sc;
+        g.beginPath(); g.arc(X(a.x), Y(a.y), r, 0, 2 * Math.PI);
+        if (mine) { g.fillStyle = colorOf(a); g.fill(); g.lineWidth = 3; g.strokeStyle = '#fff'; g.stroke(); }
+        else { g.lineWidth = 2; g.strokeStyle = `rgb(${teamRgb(a)})`; g.stroke(); }
+        g.beginPath(); g.moveTo(X(a.x), Y(a.y)); g.lineTo(X(a.x + 0.45 * Math.cos(a.angle)), Y(a.y + 0.45 * Math.sin(a.angle)));
+        g.lineWidth = mine ? 3 : 2; g.strokeStyle = mine ? '#fff' : `rgb(${teamRgb(a)})`; g.stroke();
+        labels[mine ? 'unshift' : 'push']({ text: nameOf(a), x: X(a.x), y: Y(a.y), r, mine });  // this robot's label first
+    };
+    // Labels last, >= 12 CSS px, left of the robot at the right edge; a label that would cover a placed one
+    // moves down one line, or is left out after two tries.
+    const cssPx = cv.width / Math.max(1, cv.clientWidth), labels = [];
+    const drawLabels = (placed = []) => {  // placed: [x, baseline y, width] rects the labels must not cover
+        const fs = Math.max(0.32 * sc, 12 * cssPx);
+        for (const l of labels) {
+            g.font = `${l.mine ? 600 : 400} ${fs}px system-ui, sans-serif`;
+            const tw = g.measureText(l.text).width;
+            const lx = l.x + l.r + 3 + tw > cv.width ? l.x - l.r - 3 - tw : l.x + l.r + 3;
+            let ly = Math.max(fs, l.y - l.r);
+            for (let k = 0; k < 3 && placed.some(([px, py, pw]) => lx < px + pw && px < lx + tw && Math.abs(ly - py) < fs); k++) ly += fs;
+            if (placed.some(([px, py, pw]) => lx < px + pw && px < lx + tw && Math.abs(ly - py) < fs)) continue;
+            placed.push([lx, ly, tw]);
+            g.fillStyle = l.mine ? '#fff' : '#cbd5e1';
+            g.fillText(l.text, lx, ly);
+        }
+    };
+    for (const a of state?.agents || []) if (keyOf(a) !== robotKey) robot(a, false);
+    if (!me) {
+        const msg = robotKey ? 'This robot sends no data now.' : 'Choose a robot.', fs = 16 * cssPx;
+        g.font = `600 ${fs}px system-ui, sans-serif`;
+        const w = g.measureText(msg).width;
+        drawLabels([[ox - w / 2 - fs / 2, oy + fs * 0.6, w + fs], [ox - w / 2 - fs / 2, oy, w + fs]]);  // keep the message box free
+        g.fillStyle = 'rgba(0, 0, 0, 0.6)'; g.fillRect(ox - w / 2 - fs / 2, oy - fs * 1.2, w + fs, fs * 1.8);
+        g.fillStyle = '#eceef2'; g.textAlign = 'center'; g.fillText(msg, ox, oy); g.textAlign = 'start';
+        return;
+    }
+    g.setLineDash([5, 4]); g.lineWidth = 2; g.strokeStyle = '#f97316';
+    for (const o of me.obstacles || []) { g.beginPath(); g.arc(X(o.x), Y(o.y), 0.25 * sc, 0, 2 * Math.PI); g.stroke(); }
+    if (me.ball) {
+        g.strokeStyle = '#facc15'; g.beginPath(); g.moveTo(X(me.x), Y(me.y)); g.lineTo(X(me.ball.x), Y(me.ball.y)); g.stroke();
+    }
+    g.setLineDash([]);
+    if (me.ball) { g.fillStyle = '#facc15'; g.beginPath(); g.arc(X(me.ball.x), Y(me.ball.y), Math.max(5, 0.12 * sc), 0, 2 * Math.PI); g.fill(); }
+    robot(me, true);
+    const br = Math.max(5, 0.12 * sc);
+    drawLabels(me.ball ? [[X(me.ball.x) - br, Y(me.ball.y) + br, 2 * br]] : []);
+}
+
+function renderFacts() {
+    const a = current();
+    if (!a) { $('facts').innerHTML = ''; return; }
+    const s = a.sys || {}, l = state?.fleet?.link?.[a.ip] || {};
+    const v = (x, d = 0, unit = '') => (typeof x === 'number' && x >= 0) ? x.toFixed(d) + unit : '—';
+    const bat = !(a.battery >= 0) ? '—' : `<span class="${a.battery < 20 ? 'bad' : a.battery < 40 ? 'warn' : 'ok'}">${a.battery < 20 ? '⚠ ' : a.battery < 40 ? '! ' : ''}${a.battery.toFixed(0)}%</span>`;
+    const head = state?.fleet?.head, hash = String(s.version || '').split(/[+ ]/)[0];
+    const ver = !s.version ? '—' : s.version === 'dev' ? 'dev' : head && hash !== head
+        ? `<span class="bad" title="this checkout is at ${esc(head)}">✗ ${esc(s.version)}</span>` : `<span class="ok">✓ ${esc(s.version)}</span>`;
+    $('facts').innerHTML = [
+        ['Role', esc(roleWord(a.role))], ['State', esc(stateWord(a.state)) + (a.fallen ? ' <span class="bad">⚠ fallen</span>' : '') + (({ damp: ' <b class="bad">⚠ DAMPED</b>', lie: ' <b class="bad">▬ LYING</b>', stop: ' <b class="bad">■ STOPPED</b>' })[a.latch] || '')
+                  + (penaltyOf(a, state?.gamecontroller) ? ` <b class="warn">⛔ ${esc(penaltyOf(a, state.gamecontroller))}</b>` : '')], ['Battery', bat],
+        ['Ball', a.ball ? `${a.ball.x.toFixed(2)}, ${a.ball.y.toFixed(2)} m` : 'not seen'], ['Obstacles', (a.obstacles || []).length],
+        ['Version', ver], ['CPU · temp', `${v(s.cpu, 0, '%')} · ${v(s.temp, 0, '°C')}`],
+        ['Link', `${v(l.hz, 0, ' Hz')} · ${v(l.age, 1, ' s')}`],
+    ].map(([k, x]) => `<div><b>${k}</b>${x}</div>`).join('');
+}
+
+function renderPicker() {
+    const agents = (state?.agents || []).slice().sort((a, b) => (a.team - b.team) || (a.id - b.id));
+    const sel = $('robotSel'), keys = agents.map(keyOf);
+    if (robotKey && !keys.includes(robotKey)) keys.unshift(robotKey);
+    for (const a of agents) knownNames.set(keyOf(a), nameOf(a));
+    const html = keys.map(k => { const a = agents.find(x => keyOf(x) === k); return `<option value="${esc(k)}">${a ? `${esc(nameOf(a))} · ${esc(roleWord(a.role))}` : `${esc(knownNames.get(k) || 'R' + k.split('|').pop())} (offline)`}</option>`; }).join('');
+    if (sel.dataset.html !== html) { sel.innerHTML = html; sel.dataset.html = html; }
+    sel.value = robotKey;
+    if (!robotKey && agents.length) choose(keyOf(agents[0]));
+}
+
+function choose(key) {
+    if (key === robotKey) return;
+    robotKey = key; frame = null; lastFrameAt = 0; fps = 0; askedAt = performance.now();
+    $('camStatus').textContent = 'no image yet'; $('camStatus').classList.remove('stale');
+    history.replaceState(null, '', `?robot=${encodeURIComponent(key)}`);
+    $('camImg').removeAttribute('src');
+    render();
+}
+
+$('robotSel').addEventListener('change', e => choose(e.target.value));
+for (const [id, step] of [['prev', -1], ['next', 1]]) $(id).addEventListener('click', () => {
+    const sel = $('robotSel'), n = sel.options.length;
+    if (n) choose(sel.options[(sel.selectedIndex + step + n) % n].value);
+});
+$('showBoxes').addEventListener('change', drawOverlay);
+$('showLines').addEventListener('change', drawOverlay);
+
+function render() {
+    const a = current();
+    document.title = `Oraculum · ${a ? nameOf(a) : 'Robot'}`;
+    $('camTitle').textContent = a ? `Camera · ${nameOf(a)}` : 'Camera';
+    renderPicker(); renderFacts(); drawWorld(); drawOverlay();
+}
+
+let lastGood = 0;  // Date.now() of the last good /state
+async function pollState() {
+    try {
+        state = await (await fetch(stateUrl(API), { signal: AbortSignal.timeout(5000) })).json();
+        lastGood = Date.now();
+    } catch (e) {
+        // the gateway is down: keep the last state (greyed) and say so; the robot is not to blame
+        const s = lastGood ? Math.round((Date.now() - lastGood) / 1000) : 0;
+        $('gcPill').textContent = lastGood ? `No data for ${s} s: is the gateway running on ${location.host}?` : 'Gateway offline';
+        document.querySelector('main').style.filter = lastGood ? 'grayscale(1)' : '';  // the header (STOP ALL) stays in colour
+        return;
+    }
+    document.querySelector('main').style.filter = '';
+    const g = gcSummary(state.gamecontroller);
+    $('gcPill').textContent = g.online ? `${g.state} · ${g.score} · ${g.detail}` : g.state;
+    $('gcPill').title = g.title;
+    ctl.update(state);
+    render();
+    // the robot's controls, built once its name is known ("T19 R3": the DAMP lock asks for "R3")
+    const ip = robotKey.split('|')[0], name = knownNames.get(robotKey), box = $('robotAct');
+    if (ip && name && !actions.has(robotKey)) actions.set(robotKey, [robotActions(ip, API, { lie: true, label: name }), dangerDamp(ip, API, name)]);
+    const mine = actions.get(robotKey);
+    if (mine && box.firstChild !== mine[0]) { box.replaceChildren(mine[0]); $('danger').replaceChildren(mine[1]); }
+}
+
+async function pollCamera() {
+    if (!robotKey || Date.now() - lastGood > 3000) return;  // no camera requests while the gateway is down
+    const key = robotKey;
+    let d = null;
+    try { d = await (await fetch(`${API}/camera?robot=${encodeURIComponent(key)}`)).json(); } catch (e) { /* retry */ }
+    if (key !== robotKey) return;
+    const now = performance.now();
+    // Before the first frame of this robot, only a fresh one (the gateway keeps a robot's last frame forever).
+    if (d && d.jpeg && d.meta && (frame || d.age < 3) && (!frame || d.meta.ts !== frame.meta.ts)) {
+        if (lastFrameAt) fps = 0.7 * fps + 0.3 * (1000 / Math.max(1, now - lastFrameAt));
+        frame = d; lastFrameAt = now;
+        $('camImg').src = 'data:image/jpeg;base64,' + d.jpeg;
+        $('camBox').style.aspectRatio = `${d.meta.w} / ${d.meta.h}`;
+        drawOverlay(); drawWorld();
+    }
+    const age = d && d.age != null ? d.age : null;
+    const st = $('camStatus'), wait = $('camWait');
+    if (frame && age != null && age < 2) {
+        wait.hidden = true; st.classList.remove('stale');
+        st.textContent = `live · ${fps.toFixed(1)} fps · ${age.toFixed(1)} s old · ${frame.meta.w}×${frame.meta.h} · ${(frame.meta.det || []).length} detections`;
+    } else if (frame) {
+        wait.hidden = true; st.classList.add('stale');
+        st.textContent = `⚠ camera stopped: last image ${age != null ? age.toFixed(0) : '?'} s ago (robot offline, or useRerun turned off)`;
+    } else {
+        wait.hidden = false; st.classList.remove('stale'); st.textContent = 'no image yet';
+        // One child element: the flex box would make each text run and <b> a separate column.
+        wait.innerHTML = '<span>' + (!current() ? 'No camera image: this robot sends no data now.'
+            : (now - askedAt < 3000) ? 'Asking the robot for its camera…'
+            : 'No camera image. The robot sends images only with <b>useRerun: true</b> and a running <b>DebugCamera</b> node; the gateway asks it on UDP 10008.') + '</span>';
+    }
+}
+
+loadField(API).then(render);
+pollState();
+setInterval(pollState, 250);
+setInterval(pollCamera, 250);
+</script>
+</body>
+</html>

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Circus scene viewer</title>
+<style>
+  :root { --bg: #1b1b1b; --fg: #ddd; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 13px monospace; }
+  canvas { display: block; max-width: 100%; touch-action: none; }
+  pre { margin: 8px 16px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<pre id="log"></pre>
+<script src="b2.js"></script>
+<script>
+  // Test page of the B2 bundle. Query: ?scene=../b2_scenes/maximus_1v1 (default maximus_5v5),
+  // &w=1280&h=720 (canvas pixels; default: CSS size x devicePixelRatio), &depth=auto|ext|d24|fragdepth|off,
+  // &aa=0 (no MSAA; default on, as circus), &cam=x,y,z,dist,az,el (default: the circus viewport camera),
+  // &pose=<name in poses.json>, &poses=poses_1v1.json, &preserve (keep the drawing buffer), &live (spin),
+  // &maxtex=N (downscale textures above N px; default 2048 on touch devices), &jstex=0 (MuJoCo decodes PNGs),
+  // &visflag=i:v / &geomgroup=i:v (debug: change one circus view option; the negative CI test).
+  // Mouse and touch move the camera (B2Viewer.attachControls).
+  // Test API: b2Ready, b2Error, spikeFps(ms), b2SetPose(name | qpos array), b2SetCamera(...6 numbers),
+  // b2Render(), b2Snapshot() -> PNG data URL, b2Bench(n) -> ms per frame (CPU + GPU, synced each
+  // frame), b2Throughput(n) -> ms per frame with n frames queued (no display refresh limit).
+  const params = new URLSearchParams(location.search);
+  const cv = document.getElementById('canvas');
+  const logEl = document.getElementById('log');
+  const log = (t) => { console.log(t); logEl.textContent += t + '\n'; };
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = +params.get('w') || Math.round(Math.min(innerWidth, 1280) * dpr);
+  cv.height = +params.get('h') || Math.round(Math.min(innerWidth, 1280) * 9 / 16 * dpr);
+  cv.style.width = cv.width / dpr + 'px';
+  window.b2Ready = false;
+  window.b2Error = null;
+  (async () => {
+    try {
+      const v = window.b2 = await B2Viewer.create(cv, {
+        scene: params.get('scene') || '../b2_scenes/maximus_5v5', depth: params.get('depth') || 'auto',
+        antialias: params.get('aa') !== '0', preserve: params.has('preserve'), log,
+        maxTexture: params.has('maxtex') ? +params.get('maxtex') : undefined,
+        browserTextures: params.get('jstex') !== '0',
+      });
+      for (const [kind, key] of [['flag', 'visflag'], ['geomgroup', 'geomgroup']]) {
+        if (params.get(key)) v.setViewOption(kind, ...params.get(key).split(':').map(Number));
+      }
+      const cam = (params.get('cam') || '0,-1,0,15,90,-45').split(',').map(Number);
+      window.b2SetCamera = (x, y, z, d, az, el) => v.setCamera([x, y, z], d, az, el);
+      b2SetCamera(...cam);
+      let poses = null;
+      window.b2SetPose = async (p) => {
+        if (typeof p === 'string') {
+          poses = poses || await (await fetch(params.get('poses') || 'poses.json')).json();
+          const hit = poses.poses.find((x) => x.name === p);
+          if (!hit) throw new Error('no pose ' + p);
+          p = hit.qpos;
+        }
+        v.setQpos(p);
+      };
+      if (params.get('pose')) await b2SetPose(params.get('pose'));
+      window.b2Render = (physics = 2) => v.render(physics);
+      window.b2Snapshot = () => { v.render(); return cv.toDataURL('image/png'); };
+      window.spikeFps = (ms) => v.fps(ms);
+      window.b2Bench = (n) => v.benchSync(n);
+      window.b2Throughput = (n) => v.benchThroughput(n);
+      v.attachControls();
+      v.render();
+      log('first frame: ' + JSON.stringify(v.stats));
+      window.b2Ready = true;
+      if (params.has('live')) {
+        const spin = () => { v.orbit(0.002, 0); v.render(); requestAnimationFrame(spin); };
+        requestAnimationFrame(spin);
+      }
+    } catch (e) {
+      window.b2Error = e.code || 'B2_OTHER';
+      log('B2_ERROR ' + (e.code ? e.code + ' ' : '') + (e && e.stack || e));
+    }
+  })();
+</script>
+</body>
+</html>

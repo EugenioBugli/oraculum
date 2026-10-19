@@ -100,6 +100,9 @@ def _pentagon_verts(agent: Agent, s: float) -> list:
 
 def _text_transform(agent: Agent, ax):
     """Rotate the label to match movement direction and place it at agent centre."""
+    # ponytail: matplotlib is imported inside the drawing functions so that
+    # tools/udp_sender.py can import this module without matplotlib installed.
+    from matplotlib.transforms import Affine2D
     return (Affine2D()
             .rotate(agent.angle)
             .translate(agent.x, agent.y)
@@ -113,6 +116,7 @@ def make_agent_artists(ax, agent: Agent, index: int, size: float) -> tuple:
     visually rotates with the agent.
     Returns (body, text) — both support in-place updates.
     """
+    import matplotlib.patches as patches
     body = patches.Polygon(
         _pentagon_verts(agent, size),
         closed=True, facecolor=agent.color, edgecolor="black", linewidth=1, zorder=10,
@@ -137,6 +141,7 @@ def update_agent_artists(agent: Agent, body, text, size: float) -> None:
 
 def draw_agent_legend(ax, agents: list) -> None:
     """Draw a static column per agent showing Player number and Role."""
+    import matplotlib.patches as patches
     n = len(agents)
     ax.set_xlim(-0.5, n - 0.5)
     ax.set_ylim(0, 1)

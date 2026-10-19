@@ -1,0 +1,89 @@
+diff -ru circus_orig/include/RobotManager.h circus/include/RobotManager.h
+--- circus_orig/include/RobotManager.h	2026-10-19 11:17:47.263168220 +0200
++++ circus/include/RobotManager.h	2026-10-19 11:17:47.301238401 +0200
+@@ -73,6 +73,7 @@
+         void applyCommands();
+ 
+     private:
++        std::vector<pid_t> robotProcesses_;  // hosted session: robot launcher processes (CIRCUS_ROBOT_LAUNCHER)
+         RobotManager() = default;
+         ~RobotManager() = default;
+ 
+diff -ru circus_orig/src/AppWindow.cpp circus/src/AppWindow.cpp
+--- circus_orig/src/AppWindow.cpp	2026-10-19 11:17:47.280343531 +0200
++++ circus/src/AppWindow.cpp	2026-10-19 11:17:47.300471836 +0200
+@@ -236,12 +236,14 @@
+                                          + ") and load the scene again.");
+             }
+ 
+-            CircusNetwork::instance().init();
++            if (!std::getenv("CIRCUS_ROBOT_LAUNCHER"))  // hosted session: robots are local processes, no Docker
++                CircusNetwork::instance().init();
+             RobotManager::instance().bindMujoco(mujContext.get(), connectMode_);  // memo: this must be run before starting the communications server
+ 
+         } else {  // socket mode
+ 
+-            CircusNetwork::instance().init();
++            if (!std::getenv("CIRCUS_ROBOT_LAUNCHER"))  // hosted session: robots are local processes, no Docker
++                CircusNetwork::instance().init();
+             RobotManager::instance().bindMujoco(mujContext.get(), connectMode_);  // memo: this must be run before starting the communications server
+             RobotManager::instance().initializeSocket(frameworkCommunicationPort);
+         }
+diff -ru circus_orig/src/RobotManager.cpp circus/src/RobotManager.cpp
+--- circus_orig/src/RobotManager.cpp	2026-10-19 11:17:47.280457863 +0200
++++ circus/src/RobotManager.cpp	2026-10-19 11:17:47.300773307 +0200
+@@ -1,7 +1,11 @@
+ #include "RobotManager.h"
+ 
++#include <signal.h>
++#include <sys/types.h>
+ #include <unistd.h>
+ 
++#include <cstring>
++
+ #include <filesystem>
+ 
+ #include "Constants.h"
+@@ -63,6 +67,9 @@
+ 
+ void RobotManager::clear() {
+     std::lock_guard lock(mutex_);
++    for (pid_t pid : robotProcesses_)
++        kill(-pid, SIGTERM);  // hosted session: the robot process groups
++    robotProcesses_.clear();
+     for (std::shared_ptr<Robot> r : robots_) {
+         // Drop ownership first
+         r->container.reset();
+@@ -445,6 +452,32 @@
+         }
+         binds.push_back(shmPath + ":" + shmPath);
+     }
++    // Hosted session (oraculum/hosted): no Docker. Each robot runs as a local process started by the launcher,
++    // with the environment a container would get and circus on 127.0.0.1.
++    if (const char* launcher = std::getenv("CIRCUS_ROBOT_LAUNCHER"); launcher && *launcher) {
++        for (const std::shared_ptr<Robot>& r : robots_) {
++            const std::vector<std::string> env = {
++                "ROBOT_NAME=" + r->name, "SERVER_IP=127.0.0.1", "CIRCUS_PORT=" + std::to_string(frameworkCommunicationPort),
++                "TEAM_NUMBER=" + std::to_string(r->team->number), "PLAYER_NUMBER=" + std::to_string(r->number),
++                "PLAYER_ROLE=" + r->role, "TEAM_COLOR=" + r->colorName, "ROBOT_STACK=booster",
++                "CIRCUS_SHM_DIR=" + std::string(sharedMemoryPath), "CONNECT_MODE=" + connectMode,
++                "SPAWN_X=" + std::to_string(r->initPosition.x()), "SPAWN_Y=" + std::to_string(r->initPosition.y()),
++                "SPAWN_THETA=" + std::to_string(r->initOrientation.z())};
++            const pid_t pid = fork();
++            if (pid == 0) {
++                setpgid(0, 0);  // own process group: clear() stops the robot's whole stack
++                for (const std::string& kv : env)
++                    putenv(strdup(kv.c_str()));
++                execl(launcher, launcher, static_cast<char*>(nullptr));
++                _exit(127);
++            }
++            if (pid < 0)
++                throw std::runtime_error("fork failed for robot " + r->name);
++            robotProcesses_.push_back(pid);
++        }
++        std::cout << "Robot processes started with " << launcher << std::endl;
++        return;
++    }
+     for (std::shared_ptr<Robot> r : robots_) {
+         r->container = std::make_unique<Container>("CIRCUS_" + r->name + "_container");
+         r->container->create(r, image, binds, connectMode);
