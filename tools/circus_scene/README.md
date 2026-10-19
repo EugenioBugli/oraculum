@@ -75,8 +75,10 @@ docker run ... -e FRAMEWORK_PATH=/work/maximus circus-scene-export <ref> /work/o
   release with that tag exists.
 - **Output:** a release of this repository with `circus_scene_1v1.tar.gz`, `circus_scene_5v5.tar.gz` and
   `manifest.json` (commits and SHA-256 of each archive), plus a build artifact with the reference renders.
-- **Secret:** `SPQR_READ_TOKEN`, a fine-grained token with read-only *Contents* access to
-  `SPQRTeam/spqrbooster2026`. Release assets of a public repository are public.
+- **No secret:** the two framework folders and the circus commit are pinned in `pinned/` (with `PIN`). After a
+  change on spqrbooster2026 (scenes, fields or the circus submodule), run `tools/circus_scene/pin.sh` and commit
+  `pinned/`; the push starts the export. A private repository's releases need a signed-in `gh` (or `GH_TOKEN`) to
+  download.
 - **Gateway side:** `python3 tools/fetch_circus_scene.py` downloads the release that matches the local
   `spqrbooster2026` checkout (or the newest), checks the SHA-256 and unpacks it to `src/static/models/`.
 

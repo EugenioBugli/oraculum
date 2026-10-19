@@ -16,8 +16,10 @@ import io
 import json
 import math
 import os
+import pathlib
 import random
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -64,7 +66,7 @@ def _fake_joints(i: int) -> dict[str, float]:
 def _fake_sys(i: int, t: float) -> dict:
     """Fleet data: robot 3 runs an old build, robot 5 records."""
     return {
-        "version": "4ceb74f0" if i == 2 else "0f8e451b",
+        "version": "4ceb74f0" if i == 2 else HEAD,  # one robot runs an old build on purpose
         "cpu": round(35 + 20 * math.sin(0.3 * t + i), 1),
         "load": round(4 + 2 * math.sin(0.1 * t + i), 2),
         "temp": round(55 + 8 * math.sin(0.05 * t + i), 1),
@@ -203,6 +205,10 @@ def camera_frame(a: Agent, agents: list[Agent], ball: Ball, head_yaw: float) -> 
               "det": det, "ts": time.time_ns()}
     return pack_frame(header, out.getvalue())
 
+
+# The robot-code commit the gateway compares against (its ../spqrbooster2026 checkout), so the fake fleet is "current"
+HEAD = subprocess.run(["git", "-C", str(pathlib.Path(__file__).resolve().parents[2] / "spqrbooster2026"), "rev-parse", "--short=8", "HEAD"],
+                      capture_output=True, text=True).stdout.strip() or "0f8e451b"
 
 LATCH = {"v": ""}  # like LowControlBridge: "stop" / "damp" from POST /stop, cleared by the Play or Manual combo
 

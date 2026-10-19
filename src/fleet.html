@@ -72,15 +72,19 @@ tbody tr:hover { background: var(--bg-card); }
 .log-wrap { max-height: 60vh; overflow: auto; }
 body.stale-data #fleet { opacity: 0.45; filter: grayscale(1); }
 .phone-only { display: none; }
-a.rname { color: inherit; text-decoration: none; } a.rname:hover { text-decoration: underline; }
+a.rname { color: #c7d2fe; text-decoration: underline dotted rgba(199, 210, 254, 0.5); } a.rname:hover { text-decoration: underline; }
+#fleet td[data-act] .ctl-act { flex-wrap: nowrap; }  /* a wrapped button pair doubled every row's height */
+#fleet .ctl-act button { padding: 3px 7px; font-size: 11px; }
+.phone-only.rs { font-size: 12px; margin-top: 2px; }
 @media (min-width: 701px) { #fleet td:nth-child(2) { white-space: nowrap; } }  /* a badge must not grow the row */
 @media (max-width: 700px) {
     header { padding: 8px 10px; }
     main { padding: 10px; gap: 10px; }
-    th, td { padding: 6px 7px; }
+    th, td { padding: 6px 5px; }
     #events .wide, #fleet .wide, #recordings .wide { display: none; }  /* phones: Robot (links to its page), state, Battery, Link, Control */
     #fleet td[data-act] .ctl-act { flex-direction: column; align-items: stretch; }
-    #fleet td:nth-child(2) { white-space: normal; min-width: 80px; }
+    .phone-only.rs { display: block; }
+    #fleet .bar { display: none; }  /* phones: the battery percentage without its bar */
     .phone-only { display: inline; }  /* the robot and the recording of an event, as their columns are hidden */
     #events td.text { min-width: 0; }
     #fleet td:first-child .mono { display: none; }  /* the IP: on the robot page and in the Camera link */
@@ -114,7 +118,7 @@ a.rname { color: inherit; text-decoration: none; } a.rname:hover { text-decorati
         <div class="scroll">
             <table id="fleet">
                 <thead><tr>
-                    <th>Robot</th><th>Role · state</th><th class="wide">Version</th><th class="num wide">CPU</th><th class="num wide">Load</th>
+                    <th>Robot</th><th class="wide">Role · state</th><th class="wide">Version</th><th class="num wide">CPU</th><th class="num wide">Load</th>
                     <th class="num wide">Temp</th><th>Battery</th><th class="num wide" title="Robot Wi-Fi traffic, kbit/s">Wi-Fi ↑ / ↓</th>
                     <th class="num" title="As the gateway receives this robot's IP">Link</th><th class="wide">Rec</th><th class="wide">Robot page</th><th>Control</th>
                 </tr></thead>
@@ -161,6 +165,7 @@ const actions = new Map();
 const actionsFor = (ip, label) => actions.get(`${ip}|${label}`) || actions.set(`${ip}|${label}`, robotActions(ip, API, { lie: true, label })).get(`${ip}|${label}`);
 let filter = 'All', lastId = 0, events = [], pendingDelete = null, state = null;
 let wasRecording = false;  // renderHeader lists the recordings when one ends
+let lastBoot = null;  // the gateway's start id (/state boot)
 let recAsk = 0;  // Date.now() of the first click that asked to stop someone else's recording
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -208,10 +213,12 @@ function renderFleet() {
         const bat = a.battery, batCls = bat < 0 ? 'muted' : bat < 20 ? 'bad' : bat < 40 ? 'warn' : 'ok';
         const cpuCls = level(s.cpu, 85, 95), tCls = level(s.temp, 80, 90), ageCls = a.offlineFor ? 'bad' : level(l.age, 1, 2);
         const warn = c => c ? (c === 'bad' ? '⚠ ' : '! ') : '';
-        const linkText = a.offlineFor ? `offline · ${a.offlineFor.toFixed(0)} s` : `${num(l.hz, 0, ' Hz')} · ${num(l.age, 1, ' s')}`;
+        const linkText = a.offlineFor ? `offline · ${a.offlineFor.toFixed(0)} s` : `<span class="wide">${num(l.hz, 0, ' Hz')} · </span>${num(l.age, 1, ' s')}`;
+        // role, state and the badges: their own column on wide screens, under the robot name on phones
+        const rs = `${esc(roleState(a))}${a.fallen ? ' <span class="bad">⚠ fallen</span>' : ''}${latchBadge(a)}${penaltyOf(a, state?.gamecontroller) ? ` <b class="warn">⛔ ${esc(penaltyOf(a, state.gamecontroller))}</b>` : ''}`;
         return `<tr${a.offlineFor ? ' class="offline" title="No data from this robot: last values shown"' : ''}>
-            <td><span class="dot" style="background:${colorOf(a)}"></span><a class="rname" href="/robot.html?robot=${encodeURIComponent(robotKey(a))}"><b>${esc(robotName(a))}</b></a> <span class="muted mono">${esc(a.ip)}</span></td>
-            <td${a.state === 'P' ? ' class="warn"' : ''}>${esc(roleState(a))}${a.fallen ? ' <span class="bad">⚠ fallen</span>' : ''}${latchBadge(a)}${penaltyOf(a, state?.gamecontroller) ? ` <b class="warn">⛔ ${esc(penaltyOf(a, state.gamecontroller))}</b>` : ''}</td>
+            <td><span class="dot" style="background:${colorOf(a)}"></span><a class="rname" href="/robot.html?robot=${encodeURIComponent(robotKey(a))}"><b>${esc(robotName(a))}</b></a> <span class="muted mono">${esc(a.ip)}</span><div class="phone-only rs">${rs}</div></td>
+            <td class="wide${a.state === 'P' ? ' warn' : ''}">${rs}</td>
             <td class="mono wide">${versionCell(s, head)}</td>
             <td class="num wide ${cpuCls}">${warn(cpuCls)}${num(s.cpu, 0, '%')}</td>
             <td class="num wide">${num(s.load, 1)}</td>
@@ -360,7 +367,10 @@ async function pollState() {
     ctl.update(state);
     // no rebuild while a pointer is down or a hold-to-LIE-DOWN runs (a rebuild would cut the hold)
     if (!pointerDown && !document.querySelector('#fleet [data-holding]')) renderFleet();
-    if ((state.last_event || 0) < lastId) { lastId = 0; events = []; renderEvents(); }  // the gateway restarted: ids begin at 1 again
+    if (state.boot !== lastBoot) {  // a (re)started gateway: event ids begin at 1 again
+        if (lastBoot !== null) { lastId = 0; events = []; renderEvents(); pollEvents(); }
+        lastBoot = state.boot;
+    }
     if ((state.last_event || 0) > lastId) pollEvents();
 }
 

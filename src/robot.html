@@ -14,7 +14,7 @@
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: var(--bg-dark); color: var(--text); font: 14px/1.4 var(--font); min-height: 100vh; }
-header { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
+header { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center;
     padding: 10px 16px; background: var(--bg-panel); border-bottom: 1px solid var(--border); }
 .logo { font-weight: 800; letter-spacing: 1px; color: var(--text); text-decoration: none; }
 nav { display: flex; gap: 4px; }
@@ -50,6 +50,7 @@ h2 input { width: 16px; height: 16px; }
 .ok { color: var(--green); } .warn { color: var(--amber); } .bad { color: var(--red); }
 @media (max-width: 500px) { .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 10px; gap: 10px; } header { padding: 8px 10px; } }
+@media (max-width: 700px) { header { position: static; } }  /* phones: the tall header scrolls away, as on the fleet page */
 </style>
 </head>
 <body>
@@ -314,8 +315,8 @@ async function pollState() {
     }
     document.querySelector('main').style.filter = '';
     const g = gcSummary(state.gamecontroller);
-    $('gcPill').textContent = g.online ? `${g.state} · ${g.score} · ${g.detail}` : g.state;
-    $('gcPill').title = g.title;
+    $('gcPill').textContent = g.online ? `${g.state} · ${g.score}` : g.state;  // short: the header stays one row
+    $('gcPill').title = g.online ? `${g.detail}\n${g.title}` : g.title;
     ctl.update(state);
     render();
     // the robot's controls, built once its name is known ("T19 R3": the DAMP lock asks for "R3")
@@ -331,6 +332,10 @@ async function pollCamera() {
     let d = null;
     try { d = await (await fetch(`${API}/camera?robot=${encodeURIComponent(key)}`)).json(); } catch (e) { /* retry */ }
     if (key !== robotKey) return;
+    if (!d) {  // no answer from the gateway: the robot is not to blame
+        $('camStatus').textContent = 'no answer from the gateway';
+        return;
+    }
     const now = performance.now();
     // Before the first frame of this robot, only a fresh one (the gateway keeps a robot's last frame forever).
     if (d && d.jpeg && d.meta && (frame || d.age < 3) && (!frame || d.meta.ts !== frame.meta.ts)) {
@@ -345,6 +350,8 @@ async function pollCamera() {
     if (frame && age != null && age < 2) {
         wait.hidden = true; st.classList.remove('stale');
         st.textContent = `live · ${fps.toFixed(1)} fps · ${age.toFixed(1)} s old · ${frame.meta.w}×${frame.meta.h} · ${(frame.meta.det || []).length} detections`;
+    } else if (frame && age == null) {  // the gateway restarted and has no image yet: not the robot's fault
+        wait.hidden = true; st.classList.remove('stale'); st.textContent = 'waiting for the next camera image…';
     } else if (frame) {
         wait.hidden = true; st.classList.add('stale');
         st.textContent = `⚠ camera stopped: last image ${age != null ? age.toFixed(0) : '?'} s ago (robot offline, or useRerun turned off)`;

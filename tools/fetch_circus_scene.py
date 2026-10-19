@@ -22,6 +22,7 @@ A local build instead: copy b2_bundle/* to src/static/circus/ and run
 import argparse
 import hashlib
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -53,9 +54,39 @@ def origin_repo() -> str:
     return m.group(1)
 
 
+def _token() -> str:
+    """GH_TOKEN / GITHUB_TOKEN, else the gh CLI's login: a private releases repo needs one; a public one does not."""
+    tok = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
+    if not tok and shutil.which("gh"):
+        tok = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True).stdout.strip()
+    return tok
+
+
+class _NoAuthRedirect(urllib.request.HTTPRedirectHandler):
+    """Asset downloads redirect to a signed storage URL, which refuses a second credential."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None:
+            new.remove_header("Authorization")
+        return new
+
+
+_OPENER = urllib.request.build_opener(_NoAuthRedirect)
+TOKEN = None
+
+
+def fetch(url: str, accept: str = "application/vnd.github+json") -> bytes:
+    global TOKEN
+    if TOKEN is None:
+        TOKEN = _token()
+    headers = {"Accept": accept, **({"Authorization": f"Bearer {TOKEN}"} if TOKEN else {})}
+    with _OPENER.open(urllib.request.Request(url, headers=headers)) as r:
+        return r.read()
+
+
 def get_json(url: str):
-    with urllib.request.urlopen(urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})) as r:
-        return json.load(r)
+    return json.loads(fetch(url))
 
 
 def main() -> None:
@@ -80,11 +111,11 @@ def main() -> None:
         release = releases[0]  # the API lists the newest first
         print(f"[fetch_circus_scene] no release for {want or 'this checkout'}; using the newest: {release['tag_name']}")
 
-    assets = {a["name"]: a["browser_download_url"] for a in release["assets"]}
+    assets = {a["name"]: a["url"] for a in release["assets"]}  # API URLs: they also work for a private repo
     sums = {}
     for m in ("manifest.json", "b2_manifest.json"):
         if m in assets:
-            sums.update({k: v.get("sha256") for k, v in get_json(assets[m])["files"].items()})
+            sums.update({k: v.get("sha256") for k, v in json.loads(fetch(assets[m], "application/octet-stream"))["files"].items()})
     b2 = any(b2_target(n) for n in assets)
     if not b2:
         print(f"[fetch_circus_scene] {release['tag_name']} has no B2 renderer yet (oraculum-renderer.yml); raw scenes only")
@@ -93,7 +124,7 @@ def main() -> None:
         target = b2_target(name)
         if not name.endswith(".tar.gz") or (b2 and not target):
             continue
-        data = urllib.request.urlopen(url).read()
+        data = fetch(url, "application/octet-stream")
         if sums.get(name) and hashlib.sha256(data).hexdigest() != sums[name]:
             sys.exit(f"{name}: checksum does not match the release manifest")
         with tempfile.TemporaryDirectory(dir=STATIC) as tmp:

@@ -689,12 +689,18 @@
         body.stale-data #robotList, body.stale-data #viewport2d, body.stale-data #textDataList { opacity: 0.45; filter: grayscale(1); }  /* no filter on the 3D canvas: costly */
         .bypass-banner.manual-banner { position: fixed; top: auto; bottom: 0; left: 0; right: 0; }  /* fixed: the page does not jump when MANUAL turns on */
         #gcState, #gcTime, #gcScore { white-space: nowrap; }
+        body:has(#manualBanner:not([hidden])) { padding-bottom: 44px; box-sizing: border-box; }  /* the fixed banner covers nothing */
         @media (max-width: 1024px) {  /* phones: the header wraps instead of scrolling the page sideways */
             .bar-section { flex-wrap: wrap; row-gap: 0.3rem; min-width: 0; }
             #statusText { max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
             body:has(#manualBanner:not([hidden])) { padding-bottom: 72px; }  /* the fixed MANUAL banner must not hide the page end */
         }
-        #rerunTimelineBar { display: none; }  /* no recording player yet: no empty 00:00 / 10:00 timeline */
+        #rerunTimelineBar { display: none; }
+        .activity-bar { overflow-y: auto; }  /* a wrapped header leaves less height: the last icon stays reachable */
+        @media (max-width: 1024px) {  /* phone landscape: the header wraps instead of spilling over the top edge */
+            .app-status-bar { height: auto; min-height: 40px; flex-wrap: wrap; row-gap: 4px; padding-top: 4px; padding-bottom: 4px; }
+            .bar-section { flex-wrap: wrap; row-gap: 4px; }
+        }  /* no recording player yet: no empty 00:00 / 10:00 timeline */
         #textDataList { overflow-y: auto; }  /* the inspector's last line was clipped */
         .manual-toggle { white-space: nowrap; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.7rem; min-height: 32px; border-radius: 6px; border: 1px solid var(--border-strong, #3b3f4a); font: 700 0.75rem var(--font-mono, monospace); color: var(--text-primary, #eceef2); cursor: pointer; }
         .manual-toggle:has(input:checked) { background: #facc15; border-color: #facc15; color: #1c1917; }
@@ -1031,7 +1037,7 @@
         import { OrbitControls } from 'three/addons/OrbitControls.js';
         import { createCircusView, leaderLines, placeLabels, showNote } from '/static/circus_view.js';
         import { FIELD, beliefDrawings, drawDrawings2D, drawRobot2D, fieldLines, gcSummary, loadField, penaltyOf, robotName, roleState, teamRgb } from '/static/field_model.js';
-        import { mountControlBar, robotActions, sendStop, stateUrl, withOperator } from '/static/control_bar.js';
+        import { mountControlBar, robotActions, toast, sendStop, stateUrl, withOperator } from '/static/control_bar.js';
         import { renderInspector as renderInspectorPanel } from '/static/inspector.js';
         await loadField(location.origin);  // the field of the gateway's config.yaml, before the scenes are built
 
@@ -1039,12 +1045,15 @@
         let API_URL = window.location.origin;
         // STOP ALL + control lock; when the holder keeps control after our request, MANUAL turns off
         const ctl = mountControlBar(document.getElementById("controlBar"), () => API_URL,
-                                    { onDenied: () => { if (isManualMode) window.toggleManualMode(false); } });
+                                    { onDenied: () => { if (isManualMode) window.toggleManualMode(false); },
+                                      onLost: (holder) => { if (isManualMode) { window.toggleManualMode(false); toast(`${holder || "Nobody"} has control now: MANUAL is off.`); } } });
         const cardActions = new Map();  // STOP / Resume per robot address, moved into each rebuilt card
         {   // STOP ALL stays reachable over the "turn your device" overlay (phones in portrait)
             const b = Object.assign(document.createElement("button"), { className: "ctl-stop ctl-stopall", textContent: "STOP ALL" });
             b.onclick = () => sendStop(() => API_URL, "all", "stop");
-            document.getElementById("overlayStop").append(b);
+            const bar = Object.assign(document.createElement("span"), { className: "ctl-bar" });  // the header's button style
+            bar.append(b);
+            document.getElementById("overlayStop").append(bar);
         }
         document.getElementById("gatewayIp").value = window.location.host;
         
@@ -1704,7 +1713,7 @@
         };
 
         addEventListener("keydown", (e) => {  // Escape closes the settings menu
-            if (e.key === "Escape") document.getElementById("hamburgerModal").classList.remove("open");
+            if (e.key === "Escape") ["hamburgerModal", "modalBackdrop"].forEach(id => document.getElementById(id).classList.remove("open"));
         });
         window.toggleHamburgerMenu = () => {
             const modal = document.getElementById("hamburgerModal");
@@ -1887,7 +1896,7 @@
         async function fetchState() {
             let nextDelay = 100;
             try {
-                const res = await fetch(stateUrl(API_URL), { signal: AbortSignal.timeout(5000) });
+                const res = await fetch(stateUrl(API_URL), { signal: AbortSignal.timeout(10000) });  // only against a hung request
                 const state = await res.json();
                 ctl.update(state);
                 showManualTarget();  // the MANUAL text follows the lock state
@@ -1921,11 +1930,11 @@
                 updateNetworkDashboard(state);
 
             } catch (err) {
-                console.error("[fetchState]", err);
+                if (err.name !== "AbortError") console.error("[fetchState]", err);
                 if (++failedPolls >= 3) {
                     isOnline = false;
                     gcState.className = "sim-gc-badge offline";
-                    gcState.textContent = "GC: OFFLINE";
+                    gcState.textContent = "—";  // the gateway is unreachable: nothing is known about the GameController
                 }
                 showGatewayStatus();
                 nextDelay = 1000;
@@ -2045,12 +2054,17 @@
             const a = (lastPolledState?.agents || []).find(x => x.id === r.id && (x.ip || "127.0.0.1") === r.ip);
             return `${a ? robotName(a) : "R" + r.id} (${r.ip})`;
         };
+        // The gateway refuses manual commands in READY, SET and PLAYING unless this tab enabled the bypass
+        const refereeBlocks = () => ["READY", "SET", "PLAYING"].includes(lastPolledState?.gamecontroller?.state)
+            && !document.getElementById("checkTestingOverride").checked;
         function showManualTarget() {
             const box = document.getElementById("checkManualMode");
             const selected = selectedRobotId !== null && selectedRobotId !== undefined ? { id: selectedRobotId, ip: selectedRobotIp } : null;
             let text;
             const waiting = isManualMode && !ctl.hasControl();  // no command leaves this page without the control lock
-            if (waiting) text = `MANUAL waits for control: ${ctl.holder() || "another operator"} has it (you asked in the header). Nothing is sent.`;
+            const blocked = isManualMode && refereeBlocks();
+            if (blocked) text = `MANUAL is blocked: the referee rule allows no manual command in ${lastPolledState?.gamecontroller?.state}. Nothing is sent. (Engineers: bypass in the menu.)`;
+            else if (waiting) text = `MANUAL waits for control: ${ctl.holder() || "another operator"} has it (you asked in the header). Nothing is sent.`;
             else if (isManualMode && manualRobot) text = `MANUAL ON → ${robotLabel(manualRobot)}. Selecting another robot does not change it.`;
             else if (releasedRobot) text = `Released ${robotLabel(releasedRobot)}: it returns to its own control 0.5 s after the last command.`
                 + (selected ? ` Turn MANUAL on to drive ${robotLabel(selected)}.` : "");
@@ -2059,6 +2073,7 @@
             document.getElementById("manualTarget").textContent = text;
             document.getElementById("manualToggleText").textContent = isManualMode ? "MANUAL: ON" : "MANUAL: OFF";
             document.getElementById("manualBannerText").textContent = !manualRobot ? ""
+                : blocked ? `MANUAL blocked by the referee rule (${lastPolledState?.gamecontroller?.state}): nothing is sent`
                 : waiting ? `MANUAL waits for control (${ctl.holder() || "another operator"} has it): nothing is sent`
                 : `MANUAL on → ${robotLabel(manualRobot)}: the joystick drives it`;
             document.getElementById("manualBanner").hidden = !isManualMode;
@@ -2139,7 +2154,7 @@
         window.addEventListener("blur", handleJoystickEnd);  // a lost release must not keep the robot walking
 
         async function sendControlLoop() {
-            if (isManualMode && manualRobot && ctl.hasControl()) {  // without the lock nothing is sent (no 423 flood)
+            if (isManualMode && manualRobot && ctl.hasControl() && !refereeBlocks()) {  // nothing is sent that would be refused
                 const sliderVxVal = parseFloat(document.getElementById("sliderVx").value);
                 const sliderVyVal = parseFloat(document.getElementById("sliderVy").value);
                 try {
@@ -2157,7 +2172,8 @@
                             testingOverride: document.getElementById("checkTestingOverride").checked
                         }))
                     });
-                    if (res.status === 423) ctl.locked(await res.json());
+                    // a reply to a command sent just before MANUAL turned off (control given away) needs no message
+                    if ((res.status === 423 || res.status === 403) && isManualMode) ctl.locked(await res.json());
                 } catch(e){}
             }
             setTimeout(sendControlLoop, 100);

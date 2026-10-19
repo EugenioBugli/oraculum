@@ -1,6 +1,7 @@
 #!/bin/bash
 # Pull-based deploy of the oraculum launcher on the droplet (owner's choice 2026-10-19: automatic from the default
-# branch). The droplet pulls the PUBLIC repo; no secret is stored in GitHub. Secrets stay in /opt/oraculum-launcher/
+# branch). The droplet pulls the private repo with a READ-ONLY deploy key (/opt/oraculum-launcher/deploy_key, added
+# under the repo's Settings -> Deploy keys); no secret is stored in GitHub. Secrets stay in /opt/oraculum-launcher/
 # (modal.env, github-oauth.env, cookie.env; mode 600). Run by oraculum-deploy.timer every 5 minutes.
 #
 #   /opt/oraculum-launcher/deploy.sh          # deploy if origin/$BRANCH moved
@@ -10,8 +11,9 @@
 # /opt/oraculum-launcher/image_id (written by the person who builds it with hosted/modal_session.py start).
 set -euo pipefail
 cd /opt/oraculum-launcher
-REPO=${REPO:-https://github.com/EugenioBugli/oraculum.git}
-BRANCH=${BRANCH:-master}
+REPO=${REPO:-git@github.com:EmanueleMusumeci/robocup_ui.git}
+BRANCH=${BRANCH:-main}
+[ -f deploy_key ] && export GIT_SSH_COMMAND="ssh -i /opt/oraculum-launcher/deploy_key -o IdentitiesOnly=yes"
 log() { echo "$(date -u +%FT%TZ) $*" | tee -a deploy.log; }
 
 [ -d repo/.git ] || git clone -q --depth 50 -b "$BRANCH" "$REPO" repo

@@ -285,14 +285,19 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 0.8rem 1rem;
+            flex-wrap: wrap;
+            gap: 0.15rem 0.6rem;
+            padding: 0.45rem 0.7rem;
             border: 1px solid rgba(255, 255, 255, 0.03);
             border-radius: 10px;
             background: rgba(255, 255, 255, 0.01);
             cursor: pointer;
             transition: all 0.2s;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.35rem;
         }
+        .card-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; margin-top: 0.2rem; white-space: nowrap; }
+        .card-actions .ctl-act button { padding: 2px 8px; font-size: 11px; }
+        .robot-item .robot-camera { white-space: nowrap; margin-top: 0; }
 
         .robot-item:hover, .robot-item.selected {
             background: rgba(0, 255, 136, 0.05);
@@ -841,6 +846,7 @@
         body.stale-data #robotList, body.stale-data #viewport2d, body.stale-data #textDataList { opacity: 0.45; filter: grayscale(1); }  /* no filter on the 3D canvas: costly */
         .bypass-banner.manual-banner { position: fixed; top: auto; bottom: 0; left: 0; right: 0; }  /* fixed: the page does not jump when MANUAL turns on */
         #gcState, #gcTime, #gcScore { white-space: nowrap; }
+        body:has(#manualBanner:not([hidden])) { padding-bottom: 44px; box-sizing: border-box; }  /* the fixed banner covers nothing */
         @media (max-width: 1024px) {  /* phones: the header wraps instead of scrolling the page sideways */
             .bar-section { flex-wrap: wrap; row-gap: 0.3rem; min-width: 0; }
             #statusText { max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -920,7 +926,7 @@
         <div class="workspace-col" style="overflow-y: auto;">
             
             <!-- Robot Hierarchy Panel -->
-            <div class="panel-box" style="flex: 1; min-height: 200px;">
+            <div class="panel-box" style="flex: 2; min-height: 260px;">
                 <div class="panel-title">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                     ROBOT HIERARCHY & TEAM
@@ -932,7 +938,7 @@
             </div>
 
             <!-- Debug Drawings Checklist Panel -->
-            <div class="panel-box" style="flex: 1; min-height: 180px;">
+            <div class="panel-box" style="flex: 1; min-height: 140px;">
                 <div class="panel-title">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
                     DEBUG DRAWINGS CHECKLIST
@@ -1097,7 +1103,7 @@
         import { OrbitControls } from 'three/addons/OrbitControls.js';
         import { createCircusView, leaderLines, placeLabels, showNote } from '/static/circus_view.js';
         import { FIELD, beliefDrawings, drawDrawings2D, drawRobot2D, fieldLines, gcSummary, loadField, penaltyOf, robotName, roleState, teamRgb, teamSummary, versionMark } from '/static/field_model.js';
-        import { mountControlBar, robotActions, stateUrl, withOperator } from '/static/control_bar.js';
+        import { mountControlBar, robotActions, toast, stateUrl, withOperator } from '/static/control_bar.js';
         import { renderInspector } from '/static/inspector.js';
         await loadField(location.origin);  // the field of the gateway's config.yaml, before the scenes are built
 
@@ -1105,7 +1111,8 @@
         let API_URL = window.location.origin;
         // STOP ALL + control lock; when the holder keeps control after our request, MANUAL turns off
         const ctl = mountControlBar(document.getElementById("controlBar"), () => API_URL,
-                                    { onDenied: () => { if (isManualMode) window.toggleManualMode(false); } });
+                                    { onDenied: () => { if (isManualMode) window.toggleManualMode(false); },
+                                      onLost: (holder) => { if (isManualMode) { window.toggleManualMode(false); toast(`${holder || "Nobody"} has control now: MANUAL is off.`); } } });
         const cardActions = new Map();  // STOP / Resume per robot address, moved into each rebuilt card
         document.getElementById("gatewayIp").value = window.location.host;
         
@@ -2044,7 +2051,7 @@
         async function fetchState() {
             let nextDelay = 100;
             try {
-                const res = await fetch(stateUrl(API_URL), { signal: AbortSignal.timeout(5000) });
+                const res = await fetch(stateUrl(API_URL), { signal: AbortSignal.timeout(10000) });  // only against a hung request
                 const state = await res.json();
                 ctl.update(state);
                 showManualTarget();  // the MANUAL text follows the lock state
@@ -2077,11 +2084,11 @@
                 updateNetworkDashboard(state);
 
             } catch (err) {
-                console.error("[fetchState]", err);
+                if (err.name !== "AbortError") console.error("[fetchState]", err);
                 if (++failedPolls >= 3) {
                     isOnline = false;
                     gcState.className = "gc-badge offline";
-                    gcState.textContent = "GC: OFFLINE";
+                    gcState.textContent = "—";  // the gateway is unreachable: nothing is known about the GameController
                 }
                 showGatewayStatus();
                 nextDelay = 1000;
@@ -2108,15 +2115,14 @@
                 const isSelected = agent.id === selectedRobotId ? "selected" : "";
                 
                 html += `
-                    <div class="robot-item ${isSelected}" onclick="selectRobot(${agent.id}, '${agent.ip || '127.0.0.1'}')">
+                    <div class="robot-item ${isSelected}" title="IP ${agent.ip || '127.0.0.1'}" onclick="selectRobot(${agent.id}, '${agent.ip || '127.0.0.1'}')">
                         <div class="robot-meta">
                             <span class="robot-id" style="color: var(--text-primary)"><span class="team-swatch" style="background: rgb(${teamRgb(agent)})"></span>${robotName(agent)}</span>
                             <span class="robot-role">${roleState(agent)}${penaltyOf(agent, state.gamecontroller) ? `<b style="color: var(--accent-amber, #f59e0b);"> · ⛔ ${penaltyOf(agent, state.gamecontroller)}</b>` : ''}${agent.latch ? `<b style="color: var(--accent-red, #ef4444);"> · ${({ damp: 'DAMPED', lie: 'LYING', stop: 'STOPPED' })[agent.latch] || ''}</b>` : ''}</span>
                         </div>
                         <div class="robot-stat">
-                            <div>IP: ${agent.ip || '127.0.0.1'}${agent.fallen ? ' <b style="color: var(--accent-red, #ef4444);">⚠ fallen</b>' : ''}</div>
-                            <div>BATT: <span class="battery-badge ${batt === null ? 'unknown' : agent.battery < 20 ? 'low' : ''}">${batt === null ? 'n/a' : (agent.battery < 20 ? '⚠ ' : '') + batt + '%'}</span>${versionMark(agent, state.fleet?.head) ? ` · <span title="robot code against this gateway's checkout">code ${versionMark(agent, state.fleet?.head)}</span>` : ''} · LINK ${(() => { const age = state.fleet?.link?.[agent.ip]?.age ?? 0; return age < 1 ? 'ok' : `<b style="color: var(--accent-amber, #f59e0b);">${age.toFixed(0)} s old</b>`; })()}</div>
-                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.25rem;"><span class="robot-act" data-act="${agent.ip || '127.0.0.1'}" data-label="${robotName(agent)}"></span><a class="robot-camera" style="margin-top: 0;" href="/robot.html?robot=${encodeURIComponent((agent.ip || '127.0.0.1') + '|' + agent.id)}" onclick="event.stopPropagation()">Robot ›</a></div>
+                            <div>${agent.fallen ? '<b style="color: var(--accent-red, #ef4444);">⚠ fallen</b> · ' : ''}BATT <span class="battery-badge ${batt === null ? 'unknown' : agent.battery < 20 ? 'low' : ''}">${batt === null ? 'n/a' : (agent.battery < 20 ? '⚠ ' : '') + batt + '%'}</span>${versionMark(agent, state.fleet?.head) ? ` · <span title="robot code against this gateway's checkout">code ${versionMark(agent, state.fleet?.head)}</span>` : ''}${(() => { const age = state.fleet?.link?.[agent.ip]?.age ?? 0; return age < 1 ? '' : ` · <b style="color: var(--accent-amber, #f59e0b);">LINK ${age.toFixed(0)} s old</b>`; })()}</div>
+                            <div class="card-actions"><span class="robot-act" data-act="${agent.ip || '127.0.0.1'}" data-label="${robotName(agent)}"></span><a class="robot-camera" href="/robot.html?robot=${encodeURIComponent((agent.ip || '127.0.0.1') + '|' + agent.id)}" onclick="event.stopPropagation()">Robot ›</a></div>
                         </div>
                     </div>
                 `;
@@ -2293,12 +2299,17 @@
             const a = (lastState?.agents || []).find(x => x.id === r.id && (x.ip || "127.0.0.1") === r.ip);
             return `${a ? robotName(a) : "R" + r.id} (${r.ip})`;
         };
+        // The gateway refuses manual commands in READY, SET and PLAYING unless this tab enabled the bypass
+        const refereeBlocks = () => ["READY", "SET", "PLAYING"].includes(lastState?.gamecontroller?.state)
+            && !document.getElementById("checkTestingOverride").checked;
         function showManualTarget() {
             const box = document.getElementById("checkManualMode");
             const selected = selectedRobotId !== null && selectedRobotId !== undefined ? { id: selectedRobotId, ip: selectedRobotIp } : null;
             let text;
             const waiting = isManualMode && !ctl.hasControl();  // no command leaves this page without the control lock
-            if (waiting) text = `MANUAL waits for control: ${ctl.holder() || "another operator"} has it (you asked in the header). Nothing is sent.`;
+            const blocked = isManualMode && refereeBlocks();
+            if (blocked) text = `MANUAL is blocked: the referee rule allows no manual command in ${lastState?.gamecontroller?.state}. Nothing is sent. (Engineers: bypass in the menu.)`;
+            else if (waiting) text = `MANUAL waits for control: ${ctl.holder() || "another operator"} has it (you asked in the header). Nothing is sent.`;
             else if (isManualMode && manualRobot) text = `MANUAL ON → ${robotLabel(manualRobot)}. Selecting another robot does not change it.`;
             else if (releasedRobot) text = `Released ${robotLabel(releasedRobot)}: it returns to its own control 0.5 s after the last command.`
                 + (selected ? ` Turn MANUAL on to drive ${robotLabel(selected)}.` : "");
@@ -2307,6 +2318,7 @@
             document.getElementById("manualTarget").textContent = text;
             document.getElementById("manualToggleText").textContent = isManualMode ? "MANUAL: ON" : "MANUAL: OFF";
             document.getElementById("manualBannerText").textContent = !manualRobot ? ""
+                : blocked ? `MANUAL blocked by the referee rule (${lastState?.gamecontroller?.state}): nothing is sent`
                 : waiting ? `MANUAL waits for control (${ctl.holder() || "another operator"} has it): nothing is sent`
                 : `MANUAL on → ${robotLabel(manualRobot)}: the joystick drives it`;
             document.getElementById("manualBanner").hidden = !isManualMode;
@@ -2390,7 +2402,7 @@
         window.addEventListener("blur", handleJoystickEnd);  // a lost release must not keep the robot walking
 
         async function sendControlLoop() {
-            if (isManualMode && manualRobot && ctl.hasControl()) {  // without the lock nothing is sent (no 423 flood)
+            if (isManualMode && manualRobot && ctl.hasControl() && !refereeBlocks()) {  // nothing is sent that would be refused
                 const sliderVxVal = parseFloat(document.getElementById("sliderVx").value);
                 const sliderVyVal = parseFloat(document.getElementById("sliderVy").value);
                 
@@ -2415,7 +2427,8 @@
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify(withOperator(payload))
                     });
-                    if (res.status === 423) ctl.locked(await res.json());
+                    // a reply to a command sent just before MANUAL turned off (control given away) needs no message
+                    if ((res.status === 423 || res.status === 403) && isManualMode) ctl.locked(await res.json());
                 } catch (err) {
                     console.error("[Control] Failed sending manual command:", err);
                 }

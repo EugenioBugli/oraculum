@@ -93,6 +93,7 @@ class ControlServer:
         # Hosted session: every joystick datagram goes to this address, whatever the body says (no UDP to the internet).
         self.control_ip = os.environ.get("ORACULUM_CONTROL_IP", "")
         self.control_lock = ControlLock()  # engineer mode: one operator drives at a time (src/control_lock.py)
+        self.boot = round(time.time())  # in /state: a page sees a gateway restart (event ids begin at 1 again)
 
         self.http_server = None
 
@@ -283,6 +284,7 @@ class ControlServer:
                     state_dict["fleet"] = {"head": server_instance.git_head(), "link": server_instance.udp_receiver.link_stats()}
                     state_dict["rec"] = server_instance.recorder.status()
                     state_dict["lock"] = server_instance.control_lock.view(client)
+                    state_dict["boot"] = server_instance.boot
                     ids = server_instance.events.ids()
                     state_dict["last_event"] = ids[-1] if ids else 0
 

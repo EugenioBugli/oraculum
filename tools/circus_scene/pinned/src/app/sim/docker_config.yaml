@@ -1,0 +1,5 @@
+# Maximus sim2sim via booster-motion DDS path
+# Volumes with empty/relative host path are resolved relative to FRAMEWORK_PATH or PIXI_PROJECT_ROOT.
+image: spqr_maximus_bridge
+volumes:
+  - ":/workspace"

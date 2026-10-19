@@ -23,8 +23,11 @@ const STYLE = `
 .ctl-bar { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; font: 600 12px var(--font, system-ui, sans-serif); }
 .ctl-lock { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 6px; white-space: nowrap;
     border: 1px solid var(--border-strong, #3b3f4a); color: var(--text-2, #9fa4b2); background: var(--bg-card, #24272e); }
-.ctl-txt { max-width: 26ch; overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 900px) { .ctl-txt { max-width: 14ch; } .ctl-bar { flex-wrap: nowrap; } }
+.ctl-txt { white-space: nowrap; }
+.ctl-nm { display: inline-block; vertical-align: bottom; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; }  /* only names shorten */
+@media (max-width: 700px) { .hold-pre { display: none; } }  /* "Hold: LIE DOWN" -> "LIE DOWN" on phones (still a 2 s hold) */
+@media (max-width: 900px) { .ctl-nm { max-width: 9ch; } .ctl-bar { flex-wrap: nowrap; } }
+@media (pointer: coarse) { .ctl-bar button, .ctl-act button { min-height: 40px; } }  /* touch targets */
 .ctl-lock.mine { color: #10b981; border-color: #10b981; }
 .ctl-lock.ask { color: #f59e0b; border-color: #f59e0b; }
 .ctl-bar button, .ctl-act button { font: 700 12px var(--font, system-ui, sans-serif); border-radius: 6px; padding: 4px 9px;
@@ -32,7 +35,7 @@ const STYLE = `
 .ctl-bar button:focus-visible, .ctl-act button:focus-visible { outline: 2px solid #f59e0b; outline-offset: 2px; }
 .ctl-name { cursor: pointer; text-decoration: underline dotted; }
 button.ctl-stop { background: #dc2626; border-color: #dc2626; color: #fff; letter-spacing: .04em; }
-button.ctl-stopall { padding: 5px 14px; font-size: 13px; }
+button.ctl-stopall { padding: 5px 14px; font-size: 13px; white-space: nowrap; }
 .ctl-act { display: inline-flex; gap: 4px; flex-wrap: wrap; }
 button.ctl-hold { position: relative; overflow: hidden; color: #fbbf24; border-color: #78350f; }
 button.ctl-hold.damp { color: #f87171; border-color: #7f1d1d; }
@@ -45,10 +48,11 @@ button.ctl-hold:disabled { opacity: .45; cursor: not-allowed; }
 .ctl-danger p { margin: 6px 0; color: var(--text-2, #9fa4b2); font-weight: 500; }
 .ctl-danger input { font: 600 12px var(--mono, monospace); padding: 4px 6px; border-radius: 6px; border: 1px solid #7f1d1d;
     background: var(--bg-input, #2b2e37); color: var(--text, #eceef2); width: 7em; margin-right: 6px; }
-.ctl-toast { position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%); z-index: 9999; max-width: min(92vw, 560px);
+.ctl-toast { position: fixed; bottom: 84px; left: 0; right: 0; margin: 0 auto; width: fit-content; z-index: 9999; max-width: min(92vw, 560px);
     padding: 8px 14px; border-radius: 8px; font: 600 13px var(--font, system-ui, sans-serif); color: #fff; background: #065f46;
     box-shadow: 0 6px 24px rgba(0,0,0,.4); }
 .ctl-toast.err { background: #991b1b; }
+body > .ctl-toast { visibility: visible !important; }  /* also over a "turn your device" overlay that hides the page */
 `;
 let styled = false, toastEl = null, toastTimer = 0;
 function style() {
@@ -105,16 +109,22 @@ export function mountControlBar(host, api, opts = {}) {
     stopAll.onclick = () => sendStop(api, "all", "stop");
     host.replaceChildren(el("span", { className: "ctl-bar" }, lock, stopAll));
 
+    const setView = (v) => {  // opts.onLost(): this page had control and no longer has it (gave it, or it expired)
+        const lost = view.you && !v.you;
+        view = v;
+        render();
+        if (lost) opts.onLost?.(v.holder);
+    };
     const act = async (action) => {
         const r = await post(api, "/control_lock", { action });
-        if (r.lock) { view = r.lock; render(); }
+        if (r.lock) setView(r.lock);
         if (r.result === "busy") toast("Another operator is already waiting for control. Try again later.", true);
         if (!r.ok) toast(r.error || `HTTP ${r.status}`, true);
         return r;
     };
     const button = (text, onclick, title = "") => el("button", { textContent: text, onclick, title });
     const name = () => {
-        const n = el("span", { className: "ctl-name", textContent: operator.name, tabIndex: 0, title: "Your name for the other operators (click to change)" });
+        const n = el("span", { className: "ctl-name ctl-nm", textContent: operator.name, tabIndex: 0, title: "Your name for the other operators (click to change)" });
         n.onclick = n.onkeydown = (e) => {
             if (e.type === "keydown" && e.key !== "Enter") return;
             const input = el("input", { value: operator.name, maxLength: 40, size: 12 });
@@ -142,14 +152,15 @@ export function mountControlBar(host, api, opts = {}) {
     function render() {
         lock.className = "ctl-lock" + (view.you ? " mine" : "") + (view.request || view.waiting ? " ask" : "");
         const txt = (...kids) => el("span", { className: "ctl-txt" }, ...kids);  // one text run: no gaps inside "(name)"
+        const nm = (s) => el("span", { className: "ctl-nm", textContent: s, title: s });  // a long name shortens, the words stay
         if (view.you && view.request) {
-            lock.replaceChildren(txt(`${view.request} asks for control`), button("Give", () => act("grant")), button("Keep", () => act("deny")));
+            lock.replaceChildren(txt(nm(view.request), " asks for control"), button("Give", () => act("grant")), button("Keep", () => act("deny")));
         } else if (view.you) {
             lock.replaceChildren(txt("Control: you (", name(), ")"), button("Release", () => act("release"), "Let another operator drive"));
         } else if (view.waiting) {
-            lock.replaceChildren(txt(`Asked ${view.holder}…`), button("Cancel", () => act("release")));
+            lock.replaceChildren(txt("Asked ", nm(view.holder), "…"), button("Cancel", () => act("release")));
         } else if (view.holder) {
-            lock.replaceChildren(txt(`Control: ${view.holder}`), button("Ask", () => act("take"), `Ask ${view.holder} to give you control`));
+            lock.replaceChildren(txt("Control: ", nm(view.holder)), button("Ask", () => act("take"), `Ask ${view.holder} to give you control`));
         } else {
             lock.replaceChildren(txt("Control: free · ", name()), button("Take", () => act("take"), "Only the operator with control can drive robots"));
         }
@@ -160,16 +171,16 @@ export function mountControlBar(host, api, opts = {}) {
             const v = state && state.lock;
             if (!v) return;
             if (v.denied) { toast(`${v.holder} kept control.`, true); opts.onDenied?.(v.holder); }
-            if (JSON.stringify(v) !== JSON.stringify(view)) { view = v; render(); }
+            if (JSON.stringify(v) !== JSON.stringify(view)) setView(v);
         },
         take: () => act("take"),
         hasControl: () => !!view.you,
         waiting: () => !!view.waiting,
         holder: () => view.holder || "",
-        locked(reply) {  // a 423 from /control: say it once every 3 s, not 12 times a second
+        locked(reply) {  // a 423 (lock) or 403 (referee rule) from /control: say it once every 3 s, not 12 times a second
             if (performance.now() - lastLocked < 3000) return;
             lastLocked = performance.now();
-            toast(`${reply.holder || "Another operator"} has control: ask for it in the header.`, true);
+            toast(reply.status === "blocked" ? reply.reason : `${reply.holder || "Another operator"} has control: ask for it in the header.`, true);
         },
     };
 }
@@ -208,7 +219,8 @@ export function dangerDamp(ip, api, label) {
 
 function holdButton(text, title, ms, onDone, cls = "") {
     const fill = el("i", { className: "fill" });
-    const b = el("button", { className: `ctl-hold ${cls}`, title }, fill, el("span", { textContent: text }));
+    const [pre, main] = text.includes(": ") ? [text.slice(0, text.indexOf(": ") + 2), text.slice(text.indexOf(": ") + 2)] : ["", text];
+    const b = el("button", { className: `ctl-hold ${cls}`, title }, fill, el("span", {}, el("span", { className: "hold-pre", textContent: pre }), main));
     let t0 = 0, raf = 0;
     const tick = () => {
         const p = Math.min(1, (performance.now() - t0) / ms);

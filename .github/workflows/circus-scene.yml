@@ -3,17 +3,15 @@
 # config (the scene `pixi run sim` shows). Publishes it as a release of this repository;
 # tools/fetch_circus_scene.py downloads it for the gateway. Tools: tools/circus_scene/.
 #
-# Needs the repository secret SPQR_READ_TOKEN: a fine-grained token with read-only "Contents"
-# access to SPQRTeam/spqrbooster2026 (private). Release assets of a public repository are public.
+# Needs no token: the framework folders it reads and the circus commit are pinned in tools/circus_scene/pinned/
+# (tools/circus_scene/pin.sh, run locally after changes on spqrbooster2026). SPQRTeam/circus is public.
 name: circus scene export
 
 on:
-  schedule:
-    - cron: "17 3 * * *"  # nightly: picks up circus submodule bumps and config changes in spqrbooster2026
   workflow_dispatch:
     inputs:
       circus_ref:
-        description: "circus commit or branch (empty: the commit spqrbooster2026 main pins)"
+        description: "circus commit or branch (empty: the commit in tools/circus_scene/pinned/PIN)"
         required: false
         default: ""
       force:
@@ -39,35 +37,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check the read token
-        env:
-          SPQR_READ_TOKEN: ${{ secrets.SPQR_READ_TOKEN }}
-        run: |
-          if [ -z "$SPQR_READ_TOKEN" ]; then
-            echo "::error::Repository secret SPQR_READ_TOKEN is missing (read-only access to SPQRTeam/spqrbooster2026)."
-            exit 1
-          fi
-
-      # Only the two folders circus reads from the framework (FRAMEWORK_PATH): scenes and fields.
-      - uses: actions/checkout@v4
-        with:
-          repository: SPQRTeam/spqrbooster2026
-          ref: main
-          token: ${{ secrets.SPQR_READ_TOKEN }}
-          path: maximus
-          sparse-checkout: |
-            src/app/sim
-            src/app/config/fields
+      # The two folders circus reads from the framework (FRAMEWORK_PATH), pinned in this repository by
+      # tools/circus_scene/pin.sh (no token for the private spqrbooster2026 needed).
+      - name: Use the pinned framework folders
+        run: cp -r tools/circus_scene/pinned maximus
 
       - name: Resolve the scene version
         id: refs
         run: |
           circus="${{ inputs.circus_ref }}"
-          [ -n "$circus" ] || circus=$(git -C maximus rev-parse HEAD:external/circus)
+          [ -n "$circus" ] || circus=$(sed -n 's/^circus=//p' maximus/PIN)
           config=$(tools/circus_scene/scene_tag.sh maximus --config-only)
           tag="circus-scene-${circus:0:12}-${config}"
           echo "circus=$circus" >> "$GITHUB_OUTPUT"
-          echo "maximus=$(git -C maximus rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "maximus=$(sed -n 's/^spqrbooster2026=//p' maximus/PIN)" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "scene version: $tag"
 
