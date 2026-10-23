@@ -1,6 +1,8 @@
 // STOP and engineer mode for every page (index, dashboard, fleet, robot).
 // - mountControlBar(el, api): STOP ALL and the control lock (src/control_lock.py) in the page header.
-// - robotActions(ip, api, {lie}): STOP, Resume and (only where asked) a 2 s press-and-hold LIE DOWN for one robot.
+// - robotActions(ip, api, {lie, getup, sit}): STOP, Resume and (only where asked) Get up, Sit down and a 2 s press-and-hold
+//   LIE DOWN for one robot.
+// - sendGoto(api, ip, target): POST /goto, a robot walks to a field position (or {cancel: true} stops the walk).
 // - dangerDamp(ip, api, label): DAMP drops the robot and can break it: a closed "Danger" section, the robot's name
 //   typed to unlock, then a 3 s press-and-hold. The gateway also refuses DAMP for "all" and without confirm.
 // - stateUrl(api) / withOperator(body): every /state poll and /control body carries this tab's client id, so the
@@ -142,13 +144,24 @@ async function post(api, path, body) {
 }
 
 const AFTER = { stop: "stands until Resume", lie: "lies down until Resume", damp: "has soft motors" };
+const KIND = { lie: "LIE DOWN", getup: "GET UP", sit: "SIT DOWN" };  // else kind.toUpperCase()
 export async function sendStop(api, robot, kind, extra = {}) {
     const r = await post(api, "/stop", { robot, kind, ...extra });
     const who = (r.names || r.targets || []).join(", ");  // "T19 R3 (127.0.0.1)"; robots behind one address share it
     const many = robot === "all" || (r.names || []).join().includes(",");
-    if (r.ok) toast(`${kind === "lie" ? "LIE DOWN" : kind.toUpperCase()} sent to ${who}` +
-                    (AFTER[kind] ? `: ${many ? "each robot" : "the robot"} ${AFTER[kind]}` : ""));
-    else toast(r.error || `${kind.toUpperCase()} failed (HTTP ${r.status})`, true);
+    const word = KIND[kind] || kind.toUpperCase();
+    if (r.ok) toast(`${word} sent to ${who}` + (AFTER[kind] ? `: ${many ? "each robot" : "the robot"} ${AFTER[kind]}` : ""));
+    else toast(r.error || `${word} failed (HTTP ${r.status})`, true);
+    return r;
+}
+
+// POST /goto: target {pos: "ready_1"} (the gateway resolves it in the robot's own team frame), {x, y, theta} (shared field
+// frame, metres, rad) or {cancel: true} (the robot stops and stands: latch "getup"). label: only for the toast. "sent", as /stop.
+export async function sendGoto(api, robot, target, extra = {}) {
+    const { label, ...fields } = target;
+    const r = await post(api, "/goto", { robot, ...fields, ...extra });
+    const what = target.cancel ? "Cancel go-to" : `Go to ${label || target.pos || `(${target.x?.toFixed(1)}, ${target.y?.toFixed(1)})`}`;
+    toast(r.ok ? `${what} sent to ${(r.names || r.targets || [robot]).join(", ")}` : r.error || `${what} failed (HTTP ${r.status})`, !r.ok);
     return r;
 }
 
@@ -366,10 +379,11 @@ export function mountOverlays(api, { right = false } = {}) {
     };
 }
 
-// STOP and Resume for one robot; with {lie: true} also LIE DOWN, sent only after a 2 s press (pointer or Space/Enter).
+// STOP and Resume for one robot; with {lie: true} also LIE DOWN, sent only after a 2 s press (pointer or Space/Enter);
+// {getup, sit: true}: Get up and Sit down (class ctl-more; sit exists only on the T2: pass sit only for a T2). extra(): fields added to every /stop body (testingOverride).
 // Every button names its robot with its team ("STOP T5 R4", "STOP T19 R3·.2"), and STOP is a red outline: only STOP ALL is filled red.
 // {named: true}: taller buttons for robot.html, where the buttons sit apart from any card.
-export function robotActions(ip, api, { lie = false, label = "", named = false } = {}) {
+export function robotActions(ip, api, { lie = false, getup = false, sit = false, label = "", named = false, extra = () => ({}) } = {}) {
     style();
     const box = el("span", { className: "ctl-act" + (named ? " named" : "") });
     const name = shortName(label, ip);  // the same text on every page
@@ -377,10 +391,15 @@ export function robotActions(ip, api, { lie = false, label = "", named = false }
     const stop = el("button", { className: "ctl-stop one", title: `STOP ${label || ip}: stand in the Prep pose until Resume (also ends a DAMP of this robot)` }, "STOP", who());
     stop.onclick = (e) => { e.stopPropagation(); sendStop(api, ip, "stop"); };
     const resume = el("button", { title: `Resume ${label || ip}: the Play combo (needs control)` }, "Resume", who());
-    resume.onclick = (e) => { e.stopPropagation(); sendStop(api, ip, "resume"); };
+    resume.onclick = (e) => { e.stopPropagation(); sendStop(api, ip, "resume", extra()); };
     box.append(stop, resume);
+    for (const [on, kind, text, title] of [[getup, "getup", "Get up", "gets up if down, then stands still until Resume"],
+                                     [sit, "sit", "Sit down", "sits down (T2 only)"]]) {
+        if (on) box.append(el("button", { className: "ctl-more", title: `${text} ${label || ip}: the robot ${title}`,
+                                          onclick: (e) => { e.stopPropagation(); sendStop(api, ip, kind, extra()); } }, text, who()));
+    }
     if (lie) box.append(holdButton("Hold: LIE DOWN", `Hold 2 s: ${label || ip} lies down on its back (controlled) until Resume`, 2000,
-                                   () => sendStop(api, ip, "lie"), "", who()));
+                                   () => sendStop(api, ip, "lie", extra()), "", who()));
     return box;
 }
 

@@ -1074,16 +1074,19 @@
         <!-- RIGHT COLUMN: Inspector & Control Panels (320px) -->
         <div class="workspace-col" style="overflow-y: auto;">
             
-            <!-- Manual Joystick Panel -->
-            <div class="panel-box" style="min-height: 220px; flex-shrink: 0;">
+            <!-- Command panel of the selected robot (static/robot_panel.js): name, 3D miniature, joystick, commands; a hint before a selection -->
+            <div class="panel-box" id="robotPanel" style="flex-shrink: 0;">
                 <div class="panel-title" style="justify-content: space-between;">
                     <span style="display: flex; align-items: center; gap: 0.4rem;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="12" x2="10" y2="12"></line><line x1="8" y1="10" x2="8" y2="14"></line><circle cx="15" cy="13" r="1"></circle><circle cx="18" cy="11" r="1"></circle><rect x="2" y="6" width="20" height="12" rx="6"></rect></svg>
-                        JOYSTICK
+                        ROBOT COMMANDS
                     </span>
-                    <label class="manual-toggle"><input type="checkbox" id="checkManualMode" onchange="toggleManualMode(this.checked)" disabled aria-describedby="manualTarget"><span id="manualToggleText">MANUAL: OFF</span></label>
+                    <label class="manual-toggle rp-gated"><input type="checkbox" id="checkManualMode" onchange="toggleManualMode(this.checked)" disabled aria-describedby="manualTarget"><span id="manualToggleText">MANUAL: OFF</span></label>
                 </div>
                 <div class="panel-body">
+                    <div class="rp-empty">Select a robot in the list to see it, drive it and send it commands.</div>
+                    <div class="rp-gated">
+                    <div class="rp-head"></div>
                     <div class="manual-target" id="manualTarget">select a robot first</div>
                     <div class="joystick-panel-grid" style="display: flex; gap: 0.8rem; align-items: center;">
                         <div class="joy-boundary" id="joyBoundary" style="width: 100px; height: 100px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 50%; position: relative; flex-shrink: 0;">
@@ -1101,6 +1104,8 @@
                             </div>
                             <input type="range" id="sliderVx" min="0.1" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('labelVx').textContent=Number(this.value).toFixed(1)">
                         </div>
+                    </div>
+                    <div class="rp-cmds"></div>
                     </div>
                 </div>
             </div>
@@ -1171,8 +1176,9 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/OrbitControls.js';
         import { createCircusView, leaderLines, placeLabels, showNote } from '/static/circus_view.js';
-        import { FIELD, beliefDrawings, drawDrawings2D, drawRobot2D, drawRobotTag2D, fieldLines, gcSummary, loadField, isRobot, penaltyOf, robotName, robotTag, shortName, linkStale, linkCounts, robotTexts, roleState, stateMismatch, teamLegend, teamPrimary, teamRgb, teamSummary, versionMark, budgetSummary } from '/static/field_model.js';
+        import { FIELD, beliefDrawings, gotoDrawings, latchWord, drawDrawings2D, drawRobot2D, drawRobotTag2D, fieldLines, gcSummary, loadField, isRobot, penaltyOf, robotName, robotTag, shortName, linkStale, linkCounts, robotTexts, roleState, stateMismatch, teamLegend, teamPrimary, teamRgb, teamSummary, versionMark, budgetSummary } from '/static/field_model.js';
         import { mountControlBar, mountOverlays, robotActions, toast, stateUrl, withOperator } from '/static/control_bar.js';
+        import { mountRobotPanel } from '/static/robot_panel.js';
         import { renderInspector } from '/static/inspector.js';
         await loadField(location.origin);  // the field of the gateway's config.yaml, before the scenes are built
 
@@ -1186,6 +1192,10 @@
                                       onLost: (holder) => { if (isManualMode) { window.toggleManualMode(false); toast(`${holder || "Nobody"} has control now: MANUAL is off.`); } } });
         const ov = mountOverlays(() => API_URL);  // GameController + recording controls, overlays on every page
         const cardActions = new Map();  // STOP / Resume per robot address, moved into each rebuilt card
+        // Command panel of the selected robot (name, 3D miniature, joystick, commands); commands carry this tab's bypass
+        const robotPanel = mountRobotPanel(document.getElementById("robotPanel"), () => API_URL,
+                                           { extra: () => ({ testingOverride: document.getElementById("checkTestingOverride").checked }) });
+        robotPanel.update(null, null, "");  // the hint until a robot is selected
         document.getElementById("gatewayIp").value = window.location.host;
         
         let isOnline = false;
@@ -2184,7 +2194,7 @@
                 ov.update(state);
                 showManualTarget();  // the MANUAL text follows the lock state
                 // Each robot's own ball estimate and seen obstacles: drawings "beliefs/ball", "beliefs/obstacles"
-                state.drawings = (state.drawings || []).concat(beliefDrawings((state.agents || []).filter(a => !linkStale(state, a))));  // old beliefs of a silent robot are not drawn
+                state.drawings = (state.drawings || []).concat(beliefDrawings((state.agents || []).filter(a => !linkStale(state, a))), gotoDrawings(state.agents));  // + go-to targets (robot panel)  // old beliefs of a silent robot are not drawn
                 
                 isOnline = true;
                 failedPolls = 0;
@@ -2215,6 +2225,7 @@
                 update3DScene(state);
 
                 updateRobotsList(state);
+                robotPanel.update(state, selectedRobotId, selectedRobotIp);
                 updateDrawingFilters(state.drawings || []);
                 updateNetworkDashboard(state);
 
@@ -2255,7 +2266,7 @@
                     <div class="robot-item ${isSelected}" title="IP ${agent.ip || '127.0.0.1'}" onclick="selectRobot(${agent.id}, '${agent.ip || '127.0.0.1'}')">
                         <div class="robot-meta">
                             <span class="robot-id" style="color: var(--text-primary)"><span class="team-swatch" style="background: rgb(${teamRgb(agent)})"></span>${robotName(agent, state.agents)}</span>
-                            <span class="robot-role">${roleState(agent)}${penaltyOf(agent, state.gamecontroller) ? `<b style="color: var(--accent-amber, #f59e0b);"> · ⛔ ${penaltyOf(agent, state.gamecontroller)}</b>` : ''}${agent.latch ? `<b style="color: var(--accent-red, #ef4444);"> · ${({ damp: 'DAMPED', lie: 'LYING', stop: 'STOPPED' })[agent.latch] || ''}</b>` : ''}${stateMismatch(agent, state.gamecontroller) ? `<b style="color: var(--accent-amber, #f59e0b);" title="${stateMismatch(agent, state.gamecontroller, true)}"> · ⚠ ${stateMismatch(agent, state.gamecontroller)}</b>` : ''}</span>
+                            <span class="robot-role">${roleState(agent)}${penaltyOf(agent, state.gamecontroller) ? `<b style="color: var(--accent-amber, #f59e0b);"> · ⛔ ${penaltyOf(agent, state.gamecontroller)}</b>` : ''}${agent.latch ? `<b style="color: var(--accent-red, #ef4444);"> · ${latchWord(agent.latch)}</b>` : ''}${stateMismatch(agent, state.gamecontroller) ? `<b style="color: var(--accent-amber, #f59e0b);" title="${stateMismatch(agent, state.gamecontroller, true)}"> · ⚠ ${stateMismatch(agent, state.gamecontroller)}</b>` : ''}</span>
                         </div>
                         <div class="robot-stat">
                             <div>${agent.fallen ? '<b style="color: var(--accent-red, #ef4444);">⚠ fallen</b> · ' : ''}BATT <span class="battery-badge ${batt === null ? 'unknown' : agent.battery < 20 ? 'low' : ''}">${batt === null ? 'n/a' : (agent.battery < 20 ? '⚠ ' : '') + batt + '%'}</span>${versionMark(agent, state.fleet?.head) ? ` · <span title="robot code against this gateway's checkout">code ${versionMark(agent, state.fleet?.head)}</span>` : ''}${(() => { const age = state.fleet?.link?.[agent.ip]?.age ?? 0; return age < 1 ? '' : ` · <b style="color: var(--accent-amber, #f59e0b); white-space: nowrap;">LINK ${age.toFixed(0)} s old</b>`; })()}</div>
@@ -2281,6 +2292,8 @@
         window.selectRobot = (id, ip) => {
             selectedRobotId = id;
             selectedRobotIp = ip;
+            robotPanel.update(lastState, id, ip);
+            handleJoystickEnd();  // the pad was hidden (0 px wide) until now: centre its knob
             showManualTarget();
             const items = document.querySelectorAll(".robot-item");
             items.forEach(el => el.classList.remove("selected"));

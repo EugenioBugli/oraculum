@@ -1,5 +1,6 @@
 import hmac
 import json
+import math
 import os
 import socket
 import subprocess
@@ -22,7 +23,7 @@ from control_lock import ControlLock
 from gc_client import PENALTY_NAMES, SET_PLAY_NAMES, GCReceiver
 from session import EventLog, Recorder
 from sim_gc import SimGameController
-from socket_client import UDPReceiver
+from socket_client import UDPReceiver, mirror_pose
 from tv_program import TVProgram
 
 _STATIC_TYPES = {
@@ -101,6 +102,13 @@ class ControlServer:
         # GET /field: the field of config.yaml (fields/*.yaml, metres), for the 2D view and the camera overlay
         with open(os.path.join(root, "fields", self.config.get("field", "fieldAdultSize.yaml"))) as f:
             self.field = yaml.safe_load(f)
+        # GET /positions, POST /goto {pos}: READY and side-line positions in the team frame (config/positions.yaml)
+        pos_path = os.path.join(root, "config", "positions.yaml")
+        if os.path.exists(pos_path):
+            with open(pos_path) as f:
+                self.positions = (yaml.safe_load(f) or {}).get("positions") or []
+        else:
+            self.positions = []
 
         # Fleet table: a robot's version is "current" when its commit equals HEAD of this checkout
         self.fleet_repo = os.path.normpath(os.path.join(root, self.config.get("fleet", {}).get("repo", "../spqrbooster2026")))
@@ -119,7 +127,28 @@ class ControlServer:
     STOP_FIELDS = {"stop": {"isManual": True, "stop": True},          # stand in the Prep pose until Play/Manual
                    "lie": {"isManual": True, "lie": True},            # the firmware lays the robot on its back
                    "damp": {"isManual": True, "damp": True},          # motors soft: the robot FALLS (can break it)
-                   "resume": {"isManual": True, "rb": True, "rt": True, "a": True}}  # Play combo: clears both
+                   "resume": {"isManual": True, "rb": True, "rt": True, "a": True},  # Play combo: clears every latch
+                   "getup": {"isManual": True, "getup": True},        # get up if down (fallen subtree), then stand still
+                   "sit": {"isManual": True, "sit": True}}            # T2 only (user, 2026-10-23); SDK 1.7.0 has no sit call yet
+    # Kinds that move the robot: they need the control lock and are refused for a damped robot (409)
+    LOCKED_KINDS = ("resume", "getup", "sit")
+
+    def play_rule(self, cmd: dict) -> str:
+        """The MANUAL rule of POST /control for GET UP, SIT and GO TO: in READY, SET or PLAYING a command needs
+        testingOverride (or bypassRules); returns the refusal text, "" when allowed (an override is logged)."""
+        gc = self.gc_receiver.latest()
+        override = cmd.get("testingOverride", False) or cmd.get("bypassRules", False)
+        if gc and gc.state in (1, 2, 3) and not override:  # READY, SET, PLAYING
+            return f"Blocked during active game state ({gc.state_name}). Enable testing override to bypass."
+        if override:
+            self.bypass_by = (self.control_lock.holder_name() or "an operator", time.time())
+        return ""
+
+    def positions_for(self, mirrored: bool) -> list:
+        """config/positions.yaml, in the team frame, or mirrored into the shared field frame."""
+        if not mirrored:
+            return [dict(p) for p in self.positions]
+        return [{**p, **dict(zip(("x", "y", "theta"), mirror_pose(p["x"], p["y"], p["theta"])))} for p in self.positions]
 
     def send_joystick(self, ips, fields: dict, repeat: int = 3) -> None:
         """Joystick datagrams to UDP 10007 of each robot (ORACULUM_CONTROL_IP replaces the address when set),
@@ -253,6 +282,21 @@ class ControlServer:
                         # Same point mirror as the poses (socket_client.mirror_packet): negate the field x and y rows.
                         frame["meta"]["T"] = [-v for v in T[:8]] + T[8:]
                     self._json(200, frame or {"status": "waiting"})
+                    return
+                if parsed_path.path == "/positions":  # team frame; ?robot=<ip>: the shared field frame for its team
+                    ip = query.get("robot", [""])[0]
+                    if not ip:
+                        self._json(200, {"frame": "team", "positions": server_instance.positions_for(False)})
+                        return
+                    state = server_instance.udp_receiver.latest()
+                    colors = {str(a.color).lower() for a in (state.agents if state else []) if a.ip == ip}
+                    if len(colors) != 1:
+                        self._json(409, {"error": f"No robot with IP {ip} sends telemetry to this oraculum." if not colors
+                                         else f"IP {ip} carries robots of {len(colors)} colours: no single frame."})
+                        return
+                    mirror = server_instance.udp_receiver.mirror_color
+                    self._json(200, {"frame": "field", "robot": ip,
+                                     "positions": server_instance.positions_for(bool(mirror) and colors == {mirror})})
                     return
                 if parsed_path.path == "/tv":  # the TV program plus team names and logos (the page itself is /tv.html)
                     self._json(200, {**server_instance.tv.view(), "team_names": server_instance.team_names,
@@ -454,7 +498,7 @@ class ControlServer:
                     # pass the GameController rule; resume (the Play combo) is a normal command and needs the lock.
                     kind = cmd.get("kind", "stop")
                     if kind not in server_instance.STOP_FIELDS:
-                        self._json(400, {"error": "kind must be stop, lie, damp or resume"})
+                        self._json(400, {"error": "kind must be stop, lie, damp, resume, getup or sit"})
                         return
                     # DAMP drops the robot and can break it: one robot at a time, and only with confirm = its address
                     if kind == "damp" and (cmd.get("robot", "all") == "all" or cmd.get("confirm") != cmd.get("robot")):
@@ -474,6 +518,12 @@ class ControlServer:
                                          "telemetry_only": sorted(telemetry_only)})
                         return
                     targets = [ip for ip in targets if ip not in telemetry_only]
+                    if kind == "sit":  # sit exists only on the T2 (user decision 2026-10-23); "all" = every T2
+                        t2 = {a.ip for a in (state.agents if state else []) if a.robot == "t2"}
+                        if targets and not set(targets) & t2:
+                            self._json(409, {"error": "Sit exists only on the T2."})
+                            return
+                        targets = [ip for ip in targets if ip in t2]
                     if not targets and robot != "all" and robot not in link:  # a typo or an old IP: say which address
                         self._json(409, {"error": f"No robot with IP {robot} sends telemetry to this oraculum."})
                         return
@@ -485,16 +535,20 @@ class ControlServer:
                     fields = dict(server_instance.STOP_FIELDS[kind])
                     if kind == "stop" and robot != "all":
                         fields["undamp"] = True  # STOP for one robot also ends its DAMP (it stands); STOP ALL never does
-                    if kind == "resume":  # a damped robot cannot walk (the firmware refuses Damping -> Walking)
+                    if kind in server_instance.LOCKED_KINDS:  # a damped robot cannot walk (the firmware refuses Damping -> Walking)
                         damped = {a.ip for a in (state.agents if state else []) if a.latch == "damp"}
                         if damped & set(targets) == set(targets):
                             self._json(409, {"error": "This robot is damped: lift it, press its own STOP (it stands in the "
-                                                      "Prep pose), then Resume.", "damped": sorted(damped)})
+                                                      f"Prep pose), then {kind.capitalize()}.", "damped": sorted(damped)})
                             return
                         targets = [ip for ip in targets if ip not in damped]
                         if not lock.acquire_for_command(client, name):
                             h = lock.holder_name()  # free but refused: this client released control just now
                             self._json(423, {"error": f"{h} has control. Ask for it first." if h else "You released control. Press Take in the header first.", "holder": h})
+                            return
+                        refused = server_instance.play_rule(cmd) if kind != "resume" else ""
+                        if refused:
+                            self._json(403, {"status": "blocked", "error": refused, "reason": refused})
                             return
                     server_instance.send_joystick(targets, fields)
                     names = {}
@@ -505,6 +559,9 @@ class ControlServer:
                     server_instance.events.add(kind.upper(), "manual", f"{kind.upper()} → {', '.join(labels)}" + (f" by {name}" if name else ""),
                                                names.get(targets[0], "") if len(targets) == 1 else "")
                     self._json(200, {"status": "sent", "kind": kind, "targets": targets, "names": labels})
+                    return
+                if parsed_path.path == "/goto":
+                    self._goto()
                     return
                 if parsed_path.path == "/tv":  # TV program (src/tv_program.py); no control lock: it moves no robot
                     try:
@@ -686,6 +743,81 @@ class ControlServer:
                 else:
                     self.send_response(404)
                     self.end_headers()
+
+            def _goto(self):
+                """POST /goto {robot: <ip>, x, y, theta | pos: <id of /positions>, client, name, testingOverride}:
+                walk one robot to a pose (x, y, theta in the shared field frame; pos in its own team frame), or
+                {robot, cancel: true}: stop there and stand. Rules as POST /stop resume: 409 match / damped / no robot,
+                423 without the control lock, 403 in READY/SET/PLAYING without testingOverride."""
+                srv = server_instance
+                try:
+                    cmd = self._body()
+                except (ValueError, TypeError) as e:
+                    self._json(400, {"error": str(e)})
+                    return
+                robot, client, name = str(cmd.get("robot", "")), str(cmd.get("client", "")), str(cmd.get("name", ""))[:40]
+                cancel = cmd.get("cancel") is True
+                mirror = srv.udp_receiver.mirror_color
+                state = srv.udp_receiver.latest()
+                agents = [a for a in (state.agents if state else []) if a.ip == robot]
+                mirrored = bool(mirror) and {str(a.color).lower() for a in agents} == {mirror}
+                if not cancel:  # the target, before any rule: a bad body is a 400 whatever the robot does
+                    if "pos" in cmd:
+                        p = next((p for p in srv.positions if p["id"] == cmd["pos"]), None)
+                        if p is None:
+                            self._json(400, {"error": f"unknown position {cmd['pos']!r}; see GET /positions"})
+                            return
+                        own = (float(p["x"]), float(p["y"]), float(p["theta"]))  # team frame = the robot's frame
+                        target = mirror_pose(*own) if mirrored else own
+                    else:
+                        try:
+                            target = tuple(float(cmd[k]) for k in ("x", "y", "theta"))
+                        except (KeyError, TypeError, ValueError):
+                            self._json(400, {"error": "expected {robot, x, y, theta} (field frame, m, rad), {robot, pos} or {robot, cancel: true}"})
+                            return
+                        own = mirror_pose(*target) if mirrored else target
+                    half_x, half_y = srv.field.get("width", 22.0) / 2 + 1.0, srv.field.get("height", 14.0) / 2 + 1.0
+                    if not all(math.isfinite(v) for v in target) or abs(target[0]) > half_x or abs(target[1]) > half_y:
+                        self._json(400, {"error": f"target {target} is not on the field (|x| <= {half_x}, |y| <= {half_y} m)"})
+                        return
+                if robot == "all" or not agents:
+                    self._json(409 if robot else 400, {"error": f"No robot with IP {robot} sends telemetry to this oraculum."
+                                                       if robot and robot != "all" else "GO TO takes one robot: robot = its IP"})
+                    return
+                if len({str(a.color).lower() for a in agents}) > 1:
+                    self._json(409, {"error": f"IP {robot} carries robots of both colours: no single frame for GO TO."})
+                    return
+                if all(a.sys.get("link") == "telemetry" for a in agents):
+                    self._json(409, {"error": "This robot is in match mode (oraculum: match): it sends telemetry only and "
+                                              "takes no command. Use the referee or the robot's own buttons."})
+                    return
+                if any(a.latch == "damp" for a in agents):
+                    self._json(409, {"error": "This robot is damped: lift it, press its own STOP (it stands in the Prep "
+                                              "pose), then GO TO."})
+                    return
+                if not srv.control_lock.acquire_for_command(client, name):
+                    h = srv.control_lock.holder_name()
+                    self._json(423, {"error": f"{h} has control. Ask for it first." if h else "You released control. Press Take in the header first.", "holder": h})
+                    return
+                refused = srv.play_rule(cmd)
+                if refused:
+                    self._json(403, {"status": "blocked", "error": refused, "reason": refused})
+                    return
+                label = ", ".join(f"T{a.team or '?'} R{a.id}" for a in agents) + f" ({robot})"
+                if cancel:
+                    srv.send_joystick([robot], {"isManual": True, "gotoCancel": True})
+                    srv.events.add("GOTO", "manual", f"GOTO cancel → {label}" + (f" by {name}" if name else ""), label)
+                    self._json(200, {"status": "sent", "cancel": True})
+                    return
+                srv.send_joystick([robot], {"isManual": True, "goto": dict(zip(("x", "y", "theta"), own))})
+                target_d = {k: round(v, 3) for k, v in zip(("x", "y", "theta"), target)}
+                where = f"{cmd['pos']} " if "pos" in cmd else ""
+                srv.events.add("GOTO", "manual", f"GOTO → {label}: {where}x {target[0]:.2f} y {target[1]:.2f} θ {target[2]:.2f}"
+                               + (f" by {name}" if name else ""), label)
+                reply = {"status": "sent", "target": target_d}
+                if "pos" in cmd:
+                    reply["pos"] = cmd["pos"]
+                self._json(200, reply)
 
             def do_OPTIONS(self):
                 self.send_response(200)

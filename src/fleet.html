@@ -242,7 +242,7 @@ const hhmmss = t => new Date(t * 1000).toLocaleTimeString([], { hour12: false })
 const mb = b => b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${(b / 1e3).toFixed(0)} kB`;
 
 // The robot's own answer to POST /stop (telemetry "latch"): it holds the STOP or the damping until Resume
-const latchBadge = a => ({ damp: ' <b class="bad">⚠ DAMPED</b>', lie: ' <b class="bad">▬ LYING</b>', stop: ' <b class="bad">■ STOPPED</b>' })[a.latch] || '';
+const latchBadge = a => ({ damp: ' <b class="bad">⚠ DAMPED</b>', lie: ' <b class="bad">▬ LYING</b>', stop: ' <b class="bad">■ STOPPED</b>', sit: ' <b class="bad">▾ SITTING</b>', goto: ' <b>→ GOING TO TARGET</b>', getup: ' <b>▲ GETTING UP</b>' })[a.latch] || '';
 
 function level(v, warn, bad) { return v >= bad ? 'bad' : v >= warn ? 'warn' : ''; }
 

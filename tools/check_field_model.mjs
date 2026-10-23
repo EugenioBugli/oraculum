@@ -1,10 +1,10 @@
 // Self-check of the match helpers in src/static/field_model.js: budgetSummary, stateMismatch, gcSummary kick-off,
-// teamLegend, teamPrimary, teamSummary (link stale), robotTexts, isRobot, robotName (twins), robotTag, linkStale, shortName, dampWord. Run: node tools/check_field_model.mjs   (exit 0 = pass)
+// teamLegend, teamPrimary, teamSummary (link stale), robotTexts, isRobot, robotName (twins), robotTag, linkStale, shortName, dampWord, gotoDrawings. Run: node tools/check_field_model.mjs   (exit 0 = pass)
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../src/static/field_model.js', import.meta.url), 'utf8');
-const { budgetSummary, stateMismatch, gcSummary, teamLegend, teamPrimary, teamSummary, robotTexts, isRobot, robotName, robotTag, linkStale, shortName, dampWord } = await import('data:text/javascript,' + encodeURIComponent(src));
+const { budgetSummary, stateMismatch, gcSummary, teamLegend, teamPrimary, teamSummary, robotTexts, isRobot, robotName, robotTag, linkStale, shortName, dampWord, gotoDrawings } = await import('data:text/javascript,' + encodeURIComponent(src));
 
 const gc = { state: 'SET', teams: [5, 19], own_team_index: 1, message_budget: [12000, 9000], kickingTeam: 19,
              penalties: { 19: { 3: ['Pushing', 20] } } };
@@ -50,4 +50,9 @@ assert.ok(linkStale({ fleet: { link: { '1.1.1.1': { age: 1 } } } }, { ip: '1.1.1
 const texts = [{ agent_id: 3, ip: '10.0.0.1', path: 'a' }, { agent_id: 3, ip: '10.0.0.2', path: 'b' }, { agent_id: 3, path: 'c' }];
 assert.equal(robotTexts(texts, 3, '10.0.0.1').map(t => t.path).join(), 'a,c');
 assert.ok(isRobot({ id: 0 }, 0, '127.0.0.1') && !isRobot({ id: 3, ip: '10.0.0.2' }, 3, '10.0.0.1'));
+// go-to target: a line from the robot, a circle and a heading tick at the target; no target or no pose: nothing
+const goto = gotoDrawings([{ id: 3, x: 1, y: 2, goto: { x: -4, y: 0, theta: Math.PI / 2 } }, { id: 4, x: 0, y: 0 }, { id: 5, goto: { x: 1, y: 1 } }]);
+assert.deepEqual(goto.map(d => d.type), ['line', 'circle', 'line']);
+assert.deepEqual(goto[0].coords, [1, 2, -4, 0]);
+assert.ok(goto.every(d => d.path === 'goto/target') && Math.abs(goto[2].coords[3] - 0.5) < 1e-9 && Math.abs(goto[2].coords[2] + 4) < 1e-9);
 console.log('field_model: all checks passed');

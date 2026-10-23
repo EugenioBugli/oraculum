@@ -54,7 +54,9 @@ class AgentMsg:
     team: int = 0           # team number (GameController)
     battery: float = -1.0   # percent; -1 = unknown
     fallen: bool = False
-    latch: str = ""         # the robot's oraculum latch: "stop", "lie", "damp" (POST /stop) or "" (none)
+    # the robot's oraculum latch: "stop", "lie", "damp", "getup" (POST /stop), "goto" (POST /goto) or "" (none)
+    latch: str = ""
+    goto: Optional[dict] = None  # GO TO target {x, y, theta} (field frame) while latch is "goto", else None
     robot: str = ""         # model (deploy.yaml robot): "t2", "t1", "k1"; the 3D views draw that model, else (or "") a T2
     # This robot's own beliefs, field frame: its ball estimate {x, y} (None = not seen) and the
     # obstacles it sees [{x, y, type}] (type 0 goal post, 1 person, 2 robot). A one-agent packet's
@@ -124,6 +126,11 @@ class GameStateMsg:
 # UDP receiver — runs in a background thread
 # ---------------------------------------------------------------------------
 
+def mirror_pose(x: float, y: float, theta: float) -> tuple:
+    """The point mirror of mirror_packet for one pose (it is its own inverse): x, y -> -x, -y, theta -> theta + pi."""
+    return -x, -y, (theta + 2 * math.pi) % (2 * math.pi) - math.pi
+
+
 def mirror_packet(msg: "GameStateMsg") -> None:
     """Point-mirror a packet from a team's own frame into the shared field frame, in place.
 
@@ -134,6 +141,8 @@ def mirror_packet(msg: "GameStateMsg") -> None:
     for a in msg.agents:
         a.x, a.y = -a.x, -a.y
         a.angle = (a.angle + 2 * math.pi) % (2 * math.pi) - math.pi  # angle + pi, wrapped to [-pi, pi)
+        if isinstance(a.goto, dict) and all(isinstance(a.goto.get(k), (int, float)) for k in ("x", "y", "theta")):
+            a.goto = dict(zip(("x", "y", "theta"), mirror_pose(a.goto["x"], a.goto["y"], a.goto["theta"])))
         for p in ([a.ball] if a.ball else []) + a.obstacles:
             if isinstance(p, dict) and isinstance(p.get("x"), (int, float)) and isinstance(p.get("y"), (int, float)):
                 p["x"], p["y"] = -p["x"], -p["y"]

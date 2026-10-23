@@ -37,7 +37,7 @@ docker exec -d -u "$(id -u):$(id -g)" oraculum-arm-display ffmpeg -loglevel erro
     -pix_fmt yuv420p -flush_packets 1 -movflags +frag_keyframe+empty_moov "/clips/${clip}_wall.mp4"
 tok=$(cat "$W/run/token")
 until curl -sf "http://127.0.0.1:8080/state?token=$tok" >/dev/null; do sleep 0.5; done
-for s in ready set playing; do
+for s in ${GC_STATES-ready set playing}; do   # GC_STATES="" keeps the game in INITIAL (cert_test2.py drives it)
     curl -s -X POST "http://127.0.0.1:8080/gc?token=$tok" -H 'Content-Type: application/json' -d "{\"state\":\"$s\"}" >/dev/null
     sleep 2
 done

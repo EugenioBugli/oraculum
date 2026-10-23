@@ -91,6 +91,8 @@ const STATE_WORDS = { I: 'Idle', R: 'Running', S: 'Stopped by GC', P: 'Penalised
 export const roleWord = r => ROLE_WORDS[r] || r || '—';
 export const stateWord = s => STATE_WORDS[s] || s || '—';
 export const roleState = a => `${roleWord(a?.role)} · ${stateWord(a?.state)}`;
+// The robot's answer to a STOP / LIE DOWN / DAMP / Sit / Go to / Get up (telemetry latch); "" = none
+export const latchWord = l => ({ damp: 'DAMPED', lie: 'LYING', stop: 'STOPPED', sit: 'SITTING', goto: 'GOING TO TARGET', getup: 'GETTING UP / STANDING' })[l] || '';
 
 // Version mark of a robot against the robot-code checkout of the gateway (fleet.head): "✓", "✗" or "" (unknown / dev).
 export function versionMark(agent, head) {
@@ -215,6 +217,21 @@ export function beliefDrawings(agents) {
         for (const o of a.obstacles || []) {
             if (ok(o)) out.push({ type: 'circle', path: 'beliefs/obstacles', coords: [o.x, o.y], color, size: 0.25, dash: true, agent_id: a.id });
         }
+    }
+    return out;
+}
+
+// A robot's go-to target (/state agent.goto {x, y, theta} while the walk runs) as drawings "goto/target", so every engine
+// draws it: a dashed line from the robot, a 0.3 m circle and a 0.5 m heading tick at the target.
+export function gotoDrawings(agents) {
+    const out = [];
+    for (const a of agents || []) {
+        const g = a.goto;
+        if (!ok(a) || !ok(g)) continue;
+        const color = teamRgb(a), th = Number.isFinite(g.theta) ? g.theta : 0;
+        out.push({ type: 'line', path: 'goto/target', coords: [a.x, a.y, g.x, g.y], color, size: 1, dash: true, agent_id: a.id },
+                 { type: 'circle', path: 'goto/target', coords: [g.x, g.y], color, size: 0.3, agent_id: a.id },
+                 { type: 'line', path: 'goto/target', coords: [g.x, g.y, g.x + 0.5 * Math.cos(th), g.y + 0.5 * Math.sin(th)], color, size: 3, agent_id: a.id });
     }
     return out;
 }

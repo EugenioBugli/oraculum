@@ -21,11 +21,19 @@ const MODELS = {
 // (the page sets their position and heading): mj x -> -z, mj y -> -x, mj z -> y.
 const MJ_TO_SCENE = new THREE.Matrix4().set(0, -1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0, 0, 0, 0, 1);
 
-// {makeRobot(agent), pose(robot, joints)} for every model whose files load; rejects when none loads.
-export async function loadRobots() {
-    const mujoco = await loadMujoco();
-    const keys = Object.keys(MODELS);
-    const loaded = await Promise.all(keys.map(k => loadModel(mujoco, k).catch(e => {
+// One MuJoCo instance and one load per model for the whole page: the 3D view and the robot panel's miniature
+// (src/static/robot_panel.js) share them, so a second user downloads no mesh again.
+let mujocoLoad = null;
+const modelLoads = {};
+function model(key) {
+    mujocoLoad ||= loadMujoco().catch(e => { mujocoLoad = null; throw e; });
+    return (modelLoads[key] ||= mujocoLoad.then(m => loadModel(m, key)));
+}
+export const modelKey = (agent) => { const k = String(agent?.robot || "").toLowerCase(); return Object.hasOwn(MODELS, k) ? k : "t2"; };
+
+// {makeRobot(agent), pose(robot, joints)} for every model of `keys` whose files load; rejects when none loads.
+export async function loadRobots(keys = Object.keys(MODELS)) {
+    const loaded = await Promise.all(keys.map(k => model(k).catch(e => {
         console.warn(`[WASM] no ${k.toUpperCase()} model:`, e.message);
         return null;
     })));

@@ -578,3 +578,78 @@ RobocupMode (what real robots use), and it boots in damping. Maximus used `kWalk
 | `Brain out of cycle` lines (60 s simulated) | 248, mean 47.5 ms (budget 20) | 8, mean 72.5 ms |
 | YOLO inference mean | 20.0 ms | 14.2 ms |
 | Falls | 0 | 0 |
+
+## Certification of `/home/xps/work/spqr-merge` @ 7fb7df9f (2026-10-23 ~16:00, before the real-robot test)
+
+Tree: branch `feature/oraculum-tcm-mappazzone` @ 7fb7df9f (oraculum work + SPQR_SIM_FW18 + sim MANUAL in `Root.cpp` /
+`LowControlBridge.h` + robot model in telemetry + merge of GitHub `RCAP2026-DEV` db0693a9). Nothing committed or pushed.
+
+| Step | Result | Evidence |
+|---|---|---|
+| 1 sync | PASS | `rsync -a --exclude=.pixi --exclude=/build --exclude=.git ... /home/xps/work/spqr-merge/ jetson-spqr:~/oraculum-sim-arm/workspace/`: 21 files, 53 KB, 4 s. The measurement patches (ObjectDetector timing, `[MoveCmd]`) are overwritten by the tree; `maximus_sim_fw18.patch` NOT applied (the tree has the change). Jetson sim settings re-applied with `prepare_sim_config.sh` (new: pixi aarch64 compilers, GPU-optional entrypoint, arm supervisord, sim_fast, useRerun true, Rerun to /dev/null, rgb false) |
+| 2 build | PASS | Release: 42/42 steps, 294 s, 0 errors, 0 warnings (except `-Wpsabi`). Debug: 42/42, 245 s, 0 errors, 0 warnings. The Jetson runs Release (`build/USE_RELEASE`) |
+| 3 play | PASS | CERT1 (1 robot, sim_fast, native, RTF 0.83): 20 s of PLAYING, walked 6.4 m, 0/40 fallen samples, team 1, red, Striker |
+| 4 MANUAL | **FAIL** | CERT2 (game held in INITIAL, RTF 0.82): 59/59 `/control` 200, Maximus enters Manual, robot moved 0.00 m in 6 s at vx 0.3. With `customMode: false` (deploy.yaml) `Manual.cpp` only requests `MotionState::Manual` ("body to firmware/RC"); the oraculum sticks never become `Move()`. Only the custom-mode branch calls `Walk()` |
+| 5 STOP + RESUME | **FAIL (sim)** | STOP -> `ChangeMode(kPrepare)` -> booster-motion `exec switch to prepare` -> robot falls: standing in INITIAL (first fallen sample 1.0 s after STOP) and walking in PLAYING (1.5 s); also in CERT1. RESUME accepted, robot gets up via Fallen and plays. Likely our sim config (`config_sim_circus.lua`, ankle bypass) in PrepareBodyControl: the simulated robot never stood in Prepare before (at boot Robocup follows within 1 ms). Not evidence for real robots |
+
+- Test scripts: `/DATA/RoboCup/oraculum/hosted/jetson/cert_test.py` (during PLAYING), `cert_test2.py` (INITIAL first;
+  `measure_rtf.sh` with `GC_STATES=""`). Clips: `CERT1_7fb7df9f_release_20261023_160041_*`,
+  `CERT2_7fb7df9f_release_20261023_160547_*` in `/DATA/RoboCup/oraculum_media_2v2/jetson_clips/`.
+
+### Re-certification of MANUAL (7fb7df9f + uncommitted `Manual.cpp`, `Root.cpp`; 2026-10-23 ~16:55)
+
+- Change: `Manual.cpp` streams the oraculum sticks as `Walk()` also with `customMode: false` while
+  `oraculumManualActive()`; `Root.cpp` enters Manual on an active oraculum MANUAL on real robots too.
+- Sync: rsync (2 source files + Jetson files rewritten by `prepare_sim_config.sh`). Release build incremental: 6 steps,
+  80 s, 0 errors, 0 warnings. Test: `cert_test3.py` with `measure_rtf.sh GC_STATES=""`, RTF 0.80, clip
+  `CERT3_manual_release_20261023_165333_*`.
+
+| Step | Result | Numbers |
+|---|---|---|
+| 3 MANUAL from INITIAL | **PASS** | standing before (0.00 m in 3 s); vx 0.3 for 6 s: **2.59 m forward**, 0.04 m sideways; vtheta 0.5 for 4 s: **heading +24.8 deg**; vy 0.3 for 4 s: **0.60 m sideways**; after release back to autonomous standing (0.03 m in 5 s); 0 falls; 137/137 `/control` 200 |
+| 4 MANUAL during PLAYING (testingOverride) | **PASS** | autonomous before: 3.3 m in 10 s; vtheta 0.5 for 4 s: **heading +95.8 deg**, 0.13 m forward; vx 0.3 for 5 s: **1.61 m forward**, heading +1.2 deg; after release autonomous play again (2.4 m in 12 s); 0 falls |
+
+## GET UP / SIT / GO TO (robot commits 04ef450e + bc462d43 on top of e7ce3008; 2026-10-23 ~17:30-18:55)
+
+Robot tree `/home/xps/work/spqr-merge`, branch `feature/oraculum-tcm-mappazzone`, local commits **04ef450e** and **bc462d43** (the remote's Prep combo also ends GET UP / GO TO; not pushed):
+`LowControlBridge` reads `getup`, `goto {x, y, theta}`, `gotoCancel` and `sit`; Root states `getting_up` and
+`go_to_pose`; telemetry latch `getup` / `goto` and `goto {x, y, theta}`. SIT: user decision "sit exists only for the
+T2"; booster_robotics_sdk 1.7.0 has no sit call for any model, so the robot logs and ignores it, and the gateway answers
+409 for a robot that is not a T2. Gateway (`src/control_server.py`, `src/socket_client.py`, `src/oraculum_cli.py`,
+`config/positions.yaml`) copied to `~/oraculum-sim-arm/oraculum/` (old files in `oraculum/bak_goto/`); the Jetson's
+`oraculum/config.yaml` field changed from `fieldAdultSize.yaml` to `fieldRCAP.yaml` (22 x 14 m = the simulation's fieldIO),
+because `/goto` refuses targets off the field.
+
+- Sync: `rsync` of the tree (same excludes as the certification) + `prepare_sim_config.sh`; then only `src/app/`.
+  Release build incremental: first try failed (a missing `;` in `DebugMessageSender.cpp`); second 41/42 steps, 242 s,
+  0 errors, 0 warnings; bc462d43: 5 steps, 45 s, 0 errors, 0 warnings. The 6 changed files on the Jetson = bc462d43 (md5).
+- Test: `hosted/jetson/goto_test.py` with `GC_STATES="" RUN_NAME=GOTO4 SCENE=scenes/1v0.yaml SIM_S=330 ./measure_rtf.sh`
+  (1 T1 robot, red, sim_fast, native booster-motion, Release Maximus @ bc462d43), **RTF 0.86**; GOTO3 = 04ef450e, RTF 0.83. Poses = the robot's self-pose in
+  `/state`; in sim_fast that is circus's ground truth (OracleBridge). Times are wall time; simulated = wall x RTF.
+  Self-check of the gateway rules and the CLI: `python3 tools/test_goto.py` (in-process, PASS).
+
+| Step (GOTO4, bc462d43) | Result | Numbers |
+|---|---|---|
+| A GET UP on a standing robot (INITIAL) | **PASS** | HTTP 200, latch `getup`, moved 0.01 m in 6 s, 0 falls |
+| B SIT on a T1 | **PASS** (409 as decided) | HTTP 409 "Sit exists only on the T2.", robot unchanged |
+| C LIE DOWN, then GET UP | **N/A in simulation** | the simulated booster-motion answers `LieDown` with **501** (`Lie down requested, LieDown returned 501` in maximus.log): the robot never lies down; the GET UP that follows is a standing GET UP (200, latch `getup`). Not evidence for real robots |
+| D DAMP → STOP → GET UP | **PASS** | DAMP 200, fallen after 1.0 s; GET UP while damped **409**; STOP 200 (latch `stop`); GET UP 200 → `GetUpWithMode(4) accepted`, standing after **13.1 s wall (11.3 s sim)** (GOTO3 17.6, GOTO2 15.6, GOTO1 10.1 s); then 6 s: 0 falls, 0.18 m moved, latch `getup` |
+| E GO TO `ready_1` (-10.5, 0, 0) | **PASS** | 8.3 m; inside 0.3 m / 30 deg after **26.7 s wall (23.0 s sim)**; final error **0.248 m** (dx +0.229, dy -0.095), heading **-13.1 deg**; still (0.02 m in 3 s); 0 falls; telemetry `goto` = target. GOTO3: 20.7 s, 0.300 m, -13.9 deg; GOTO2: 22.7 s, 0.243 m, -12.9 deg |
+| F GO TO `sideline_2` (-7.5, -7.0, 1.571) | **PASS** | 7.4 m; arrived after **15.6 s wall (13.4 s sim)**; final error **0.233 m** (dx +0.013, dy +0.233), heading **-14.4 deg**; 0 falls. GOTO3: 15.6 s, 0.228 m, -14.8 deg; GOTO2: 16.1 s, 0.275 m, -14.4 deg (that run's FAIL was the test reading the previous target from telemetry; fixed in the test) |
+| G GO TO + cancel after 6 s | **PASS** | walked 3.21 m in 6 s; cancel 200 → stands (0.04 m in the last 3 s), latch `getup`, `goto` null |
+| H Resume → autonomous | **PASS** | Resume 200, latch `""` after 0.5 s; READY/SET/PLAYING: walked 7.8 m in 15 s, 0 falls |
+| I HTTP codes (game PLAYING) | **PASS** | GET UP / GO TO without override **403**; other client **423** (both); match robot (fake telemetry-only sender 127.0.0.2) **409** for getup, sit, goto; bad `pos` **400**; GET UP with `testingOverride` **200** (latch `getup`), then Resume 200 and play again (1.9 m in 8 s) |
+
+- **Field mismatch in this simulation (seen in the clip, not a GO TO fault):** circus builds `fieldLarge` (14 x 9 m,
+  `sim/simulation_configs/default.yaml`), while Maximus loads `fieldIO` (22 x 14 m) and the positions are RCAP (22 x 14 m).
+  The robot reached the commanded coordinates (ground truth), but in circus `ready_1` (-10.5, 0) lies 3.5 m behind the
+  14 m field's goal line (the clip shows the robot walking through the left goal and out of view), and `sideline_2`
+  (y -7.0) 2.5 m outside the 9 m touch line. On the RCAP field (real robots, `fieldRCAP`) both are the intended spots.
+  To test them inside the circus field, run circus with `field: fieldRCAP`.
+- Arrival tolerance = the planner's `arriveXY` 0.3 m and `arriveTheta` 0.52 rad (30 deg, `planner.yaml`); the
+  final heading error (13-15 deg) is inside it. A tighter heading would need `WalkToPose` `arriveThetaOverride`.
+- Not tested in simulation: the remote's Prep combo during GO TO (bc462d43); a Prep drops the simulated robot
+  (certification step 5).
+- Clips (copied to `/DATA/RoboCup/oraculum_media_2v2/jetson_clips/`): `GOTO4_20261023_184753_{wall,realspeed}.mp4`
+  (the table), `GOTO3_20261023_182924_{wall,realspeed}.mp4`, `GOTO2_20261023_180932_{wall,realspeed}.mp4`, `GOTO1_20261023_180455_wall.mp4` (stopped after step D:
+  the test's `/positions` query was malformed). Test logs: `~/oraculum-sim-arm/logs/goto{1,2,3,4}_test.log`.

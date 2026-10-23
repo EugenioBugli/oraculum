@@ -968,16 +968,19 @@
 
             <div class="dock-content" style="padding: 1rem;">
                 
-                <!-- Manual Joystick Override Panel -->
-                <div class="panel-box">
+                <!-- Command panel of the selected robot (static/robot_panel.js): name, 3D miniature, joystick, commands; a hint before a selection -->
+                <div class="panel-box" id="robotPanel">
                     <div class="panel-title">
                         <span style="display: flex; align-items: center; gap: 0.5rem;">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="12" x2="10" y2="12"></line><line x1="8" y1="10" x2="8" y2="14"></line><circle cx="15" cy="13" r="1"></circle><circle cx="18" cy="11" r="1"></circle><rect x="2" y="6" width="20" height="12" rx="6"></rect></svg>
-                            JOYSTICK
+                            ROBOT COMMANDS
                         </span>
-                        <label class="manual-toggle"><input type="checkbox" id="checkManualMode" onchange="toggleManualMode(this.checked)" disabled aria-describedby="manualTarget"><span id="manualToggleText">MANUAL: OFF</span></label>
+                        <label class="manual-toggle rp-gated"><input type="checkbox" id="checkManualMode" onchange="toggleManualMode(this.checked)" disabled aria-describedby="manualTarget"><span id="manualToggleText">MANUAL: OFF</span></label>
                     </div>
                     <div class="panel-body">
+                        <div class="rp-empty">Select a robot in the list to see it, drive it and send it commands.</div>
+                        <div class="rp-gated">
+                        <div class="rp-head"></div>
                         <div class="manual-target" id="manualTarget">select a robot first</div>
                         <div class="joystick-panel-grid">
                             <div class="joy-boundary" id="joyBoundary">
@@ -995,6 +998,8 @@
                                 </div>
                                 <input type="range" id="sliderVx" min="0.1" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('labelVx').textContent=Number(this.value).toFixed(1)">
                             </div>
+                        </div>
+                        <div class="rp-cmds"></div>
                         </div>
                     </div>
                 </div>
@@ -1082,8 +1087,9 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/OrbitControls.js';
         import { createCircusView, leaderLines, placeLabels, showNote } from '/static/circus_view.js';
-        import { FIELD, beliefDrawings, drawDrawings2D, drawRobot2D, drawRobotTag2D, fieldLines, gcSummary, loadField, penaltyOf, robotName, robotTag, shortName, linkStale, linkCounts, roleState, teamRgb, budgetSummary, isRobot, stateMismatch, teamLegend, teamPrimary, teamSummary, versionMark } from '/static/field_model.js';
+        import { FIELD, beliefDrawings, gotoDrawings, latchWord, drawDrawings2D, drawRobot2D, drawRobotTag2D, fieldLines, gcSummary, loadField, penaltyOf, robotName, robotTag, shortName, linkStale, linkCounts, roleState, teamRgb, budgetSummary, isRobot, stateMismatch, teamLegend, teamPrimary, teamSummary, versionMark } from '/static/field_model.js';
         import { mountControlBar, mountOverlays, robotActions, toast, sendStop, stateUrl, withOperator } from '/static/control_bar.js';
+        import { mountRobotPanel } from '/static/robot_panel.js';
         import { renderInspector as renderInspectorPanel } from '/static/inspector.js';
         await loadField(location.origin);  // the field of the gateway's config.yaml, before the scenes are built
 
@@ -1097,6 +1103,10 @@
                                       onLost: (holder) => { if (isManualMode) { window.toggleManualMode(false); toast(`${holder || "Nobody"} has control now: MANUAL is off.`); } } });
         const ov = mountOverlays(() => API_URL);  // GameController + recording controls, overlays on every page
         const cardActions = new Map();  // STOP / Resume per robot address, moved into each rebuilt card
+        // Command panel of the selected robot (name, 3D miniature, joystick, commands); commands carry this tab's bypass
+        const robotPanel = mountRobotPanel(document.getElementById("robotPanel"), () => API_URL,
+                                           { extra: () => ({ testingOverride: document.getElementById("checkTestingOverride").checked }) });
+        robotPanel.update(null, null, "");  // the hint until a robot is selected
         {   // STOP ALL stays reachable over the "turn your device" overlay (phones in portrait)
             const b = Object.assign(document.createElement("button"), { className: "ctl-stop ctl-stopall", textContent: "STOP ALL" });
             b.onclick = () => sendStop(() => API_URL, "all", "stop");
@@ -2016,7 +2026,7 @@
                 ov.update(state);
                 showManualTarget();  // the MANUAL text follows the lock state
                 // Each robot's own ball estimate and seen obstacles: drawings "beliefs/ball", "beliefs/obstacles"
-                state.drawings = (state.drawings || []).concat(beliefDrawings((state.agents || []).filter(a => !linkStale(state, a))));  // old beliefs of a silent robot are not drawn
+                state.drawings = (state.drawings || []).concat(beliefDrawings((state.agents || []).filter(a => !linkStale(state, a))), gotoDrawings(state.agents));  // + go-to targets (robot panel)  // old beliefs of a silent robot are not drawn
                 lastPolledState = state;
                 
                 isOnline = true;
@@ -2047,6 +2057,7 @@
                 draw2DField(state);
                 update3DScene(state);
                 updateRobotsList(state);
+                robotPanel.update(state, selectedRobotId, selectedRobotIp);
                 renderInspector();
                 updateDrawingFilters(state.drawings || []);
                 updateNetworkDashboard(state);
@@ -2086,7 +2097,7 @@
                     <div class="robot-item ${isSelected}" onclick="selectRobot(${agent.id}, '${agent.ip || '127.0.0.1'}')">
                         <div class="robot-meta">
                             <span class="robot-id"><span class="team-swatch" style="background: rgb(${teamRgb(agent)})"></span>${robotName(agent, state.agents)}</span>
-                            <span class="robot-role">${roleState(agent)}${penaltyOf(agent, state.gamecontroller) ? `<b style="color: var(--accent-amber, #f59e0b);"> · ⛔ ${penaltyOf(agent, state.gamecontroller)}</b>` : ''}${agent.latch ? `<b style="color: var(--accent-red, #ef4444);"> · ${({ damp: 'DAMPED', lie: 'LYING', stop: 'STOPPED' })[agent.latch] || ''}</b>` : ''}${stateMismatch(agent, state.gamecontroller) ? `<b style="color: var(--accent-amber, #f59e0b);" title="${stateMismatch(agent, state.gamecontroller, true)}"> · ⚠ ${stateMismatch(agent, state.gamecontroller)}</b>` : ''}</span>
+                            <span class="robot-role">${roleState(agent)}${penaltyOf(agent, state.gamecontroller) ? `<b style="color: var(--accent-amber, #f59e0b);"> · ⛔ ${penaltyOf(agent, state.gamecontroller)}</b>` : ''}${agent.latch ? `<b style="color: var(--accent-red, #ef4444);"> · ${latchWord(agent.latch)}</b>` : ''}${stateMismatch(agent, state.gamecontroller) ? `<b style="color: var(--accent-amber, #f59e0b);" title="${stateMismatch(agent, state.gamecontroller, true)}"> · ⚠ ${stateMismatch(agent, state.gamecontroller)}</b>` : ''}</span>
                         </div>
                         <div class="robot-stat">
                             <span>BATT ${typeof agent.battery === 'number' && agent.battery >= 0 ? (agent.battery < 20 ? '<b style="color: var(--accent-red);">⚠ ' + Math.round(agent.battery) + '%</b>' : Math.round(agent.battery) + '%') : 'n/a'}${agent.fallen ? ' · <b style="color: var(--accent-red);">⚠ fallen</b>' : ''}${versionMark(agent, state.fleet?.head) ? ` · <span title="robot code against this gateway's checkout">code ${versionMark(agent, state.fleet?.head)}</span>` : ''}${(() => { const age = state.fleet?.link?.[agent.ip]?.age ?? 0; return age < 1 ? '' : ` · <b style="color: var(--accent-amber, #f59e0b); white-space: nowrap;">LINK ${age.toFixed(0)} s old</b>`; })()}</span>
@@ -2114,6 +2125,8 @@
         window.selectRobot = (id, ip) => {
             selectedRobotId = id;
             selectedRobotIp = ip;
+            robotPanel.update(lastPolledState, id, ip);
+            handleJoystickEnd();  // the pad was hidden (0 px wide) until now: centre its knob
             showManualTarget();
             renderInspector();
         };

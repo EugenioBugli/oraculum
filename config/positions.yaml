@@ -1,0 +1,26 @@
+# GO TO targets for GET /positions and POST /goto {pos} (oraculum src/control_server.py).
+# Frame: the TEAM frame, as the robots localize (own goal at -x, x towards the opponent goal, y to the left,
+# theta in rad from +x). The gateway mirrors them for a team that oraculum shows mirrored (config.yaml
+# frames.mirror_team_color), so every value here is in our own half.
+# Field: fieldRCAP, 22 x 14 m (spqrbooster2026 mappazzone src/app/config/fields/fieldRCAP.yaml).
+# Source of every value: spqrbooster2026 (tree /home/xps/work/spqr-merge, branch feature/oraculum-tcm-mappazzone
+# e7ce3008) src/app/config/formations/formationRCAP.yaml, read by src/app/utils/ReadyFormation.h:
+#   ready_N    = formation[N].readyPose.ourKickOff      (READY formation when we kick off)
+#   ready_N_def = formation[N].readyPose.opponentKickOff (only where it differs: players 4 and 5)
+#   sideline_N = formation[N].initialPose               (side line, facing the field: where the robot enters)
+#   sideline_penalized = penalizedPose                  (where the referee puts a penalized robot back)
+# Update this file when formationRCAP.yaml changes.
+positions:
+  - {id: ready_1, label: "Ready R1 (goalie)", player: 1, x: -10.5, y: 0.0, theta: 0.0}
+  - {id: ready_2, label: "Ready R2 (left guard)", player: 2, x: -7.5, y: 1.0, theta: 0.0}
+  - {id: ready_3, label: "Ready R3 (right guard)", player: 3, x: -7.5, y: -1.0, theta: 0.0}
+  - {id: ready_4, label: "Ready R4 (passive striker)", player: 4, x: -1.0, y: -4.0, theta: 0.7854}
+  - {id: ready_4_def, label: "Ready R4, their kick-off", player: 4, x: -2.5, y: -0.5, theta: 0.0}
+  - {id: ready_5, label: "Ready R5 (striker)", player: 5, x: -1.0, y: 0.0, theta: 0.0}
+  - {id: ready_5_def, label: "Ready R5, their kick-off", player: 5, x: -2.5, y: 0.5, theta: 0.0}
+  - {id: sideline_1, label: "Side line R1", player: 1, x: -9.0, y: -7.0, theta: 1.5708}
+  - {id: sideline_2, label: "Side line R2", player: 2, x: -7.5, y: -7.0, theta: 1.5708}
+  - {id: sideline_3, label: "Side line R3", player: 3, x: -6.0, y: -7.0, theta: 1.5708}
+  - {id: sideline_4, label: "Side line R4", player: 4, x: -5.0, y: -7.0, theta: 1.5708}
+  - {id: sideline_5, label: "Side line R5", player: 5, x: -2.0, y: -7.0, theta: 1.5708}
+  - {id: sideline_penalized, label: "Side line, penalty return", player: null, x: -7.5, y: -7.0, theta: 1.5708}
