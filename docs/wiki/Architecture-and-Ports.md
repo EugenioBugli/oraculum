@@ -2,15 +2,16 @@
 
 Result first: one gateway process (`src/control_server.py`) receives UDP from the robots and the GameController, keeps
 one merged state in memory, and serves it over HTTP on port 8080. Every client (page, phone, CLI) polls that state.
-Commands go back to the robots as UDP datagrams.
+Commands go back to the robots as UDP datagrams. With the match switch (`match: true` in `config.yaml` or
+`ORACULUM_MATCH=1`) the gateway sends no datagram at all: it only receives.
 
 ![Data flow](images/architecture.png)
 
 ```
 GameController ──UDP 3838 (binary game state)─────────────► robots, oraculum gateway
 robot (Maximus) ──UDP 10006 (JSON telemetry + drawings)───► oraculum gateway
-oraculum gateway ──UDP 10007 (JSON joystick, STOP, ...)───► robot (LowControlBridge)
-oraculum gateway ──UDP 10008 (camera request)─────────────► robot (DebugCameraSender)
+oraculum gateway ──UDP 10007 (JSON joystick, STOP, ...)───► robot (LowControlBridge)    [not in match mode]
+oraculum gateway ──UDP 10008 (camera request)─────────────► robot (DebugCameraSender)  [not in match mode]
 robot ──UDP 10009 (camera frames, 3 s per request)────────► oraculum gateway
 robots ◄──UDP 10000+team (binary team messages)──────────► robots
 browser, phone, CLI ◄──HTTP 8080 (/state, /control, ...)──► oraculum gateway
@@ -25,8 +26,8 @@ exist. The pages use plain HTTP polling.
 |---|---|---|---|---|
 | 8080 | TCP (HTTP) | clients → gateway | Pages and API | Fixed in `src/control_server.py` |
 | 10006 | UDP | robot → gateway | Telemetry and debug drawings: 10/s in practice, 1/s in match | `config.yaml` `socket.port`; robot: `DebugMessageSender` |
-| 10007 | UDP | gateway → robot | Joystick and safety commands (practice only) | Robot: `LowControlBridge` |
-| 10008 | UDP | gateway → robot | Camera request (practice only) | Robot: `DebugCameraSender`; gateway: `src/camera_hub.py` |
+| 10007 | UDP | gateway → robot | Joystick, safety commands, Get up, Sit down, Go to (practice only; never with the gateway match switch) | Robot: `LowControlBridge` |
+| 10008 | UDP | gateway → robot | Camera request (practice only; never to a robot with `sys.link` "telemetry", never with the match switch) | Robot: `DebugCameraSender`; gateway: `src/camera_hub.py` |
 | 10009 | UDP | robot → gateway | Camera frames, 4 per second for 3 s after each request | `config.yaml` `camera.port` (default 10009) |
 | 3838 | UDP | GameController → all | Referee state (versions 19 and 20 of the packet) | `config.yaml` `game_controller.port` |
 | 10000 + team | UDP | robot ↔ robot | Team messages (not read by oraculum) | Robot code |
@@ -41,7 +42,10 @@ exist. The pages use plain HTTP polling.
   telemetry) and keeps the newest frame.
 - `ControlLock` (`src/control_lock.py`) decides which operator may drive (see [Safety Controls](Safety-Controls)).
 - `TVProgram` (`src/tv_program.py`) holds the program of the TV screens.
-- `SimGameController` (`src/sim_gc.py`) is the simulated referee. It runs only with `ORACULUM_SIM_GC`.
+- `SimGameController` (`src/sim_gc.py`) is the simulated referee. It runs only with `ORACULUM_SIM_GC`, never with the
+  match switch.
+- `ControlServer.blocked()` (`src/control_server.py`) is the one guard of every datagram the gateway sends. With the
+  match switch it returns the rule text, and nothing goes out. Check: `python3 tools/test_match.py`.
 
 ## The robot side (spqrbooster2026)
 
@@ -50,7 +54,8 @@ exist. The pages use plain HTTP polling.
 | Settings | `src/app/utils/settings/Settings.h`, `Settings.cpp` | Reads `oraculum` and `oraculumHost` from `deploy.yaml`. Telemetry runs when `oraculum` is not `off` or `useRerun` is true. Remote control runs in `practice`, or in `off` with `useRerun`. |
 | Telemetry | `src/app/nodes/communication_send/DebugMessageSender.cpp` | One JSON datagram per period (100 ms; 1000 ms in match) to the target. Target: `oraculumHost`; else env `ORACULUM_HOST`; else the host of `rerun.connectAddr` in `connect` mode; else the Wi-Fi broadcast. In match: `oraculumHost` only. |
 | Camera | `src/app/nodes/communication_send/DebugCameraSender.cpp` | After a request on UDP 10008: 3 s of frames, 4 per second, a JPEG at most 320 px wide, the camera model and the detections. Practice only. |
-| Commands | `src/app/nodes/bridge/LowControlBridge.h`, `.cpp` | Reads JSON datagrams on UDP 10007 with `"isManual": true`. While they arrive, they replace the remote controller; 500 ms after the last one, the remote controller is back. Sets the STOP, LIE and DAMP latches. Practice only. |
+| Commands | `src/app/nodes/bridge/LowControlBridge.h`, `.cpp` | Reads JSON datagrams on UDP 10007 with `"isManual": true`. While they arrive, they replace the remote controller; 500 ms after the last one, the remote controller is back. Sets the STOP, LIE, DAMP, GET UP and GO TO latches (SIT is logged and ignored: the SDK has no sit call). Practice only. |
+| Go to | `Root` state `go_to_pose` | Walks to the target with the robot's own localization, then stands. Telemetry `goto` `{x, y, theta}` while the latch is `goto`. |
 | Deploy | `scripts/deploy.sh` | `--no-rerun` (used by `deploy-match`) sets `useRerun: false` and turns `practice` into `match`. |
 
 ## HTTP routes
@@ -59,18 +64,20 @@ All routes need the access token when `ORACULUM_ACCESS_TOKEN` is set (`?token=` 
 
 | Route | Does |
 |---|---|
-| `GET /state` | The merged state: `agents`, `ball`, `drawings`, `texts`, `gamecontroller`, `fleet`, `rec`, `lock`, `bypass`, `last_event`, `tv`, `boot`. Add `?client=<id>` to keep your control lock alive. |
+| `GET /state` | The merged state: `agents`, `ball`, `drawings`, `texts`, `gamecontroller`, `fleet`, `rec`, `lock`, `bypass`, `last_event`, `tv`, `boot`, `restart`, `match`. Add `?client=<id>` to keep your control lock alive. `match` = true: the gateway runs with its match switch. |
 | `GET /field` | The field dimensions from `config.yaml` (`fields/*.yaml`, metres). |
 | `GET /events?since=<id>` | Events newer than `id`. |
 | `POST /events` | `{"add": {"text": "...", "robot": "T19 R3"}}` adds a mark; `{"delete": <id>}` deletes an event. |
 | `POST /record` | `{"on": true, "by": "<name>"}` starts; `{"on": false, "name": "<recording name>"}` stops that recording. |
 | `GET /recordings` | The list of recordings. `GET /recordings/<name>.jsonl` downloads one. |
-| `GET /camera?robot=<ip>\|<id>` | The newest camera frame (JSON, JPEG in base64), or `{"status": "waiting"}`. Each call also asks the robot for 3 s of frames. |
-| `POST /control` | A manual command `{ip, vx, vy, vtheta, isManual: true, client, operator, ...}`. Needs the control lock (else 423). Refused in READY, SET and PLAYING (403) unless `testingOverride` is true. |
-| `POST /stop` | `{robot: "<ip>" or "all", kind: "stop" \| "lie" \| "damp" \| "resume", client, name, confirm}`. |
+| `GET /camera?robot=<ip>\|<id>` | The newest camera frame (JSON, JPEG in base64), or `{"status": "waiting"}`. Each call also asks the robot for 3 s of frames, except a robot with `sys.link` "telemetry" and except in match mode. |
+| `POST /control` | A manual command `{ip, vx, vy, vtheta, isManual: true, client, operator, ...}`. Needs the control lock (else 423). Refused in READY, SET and PLAYING (403) unless `testingOverride` is true. 409 in match mode. |
+| `POST /stop` | `{robot: "<ip>" or "all", kind: "stop" \| "lie" \| "damp" \| "resume" \| "getup" \| "sit", client, name, confirm, testingOverride}`. `getup` and `sit` need the control lock (423) and get 403 in READY, SET and PLAYING without `testingOverride`. `sit` only for a robot that reports `robot` "t2" (else 409); "all" = every T2. 409 for match-mode and damped robots, and for every kind in match mode. |
+| `GET /positions` | `{frame: "team", positions: [{id, label, x, y, theta, player}]}` from `config/positions.yaml` (READY positions `ready_N`, side line `sideline_N`, `sideline_penalized`; values of the framework's `formationRCAP.yaml`). `?robot=<ip>`: the same list in the shared field frame of that robot's team (`frame: "field"`); 409 for an unknown IP. |
+| `POST /goto` | `{robot: "<ip>", x, y, theta}` (field frame, m, rad) or `{robot, pos: "<id of /positions>"}`: one robot walks there, then stands. `{robot, cancel: true}` stops the walk. Rules as `getup`; 400 for a bad body or a target more than 1 m off the field; 409 in match mode. |
 | `POST /control_lock` | `{action: "take" \| "release" \| "grant" \| "deny", client, name}`. |
 | `GET /tv`, `POST /tv` | Read or change the TV program. |
-| `POST /gc` | Only with the simulated referee: `{state, kicking_team, goal, half, penalty}`. Else 404. |
+| `POST /gc` | Only with the simulated referee: `{state, kicking_team, goal, half, penalty}`. Else 404; 409 in match mode. |
 | `GET /static/<path>` | Files from `src/static/`. |
 | `GET /`, `/dashboard`, `/fleet`, `/robot`, `/tv.html`, `/director` | The pages. |
 
@@ -91,13 +98,15 @@ The telemetry schema is the set of dataclasses in the SCHEMA section of `src/soc
 
 | File | Holds |
 |---|---|
-| `config.yaml` | Field file, ports, `own_team`, team colour to mirror, drawing paths to hide. |
+| `config.yaml` | Field file (`fieldRCAP.yaml`, 22 × 14 m), ports, `own_team`, team colour to mirror, drawing paths to hide, `match` (the match switch, default `false`). |
+| `config/positions.yaml` | The positions of `GET /positions` and `POST /goto {pos}`, in the team frame (own goal at -x). |
 | `config/teams.yaml` | Team numbers → names and colours (the TV shows "SPQR" for 19). |
 | `fields/*.yaml` | Field dimensions. |
 
 | Environment variable | Effect |
 |---|---|
 | `ORACULUM_ACCESS_TOKEN` | Every route needs this token. |
+| `ORACULUM_MATCH=1` (or `0`) | Turns the match switch on (or off). It overrides `match` in `config.yaml`. With the switch on, the next three variables are ignored. |
 | `ORACULUM_SIM_GC="<team A>,<team B>"` | Runs the simulated referee. The gateway then ignores UDP 3838. |
 | `ORACULUM_GC_TARGETS="<ip>,<ip>"` | The simulated referee sends to these IPs (default `127.0.0.1`). |
 | `ORACULUM_CONTROL_IP` | Every command goes to this address, whatever the request says. Hosted sessions only. |

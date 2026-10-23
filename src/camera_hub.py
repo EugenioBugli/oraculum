@@ -71,7 +71,11 @@ class CameraHub:
         self._thread.join(timeout=2.0)
         self._sock.close()
 
+    blocked = staticmethod(lambda: "")  # the gateway sets ControlServer.blocked: no request in match mode
+
     def request(self, ip: str, robot_id: int) -> None:
+        if self.blocked():
+            return
         key = (ip, robot_id)
         now = time.time()
         with self._lock:

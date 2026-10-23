@@ -14,14 +14,15 @@ and it serves one merged view to every browser, phone and command-line client on
 - It shows the health of each robot in one table: software version, CPU, temperature, battery, Wi-Fi traffic.
 - It shows the camera of one robot on request, with the detections and the field lines drawn over the image.
 - It records a session to a file and replays it later.
-- It sends safety commands to the robots: STOP, LIE DOWN, DAMP and Resume.
+- It sends safety commands to the robots: STOP, LIE DOWN, DAMP and Resume. It also sends Get up, Sit down (T2 only)
+  and Go to a position, from the command panel of the selected robot.
 - It lets one operator drive one robot with an on-screen joystick (MANUAL mode), outside the game.
 - It drives a public TV screen (scoreboard and field) and a director console for that screen.
 
 ## What oraculum does not do
 
-- It does not play. The robots are autonomous. In an official match, oraculum only receives data
-  (see [Match Mode and Rules](Match-Mode-and-Rules)).
+- It does not play. The robots are autonomous. In an official match, oraculum only receives data: start the gateway
+  with `ORACULUM_MATCH=1` (see [Match Mode and Rules](Match-Mode-and-Rules)).
 - It does not replace the GameController. The simulated referee (`ORACULUM_SIM_GC`) is for tests only.
 - It has no desktop app, no mobile app and no WebSocket server. Some older design documents describe these.
   They are plans, not code. Every client is a web page that asks the gateway for the state over plain HTTP.

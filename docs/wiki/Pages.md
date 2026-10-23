@@ -13,6 +13,8 @@ Every page (except the TV) has these parts in its header or in a floating menu:
 - **STOP ALL**: stops every robot that sent data in the last 60 s. See [Safety Controls](Safety-Controls).
 - **Control lock chip**: shows who holds the control lock (who may drive a robot). You can Take, Release or ask for it.
 - **Bypass chip**: a red chip that names the operator who drove a robot with the referee-rule bypass in the last 5 s.
+- **MATCH chip**: an amber chip "MATCH — no commands" ("MATCH" on a phone) while the gateway runs with its match switch. Every command
+  control of the page is then grey, with the rule in its tooltip. See [Match Mode and Rules](Match-Mode-and-Rules).
 - **Record menu**: starts and stops a gateway recording.
 - **Referee menu (GC)**: only with the simulated referee (`ORACULUM_SIM_GC`). Buttons for each game state and a goal
   for each team.
@@ -34,14 +36,27 @@ Purpose: see the whole game, and drive one robot when needed.
     files from `tools/fetch_web_assets.sh`.
   - "Three.js": simple box robots. It needs no extra files.
   - When an engine cannot start, the page falls back: circus → MuJoCo → simple robots → a message with a 2D button.
+- **Field**: the RCAP match field, 22 × 14 m (`fields/fieldRCAP.yaml`, since 2026-10-22), in 2D and in the circus
+  scene `maximus_4v4_rcap`.
 - **Robots**: a disc or a 3D robot per robot, with a label "T19 R3" (team 19, player 3) in the team colour.
 - **Ball**: the team ball (the estimate of the robot nearest to its own estimate), and each robot's own estimate.
 - **Debug drawings**: circles, boxes, lines, arcs and points that the robots send. A checklist shows or hides each
   drawing path. The choice is per browser.
 - **Referee pill**: game state, score, clock, set play, penalties, and the team-message budget.
 - **Robot inspector**: the data of the selected robot.
-- **Joystick panel**: the MANUAL switch, an on-screen stick for forward and sideways speed, two sliders for the speed
-  scale, and an ARMS button. See [Safety Controls](Safety-Controls) for MANUAL.
+- **Robot command panel** ("ROBOT COMMANDS", right column; in the IDE-style view the inspector dock). Before you select
+  a robot it shows only a hint. After you select a robot (in the list or on the field) it shows:
+  - the robot's name, a live 3D miniature of the robot (its MuJoCo model, posed with the joint angles from the
+    telemetry; a 2D disc without WebGL2), and its role, state, latch and go-to target;
+  - the MANUAL switch and the on-screen stick with two speed sliders (only after a selection). See
+    [Safety Controls](Safety-Controls);
+  - STOP, Resume, **Get up**, **Sit down** (only for a T2), a 2 s press-and-hold LIE DOWN;
+  - **Go to**: a list of positions from `GET /positions` (this robot's own READY and side-line positions first), with
+    Go and Cancel;
+  - **Drop**: the DAMP section (type the robot's name, then hold 3 s).
+
+  For a robot in match mode (`sys.link = "telemetry"`) the new buttons are grey and their tooltip says why.
+  Status: tested in a browser with fake robots (`python3 tools/panel_check.py`). Not tested with a real robot.
 - **Bypass referee rules**: a menu switch with a confirmation dialog. It lets MANUAL commands through during READY, SET
   and PLAYING. Engineers only.
 

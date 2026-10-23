@@ -31,6 +31,9 @@ with a real robot.
 
 - HTTP 409 "This robot is in match mode": the robot runs with `oraculum: match` and takes no command. Use its own
   remote controller, or deploy with `oraculum: practice` for a practice session.
+- HTTP 409 "Match mode (oraculum match switch)", or the header chip "MATCH — no commands": the gateway runs with
+  `ORACULUM_MATCH=1` or `match: true` in `config.yaml`, and sends nothing. Restart it without the switch for a practice
+  session.
 - The page says "sent", but the robot does not confirm. Look for STOPPED in the fleet row.
 - HTTP 409 "No robot reached": no robot sends telemetry to this gateway. The gateway sends commands only to IPs that
   send telemetry.

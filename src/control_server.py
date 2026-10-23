@@ -64,13 +64,23 @@ class ControlServer:
         # (operator name, time) of the last manual command that used the referee-rules bypass; /state "bypass" shows it
         self.bypass_by = ("", 0.0)
 
+        # Match switch (config.yaml match, env ORACULUM_MATCH overrides it): the gateway sends NOTHING to the robots or the
+        # GameController (HSL rules 06c44d4b, rules/robot_players.tex L285-289: robots act autonomously, no remote control
+        # of any kind; communication only among robots, referees and the GameController). It still receives.
+        env = os.environ.get("ORACULUM_MATCH", "").strip().lower()
+        self.match = env in ("1", "true", "yes", "on") if env else bool(self.config.get("match", False))
+        if self.match:
+            for var in ("ORACULUM_SIM_GC", "ORACULUM_GC_TARGETS", "ORACULUM_CONTROL_IP"):
+                if os.environ.get(var):
+                    print(f"[ControlServer] WARNING: match mode ignores {var} (the gateway sends nothing)")
+
         # Receivers
         # Robots report in their own team's frame; this team colour is mirrored into the shared field frame.
         mirror_color = self.config.get("frames", {}).get("mirror_team_color", "blue")
         self.udp_receiver = UDPReceiver(self.tcm_host, self.tcm_port, mirror_color=mirror_color)
         # Hosted sessions (oraculum/hosted): ORACULUM_SIM_GC="<team A>,<team B>" runs the simulated referee, which sends
         # to the robot on 127.0.0.1:3838; the gateway's receiver then must not take 3838, so it binds a free port.
-        sim_teams = [t for t in os.environ.get("ORACULUM_SIM_GC", "").split(",") if t.strip().isdigit()]
+        sim_teams = [] if self.match else [t for t in os.environ.get("ORACULUM_SIM_GC", "").split(",") if t.strip().isdigit()]
         if sim_teams:
             self.gc_host, self.gc_port = "127.0.0.1", 0
         self.gc_receiver = GCReceiver(host=self.gc_host, port=self.gc_port, own_team=self.own_team)
@@ -88,6 +98,7 @@ class ControlServer:
         self.events = EventLog(self.udp_receiver, self.gc_receiver, self.recorder)
         self.recorder.on_stop = lambda reason: self.events.add("REC", "gateway", f"recording stopped: {reason}")
         self.camera_hub = CameraHub(port=self.config.get("camera", {}).get("port", 10009))
+        self.camera_hub.blocked = self.blocked
         # Public TV view (src/tv.html) and director console (src/director.html): one program, POST /tv changes it
         self.tv = TVProgram()
         teams = load_teams(root)
@@ -117,7 +128,7 @@ class ControlServer:
         # Hosted sessions: with ORACULUM_ACCESS_TOKEN set, every request needs the token (?token= once, then a cookie).
         self.access_token = os.environ.get("ORACULUM_ACCESS_TOKEN", "")
         # Hosted session: every joystick datagram goes to this address, whatever the body says (no UDP to the internet).
-        self.control_ip = os.environ.get("ORACULUM_CONTROL_IP", "")
+        self.control_ip = "" if self.match else os.environ.get("ORACULUM_CONTROL_IP", "")
         self.control_lock = ControlLock()  # engineer mode: one operator drives at a time (src/control_lock.py)
         self.boot = round(time.time())  # in /state: a page sees a gateway restart (event ids begin at 1 again)
 
@@ -132,6 +143,14 @@ class ControlServer:
                    "sit": {"isManual": True, "sit": True}}            # T2 only (user, 2026-10-23); SDK 1.7.0 has no sit call yet
     # Kinds that move the robot: they need the control lock and are refused for a damped robot (409)
     LOCKED_KINDS = ("resume", "getup", "sit")
+
+    MATCH_ERROR = ("Match mode (oraculum match switch): the gateway sends nothing to the robots or the GameController "
+                   "(HSL rules, robot_players.tex L285-289: robots act autonomously, no remote control of any kind).")
+
+    def blocked(self) -> str:
+        """The one guard of every datagram the gateway sends (joystick, /stop, /goto, camera requests): the refusal text
+        in match mode, else "". The simulated referee does not exist in match mode."""
+        return self.MATCH_ERROR if self.match else ""
 
     def play_rule(self, cmd: dict) -> str:
         """The MANUAL rule of POST /control for GET UP, SIT and GO TO: in READY, SET or PLAYING a command needs
@@ -152,7 +171,9 @@ class ControlServer:
 
     def send_joystick(self, ips, fields: dict, repeat: int = 3) -> None:
         """Joystick datagrams to UDP 10007 of each robot (ORACULUM_CONTROL_IP replaces the address when set),
-        `repeat` times 0.1 s apart in a thread: one lost datagram must not lose a STOP."""
+        `repeat` times 0.1 s apart in a thread: one lost datagram must not lose a STOP. Nothing in match mode."""
+        if self.blocked():
+            return
         data = json.dumps(fields).encode("utf-8")
         targets = {(self.control_ip or ip, 10007) for ip in ips}
 
@@ -273,7 +294,8 @@ class ControlServer:
                     state = server_instance.udp_receiver.latest()
                     agent = next((a for a in (state.agents if state else []) if a.ip == ip and a.id == int(rid)), None)
                     # Only robots that send telemetry get a request: the query cannot aim UDP at other hosts.
-                    if agent is not None:
+                    # Never to a match robot (sys.link "telemetry": it streams no camera, HSL L373-374), nor in match mode.
+                    if agent is not None and agent.sys.get("link") != "telemetry":
                         server_instance.camera_hub.request(ip, int(rid))
                     frame = server_instance.camera_hub.latest(ip, int(rid))
                     T = frame["meta"].get("T") if frame else None
@@ -360,6 +382,7 @@ class ControlServer:
                     state_dict["last_event"] = ids[-1] if ids else 0
                     state_dict["tv"] = server_instance.tv.view()
                     state_dict["restart"] = bool(os.environ.get("ORACULUM_RESTART_CMD"))  # hosted: POST /session_restart exists
+                    state_dict["match"] = server_instance.match  # match switch: the pages disable every command control
 
                     response = json.dumps(state_dict).encode("utf-8")
                     self.send_response(200)
@@ -445,6 +468,9 @@ class ControlServer:
                 if not self._allowed():
                     return
                 parsed_path = urlparse(self.path)
+                if parsed_path.path in ("/gc", "/stop", "/goto") and server_instance.blocked():  # match mode: nothing goes out
+                    self._json(409, {"status": "blocked", "error": server_instance.blocked(), "match": True})
+                    return
                 if parsed_path.path == "/gc":  # simulated referee of a hosted session
                     if server_instance.sim_gc is None:
                         self._json(404, {"error": "no simulated GameController (set ORACULUM_SIM_GC)"})
@@ -633,6 +659,11 @@ class ControlServer:
                             self.wfile.write(json.dumps(reply).encode("utf-8"))
                             return
 
+                        if server_instance.blocked():  # match mode: no joystick datagram, whatever the body says
+                            self._json(409, {"status": "blocked", "error": server_instance.blocked(),
+                                             "reason": server_instance.blocked(), "match": True})
+                            return
+
                         # Engineer mode: a manual command needs the control lock (a free lock is taken here)
                         lock = server_instance.control_lock
                         before = lock.holder_name()
@@ -722,7 +753,7 @@ class ControlServer:
                         if testing_override:
                             server_instance.bypass_by = (lock.holder_name() or "an operator", time.time())
 
-                        # Send UDP control payload to robot
+                        # Send UDP control payload to robot (blocked() was checked above, before the lock)
                         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                         if target_ip == "255.255.255.255":
                             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)

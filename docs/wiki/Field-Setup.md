@@ -12,11 +12,16 @@ steps.
 
 ## 1. Before you start: the robot code
 
-The robot code is `spqrbooster2026` branch `oraculum-tcm` (based on `main`). It will later be merged into `mappazzone`.
-Do not deploy `main`: it has no oraculum link.
+The robot code is `spqrbooster2026` branch `oraculum-tcm`. Since 2026-10-23 it is based on `mappazzone` (the team's
+active branch, with team coordination; merge of `RCAP2026-DEV` at `7fb7df9f`). Do not deploy `main` or `mappazzone`:
+they have no oraculum link.
 
-> **Code version (2026-10-21).** Deploy `oraculum-tcm` at commit `d55b0946` or later. That commit adds the settings
-> `oraculum` and `oraculumHost`. On the deploy machine: `git fetch origin && git switch oraculum-tcm && git pull`.
+> **Code version (2026-10-23).** Deploy `oraculum-tcm` at commit `bc462d43` or later (GitHub branch
+> `SPQRTeam/spqrbooster2026` `oraculum-tcm`; the local branch `feature/oraculum-tcm-mappazzone` in
+> `/home/xps/work/spqr-merge` has the same commit). It has GET UP, GO TO and SIT (T2 only) over UDP 10007 (`04ef450e`),
+> MANUAL that drives also with `customMode: false` (`e7ce3008`), and the remote's Prep combo ends GET UP and GO TO.
+> `d55b0946` (2026-10-21) added the settings `oraculum` and `oraculumHost`.
+> On the deploy machine: `git fetch origin && git switch oraculum-tcm && git pull`.
 > - The changes compile and link for x86 (laptop build, TensorRT off, 2026-10-21). The robot build (aarch64) is not
 >   tested yet: the deploy machine makes it. The deploy cross-compile needs the pixi `robot` environment and free disk.
 > - Not tested with a real robot.
@@ -129,6 +134,8 @@ python3 run_oraculum.py
 - The `joystick` section of `config.yaml` is read only by the old matplotlib viewer. The gateway sends each command to
   the IP of the robot that sends the telemetry.
 - Do not set `ORACULUM_SIM_GC` or `ORACULUM_CONTROL_IP` on the field. They are for simulation.
+- For an official match, start the gateway with the match switch: `ORACULUM_MATCH=1 python3 run_oraculum.py`
+  (or `match: true` in `config.yaml`). It then sends nothing to the robots. See section 11.
 - Download the 3D files before you go to the field: they need the internet (see [Quick Start](Quick-Start)).
 - The pages assume that robots of the `blue` team send coordinates in their own team frame
   (`frames.mirror_team_color: "blue"` in `config.yaml`). Check on the field that our robots are not drawn mirrored.
@@ -164,6 +171,7 @@ If the laptop has a firewall, let in:
 | TCP 8080 | phones, other laptops | the pages and the HTTP API |
 
 The laptop sends to the robots on UDP 10007 (commands) and UDP 10008 (camera requests). These are outgoing.
+With the gateway match switch on, the laptop sends nothing.
 On Ubuntu, `sudo ufw status` shows the firewall state. Status: not tested with a real robot.
 
 The full port list is in [Architecture and Ports](Architecture-and-Ports).
@@ -196,6 +204,24 @@ python3 tools/replay_rrd.py recordings/rec_<date>_<time>.jsonl --gc
 ```
 
 Status: tested in simulation (fake robots, 2026-10-21).
+
+## 11. Match checklist (official game)
+
+The reasons and the rule lines are in [Match Mode and Rules](Match-Mode-and-Rules), section "Network placement in an
+official match". Status of every step: not tested at a venue and not tested with a real robot.
+
+| # | Check | How |
+|---|---|---|
+| 1 | We know the network | Ask the organisers for our IP range and the wired port of our team (HSL L310-311). |
+| 2 | Laptop on the wired field network | Cable in, fixed IP from the team range. Wi-Fi off, Bluetooth off (L314). |
+| 3 | Robots in match mode | `oraculumHost` = the laptop's wired IP in `deploy.yaml`, then `pixi run deploy-match -- --number N --wifi <FIELD_SSID> --wifi-psk <PASSWORD>`. |
+| 4 | Robot log | `DebugMessageSender: Sending debug data to <laptop wired IP>:10006 (match mode, 1/s)`. No `DebugCameraSender: Waiting for camera requests` line. |
+| 5 | Gateway in match mode | `ORACULUM_MATCH=1 python3 run_oraculum.py`. No warning about `ORACULUM_SIM_GC` or `ORACULUM_CONTROL_IP` in its output (unset them). |
+| 6 | Pages | The header shows "MATCH — no commands". STOP ALL and every robot button are grey. |
+| 7 | Telemetry | `fleet.html`: each robot at about 1 packet per second in the Link column. |
+| 8 | GameController | The referee pill shows the game state. |
+| 9 | No radios near the field | No phone, tablet or Android companion app near the field during the game (L314). |
+| 10 | Stop a robot | Only with its own remote controller or through the referee. Oraculum cannot stop it. |
 
 ## Fallback: the pushed commit without `oraculum`
 

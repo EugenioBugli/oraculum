@@ -7,6 +7,8 @@
 //   typed to unlock, then a 3 s press-and-hold. The gateway also refuses DAMP for "all" and without confirm.
 // - stateUrl(api) / withOperator(body): every /state poll and /control body carries this tab's client id, so the
 //   gateway knows who holds the lock and that the holder's page is still open.
+// - Match mode (/state match: the gateway's match switch, it sends nothing to the robots): mountControlBar shows a
+//   "MATCH — no commands" chip and matchLock() disables every command control on the page, with the rule as tooltip.
 // STOP, LIE DOWN and DAMP need no lock and pass the GameController rule (POST /stop). The gateway answers "sent": the robot
 // does not confirm yet, so no button claims the robot stopped.
 
@@ -41,6 +43,11 @@ const STYLE = `
 @media (max-width: 700px) { .ctl-bypass { display: inline-block; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
     .ctl-bypass .ctl-on { display: none; } .ctl-bypass { max-width: none; } .ctl-bypass .ctl-nm { max-width: 16ch; } }  /* phones: "Bypass: Dana", the header stays two rows */
 .ctl-bypass[hidden] { display: none; }
+.ctl-match { padding: 2px 8px; border-radius: 6px; border: 2px solid #f59e0b; color: #fbbf24; white-space: nowrap; cursor: help; }
+.ctl-match[hidden] { display: none; }
+@media (max-width: 700px), (max-height: 500px) { .ctl-match-l { display: none; } }  /* phones: "MATCH", the header stays on screen */
+html.ctl-match-on .joystick-panel-grid { pointer-events: none; opacity: .4; }  /* the touch joystick is not a form control */
+html.ctl-match-on :is(.ctl-bar, .ctl-act, .ctl-ovl, .ctl-danger, .manual-toggle) :disabled { opacity: .45; cursor: not-allowed; }
 .ctl-bp-s { display: none; }
 @media (max-height: 500px) {  /* phone landscape: "BP: name" keeps the one-row header, STOP ALL and Take stay on screen */
     .ctl-bypass .ctl-bp-l, .ctl-bypass .ctl-on { display: none; } .ctl-bypass .ctl-bp-s { display: inline; } .ctl-bypass .ctl-nm { max-width: 8ch; } }
@@ -118,6 +125,32 @@ function style() {
 }
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 
+// Match mode: the gateway sends nothing to the robots (config.yaml match / ORACULUM_MATCH; HSL rules @06c44d4b,
+// rules/robot_players.tex L285-289). Every command control of every page; read-only controls (record, marks, views) stay.
+export const MATCH_TIP = "Match mode: the gateway sends nothing to the robots (HSL rules, robot_players.tex L285-289: " +
+    "robots act autonomously, no remote control of any kind). Use the referee or the robot's own buttons.";
+const COMMANDS = ".ctl-stop, .ctl-act button, .ctl-act select, .ctl-danger input, .ctl-danger button, .ctl-ovl .btns button, " +
+    "#checkManualMode, #checkTestingOverride, .joystick-panel-grid input";
+let matchOn = false, matchObserver = null;
+const disableCommands = () => {
+    for (const e of document.querySelectorAll(COMMANDS)) {
+        if (!e.disabled) e.disabled = true;
+        if (e.title !== MATCH_TIP) e.title = MATCH_TIP;
+    }
+};
+// ponytail: a page that re-enables a button on its next poll (or builds a new row) is caught by the observer; switching
+// match off again reloads the page instead of restoring each button (DAMP must not come back unlocked).
+function matchLock(on) {
+    if (on === matchOn) return;
+    if (!on) { location.reload(); return; }
+    matchOn = true;
+    document.documentElement.classList.add("ctl-match-on");
+    if (document.getElementById("checkManualMode")?.checked) window.toggleManualMode?.(false);
+    disableCommands();
+    matchObserver = new MutationObserver(disableCommands);
+    matchObserver.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["disabled"] });
+}
+
 export function toast(text, error = false) {
     if (!toastEl) {
         toastEl = el("div", { className: "ctl-toast", role: "status" });
@@ -181,7 +214,9 @@ export function mountControlBar(host, api, opts = {}) {
     const bypass = el("span", { className: "ctl-bypass", title: "Manual commands reach the robot in READY, SET and PLAYING" });
     const bypassName = el("span", { className: "ctl-nm" });
     bypass.hidden = true;
-    host.replaceChildren(el("span", { className: "ctl-bar" }, lock, stopAll, bypass));  // an overflow cuts the chip, not STOP ALL
+    const matchChip = el("span", { className: "ctl-match", title: MATCH_TIP, hidden: true }, "MATCH",
+                         el("span", { className: "ctl-match-l", textContent: " — no commands" }));
+    host.replaceChildren(el("span", { className: "ctl-bar" }, matchChip, lock, stopAll, bypass));  // an overflow cuts the chip, not STOP ALL
 
     const setView = (v) => {  // opts.onLost(): this page had control and no longer has it (gave it, or it expired)
         const lost = view.you && !v.you;
@@ -245,6 +280,10 @@ export function mountControlBar(host, api, opts = {}) {
     render();
     return {
         update(state) {
+            if (state && "match" in state) {  // an old gateway sends no key; a gateway that is down sends no state
+                matchChip.hidden = !state.match;
+                matchLock(!!state.match);
+            }
             const v = state && state.lock;
             if (v) {
                 if (v.denied) { toast(`${v.holder} kept control.`, true); opts.onDenied?.(v.holder); }

@@ -29,6 +29,14 @@ display:
   # Window title
   title: "Oraculum"
 
+# Official match (HSL rules @06c44d4b, rules/robot_players.tex): true = the gateway sends NOTHING to the robots or the
+# GameController. L285-287: robots act autonomously, no teleoperation or remote control of any kind; L289: communication
+# only among robots, referees and the GameController. It still receives telemetry (10006, the robots' 1 packet/s debug
+# data, L373-374) and listens to the GameController (3838). Every command route answers 409, ORACULUM_SIM_GC and
+# ORACULUM_CONTROL_IP are ignored, /state carries "match": true and the pages disable their command controls.
+# Env ORACULUM_MATCH=1 (or 0) overrides this key. Network placement: docs/wiki/Match-Mode-and-Rules.md.
+match: false
+
 frames:
   # Robots send (x, y, angle) in their own team's frame (own goal at -x). Packets from the team with this
   # colour (as DebugMessageSender sends it, lowercase) are point-mirrored into the shared field frame, where

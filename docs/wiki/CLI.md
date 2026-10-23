@@ -63,6 +63,30 @@ python3 src/oraculum_cli.py resume --ip 10.0.19.103
 - The gateway refuses `resume` for a damped robot (HTTP 409). The help text of `resume` says it clears DAMP; it does not.
   Lift the robot, `stop` it, then `resume`.
 
+### getup, sit
+
+```bash
+python3 src/oraculum_cli.py getup --ip 10.0.19.103
+python3 src/oraculum_cli.py sit --ip 10.0.19.103
+```
+
+- `getup`: a robot that is down gets up, then stands still until `resume`, `stop` or another command. `--all` works.
+- `sit`: T2 only. The gateway answers 409 "Sit exists only on the T2." for other models. `--all` = every T2. The robot
+  code logs it and ignores it: booster_robotics_sdk 1.7.0 has no sit call.
+- Both need the control lock and are refused (HTTP 403) in READY, SET and PLAYING.
+
+### goto
+
+```bash
+python3 src/oraculum_cli.py goto --list                         # the positions of GET /positions
+python3 src/oraculum_cli.py goto --ip 10.0.19.103 --pos ready_2   # a position, in the robot's own team frame
+python3 src/oraculum_cli.py goto --ip 10.0.19.103 --x 1 --y 2 --theta 0   # field frame, m, rad
+python3 src/oraculum_cli.py goto --ip 10.0.19.103 --cancel
+```
+
+- One robot only. It walks there with its own localization, then stands until `resume`.
+- It needs the control lock and is refused (HTTP 403) in READY, SET and PLAYING.
+
 ### damp
 
 ```bash
@@ -82,7 +106,9 @@ never went limp. To put a robot on the ground, use `lie`. `damp` makes it fall.
 - `Refused (403)`: the referee state is READY, SET or PLAYING.
 - `Refused (401)`: the gateway needs its access token. Set `ORACULUM_ACCESS_TOKEN`.
 - `Refused (423)`: another operator holds the control lock, or you released it less than 15 s ago.
-- `Refused (409)`: no robot sends telemetry to this gateway, or the robot is damped (resume).
+- `Refused (409)`: no robot sends telemetry to this gateway, the robot is damped (resume, getup, goto), the robot is in
+  match mode, `sit` for a robot that is not a T2, or the gateway runs with its match switch ("Match mode (oraculum match
+  switch) ...": it sends nothing).
 - `Error connecting to Control Server`: the gateway does not run at `ORACULUM_URL`.
 
 ## Other tools
