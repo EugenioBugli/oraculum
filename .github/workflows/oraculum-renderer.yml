@@ -65,7 +65,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           WANT: ${{ inputs.scene_tag }}
+        # A push that changes tools/circus_scene/ and renderer/ starts circus-scene.yml and this workflow at the same
+        # time. The workflow_run trigger (re-run after the export) fires only for workflows on the default branch, so
+        # on any other branch (EugenioBugli/oraculum dev) nothing would re-run us: wait here for the export of the
+        # same commit. 75 min = the export's timeout-minutes (60) plus queueing in its non-cancelling concurrency group.
         run: |
+          pending=$(gh run list --workflow circus-scene.yml --commit "$GITHUB_SHA" --json databaseId,status \
+            --jq '[.[] | select(.status != "completed")][0].databaseId // empty')
+          if [ -n "$pending" ]; then
+            echo "Waiting for the circus scene export of this commit (run $pending)."
+            timeout 75m gh run watch "$pending" --interval 30 > /dev/null || true
+          fi
           mkdir -p dl
           tag="$WANT"
           if [ -z "$tag" ]; then
