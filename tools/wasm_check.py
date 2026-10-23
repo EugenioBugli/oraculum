@@ -60,10 +60,10 @@ def main() -> int:
         circus = page.evaluate("() => window.circusView ? {ready: window.circusView.viewer.ready, "
                                "gl_unimplemented: window.circusView.viewer.glUnimplemented} : null")
         view = page.locator("#circusContainer" if args.engine == "circus" else "#threejsContainer")
-        png = view.screenshot() if view.count() and view.is_visible() else page.screenshot()
+        png = view.screenshot(timeout=120000) if view.count() and view.is_visible() else page.screenshot(timeout=120000)
         stats = page.evaluate(PIXEL_STATS_JS, base64.b64encode(png).decode())
         if args.shot:
-            page.screenshot(path=args.shot)
+            page.screenshot(path=args.shot, timeout=120000)
         browser.close()
 
     print("WebGL:", gl)

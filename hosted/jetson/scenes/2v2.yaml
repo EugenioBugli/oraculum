@@ -1,0 +1,29 @@
+# 2v2, teams 1 and 2: the positions of players 1 and 3 of 3v3.yaml (team N uses UDP 10000+N; 6-9 collide with the oraculum ports).
+simulation_config: default
+teams:
+  red:
+    number: 1
+    players:
+    - type: Booster-T1
+      number: 1
+      role: striker
+      position: [-6.0, 0.0, 0.68]
+      orientation: [0.0, 0.0, 0.0]
+    - type: Booster-T1
+      number: 2
+      role: striker
+      position: [-2.0, -1.0, 0.68]
+      orientation: [0.0, 0.0, 0.0]
+  blue:
+    number: 2
+    players:
+    - type: Booster-T1
+      number: 1
+      role: striker
+      position: [6.0, -0.0, 0.68]
+      orientation: [0.0, 0.0, 3.14159]
+    - type: Booster-T1
+      number: 2
+      role: striker
+      position: [2.0, 1.0, 0.68]
+      orientation: [0.0, 0.0, 3.14159]

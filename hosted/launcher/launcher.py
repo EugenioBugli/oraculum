@@ -1,6 +1,6 @@
 """oraculum launcher: a signed-in SPQRTeam member starts their own hosted simulation session (one Modal sandbox).
 
-    browser → nginx (oraculum.emanuelemusumeci.com) → auth_request → oauth2-proxy (GitHub, org SPQRTeam)
+    browser → nginx (demo.emanuelemusumeci.com/oraculum) → auth_request → oauth2-proxy (GitHub, org SPQRTeam)
             → this server on 127.0.0.1:18100 → Modal (sandbox from the image built by hosted/modal_session.py)
 
 It is the middleman: it holds the Modal token (users never see it) and logs usage per GitHub user in usage.jsonl.

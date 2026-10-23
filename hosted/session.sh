@@ -11,9 +11,10 @@ x11vnc -storepasswd "${ORACULUM_ACCESS_TOKEN:?no access token}" /tmp/vncpass >/d
 x11vnc -display :1 -forever -shared -rfbauth /tmp/vncpass -rfbport 5900 -localhost -quiet >/tmp/x11vnc.log 2>&1 &
 websockify --web /usr/share/novnc 6080 localhost:5900 >/tmp/novnc.log 2>&1 &
 # The session's referee (src/sim_gc.py): team 8 = the robot of scenes/1v0.yaml, team 70 = an empty opponent.
-(cd /opt/oraculum && ORACULUM_SIM_GC=${SIM_GC_TEAMS:-8,70} ORACULUM_CONTROL_IP=127.0.0.1 python3 -u src/control_server.py >/tmp/gateway.log 2>&1 &)
+(cd /opt/oraculum && ORACULUM_SIM_GC=${SIM_GC_TEAMS:-8,70} ORACULUM_GC_TARGETS=${GC_TARGETS:-127.0.0.1} python3 -u src/control_server.py >/tmp/gateway.log 2>&1 &)
 cd /opt/circus
 export CIRCUS_ROBOT_LAUNCHER=/opt/session/robot.sh FRAMEWORK_PATH=/workspace
+export ORACULUM_ISOLATE=${ORACULUM_ISOLATE:-0}  # 1 = isolate each robot in its own network namespace (many robots)
 export INFERENCE_BACKEND=${INFERENCE_BACKEND:-onnx} LIBGL_ALWAYS_SOFTWARE=1
 # llvmpipe (software OpenGL) starts one render thread per host CPU it sees; 2 threads cut the cost of the circus window.
 export LP_NUM_THREADS=${LP_NUM_THREADS:-2}

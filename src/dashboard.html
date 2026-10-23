@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <link rel="icon" href="data:,">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Oraculum Studio</title>
     
@@ -437,6 +438,7 @@
             box-shadow: 0 6px 20px rgba(0,0,0,0.3);
             transition: border-color 0.2s ease;
         }
+        .inspector-dock .panel-box { flex-shrink: 0; }  /* overflow: hidden let them shrink and cut their last lines */
         .panel-box:hover {
             border-color: var(--border-strong);
         }
@@ -526,6 +528,22 @@
             display: flex;
             flex-direction: column;
             gap: 0.15rem;
+            flex: 1 1 100%;
+            min-width: 0;
+        }
+        /* The stat line has its own row under the name: long state texts never touch it */
+        .robot-item { flex-wrap: wrap; gap: 4px 8px; }
+        .robot-stat { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px;
+            font-size: 0.72rem; color: var(--text-secondary); }
+        .robot-stat .card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; flex: 1 1 100%; justify-content: flex-start; }
+        .robot-stat .card-actions a { white-space: nowrap; }  /* "Robot ›" in one piece; a twin's long buttons push it to a second line */  /* one row at the left of every card */
+        .robot-stat .card-actions .ctl-act { flex-wrap: nowrap; } .robot-stat .card-actions .ctl-act button { padding: 3px 7px; font-size: 11px; }  /* "STOP R3·.2  Resume R3·.2  Robot ›" fits one row */
+        /* Phones (portrait, or landscape with touch): STOP / Resume / Robot › only on the selected card, so a first tap selects */
+        @media (max-width: 600px), (pointer: coarse) and (max-height: 500px) {
+            .robot-item:not(.selected) .card-actions { display: none; }
+            .card-actions .ctl-act { gap: 8px; }
+            .card-actions .ctl-act button, .card-actions a { min-height: 44px; min-width: 44px; }
+            .card-actions a { display: inline-flex; align-items: center; }
         }
         .robot-id {
             font-weight: bold;
@@ -689,11 +707,40 @@
         body.stale-data #robotList, body.stale-data #viewport2d, body.stale-data #textDataList { opacity: 0.45; filter: grayscale(1); }  /* no filter on the 3D canvas: costly */
         .bypass-banner.manual-banner { position: fixed; top: auto; bottom: 0; left: 0; right: 0; }  /* fixed: the page does not jump when MANUAL turns on */
         #gcState, #gcTime, #gcScore { white-space: nowrap; }
-        body:has(#manualBanner:not([hidden])) { padding-bottom: 44px; box-sizing: border-box; }  /* the fixed banner covers nothing */
+        #gcTime:not([hidden]) { display: inline-flex; min-width: 5.5ch; } #gcTime .gc-clock { flex-shrink: 0; }
+        #gcTime .gc-rest { min-width: 0; overflow: hidden; text-overflow: ellipsis; }  /* only the half and set play text is cut */
+        /* The GC and Record boxes (control_bar.js) cover nothing: on wide screens they sit right of the activity bar and the
+           robot drawer ends above them; on phones the round button sits bottom right and the inspector drawer ends above it */
+        @media (min-width: 601px) and (min-height: 501px) { body .ctl-ovl { left: 60px; } }  /* body: control_bar.js styles load later */
+        .tool-panel-dock { padding-bottom: var(--ctl-ovl-h, 0px); }
+        @media (max-width: 600px), (max-height: 500px) { .tool-panel-dock { padding-bottom: 0; } .inspector-dock { padding-bottom: var(--ctl-ovl-h, 0px); } }
+        body .ctl-ovl-space { display: none; }  /* this layout does not scroll: the drawers keep the space */
+        /* Phone in landscape: the header is one 40 px row; the activity bar has the view buttons, so the tab row goes and only
+           the 3D engine picker floats over the view (top right, clear of the GC pill) */
+        @media (max-width: 1024px) and (max-height: 500px) {
+            body .app-status-bar { flex-wrap: nowrap; height: 40px; min-height: 0; padding: 0 0.4rem; gap: 0.5rem; }
+            body .app-status-bar .bar-section { flex-wrap: nowrap; gap: 0.5rem; min-width: 0; }
+            .app-title-badge { display: none; }
+            .connection-status { min-width: 0; overflow: hidden; }
+            #statusText { overflow: hidden; text-overflow: ellipsis; }
+            #controlBar .ctl-lock { padding: 1px 6px; }
+            #controlBar button { min-height: 34px; padding-top: 2px; padding-bottom: 2px; }
+            .viewport-stage > .viewport-header-tabs { position: absolute; top: 6px; right: 6px; left: auto; z-index: 5; height: auto; min-height: 0;
+                padding: 0; background: none; border: none; }
+            .viewport-stage > .viewport-header-tabs .v-tab, .viewport-stage > .viewport-header-tabs > div > span { display: none; }
+        }
+        .status-dot.online.stale { background: var(--accent-amber); box-shadow: 0 0 12px var(--accent-amber); }  /* gateway up, robot links old */
+        /* Narrow screens: the GC pill sits in the header (gcToHeader), short: "PLAYING 9:35 T19 1 – 0 T5"; the score is never cut */
+        .sim-gc-overlay.in-header { position: static; transform: none; padding: 2px 8px; border-radius: 6px; gap: 0.5rem; box-shadow: none;
+            backdrop-filter: none; flex-shrink: 0; font-size: 0.72rem; }
+        .sim-gc-overlay.in-header .sim-gc-badge { padding: 2px 6px; font-size: 0.72rem; }
+        .sim-gc-overlay.in-header .gc-rest { display: none; }
+        @media (max-height: 500px) { body:has(.ctl-bypass:not([hidden])) .sim-gc-overlay.in-header { display: none; } }  /* room for "BP: name" */
+        #labelVx, #labelVy { display: inline-block; min-width: 2.6em; text-align: right; font-variant-numeric: tabular-nums; flex-shrink: 0; }  /* the value column does not move */
+        body:has(#manualBanner:not([hidden])) { padding-bottom: var(--manual-h, 44px); box-sizing: border-box; }  /* the fixed banner covers nothing (--manual-h: its height) */
         @media (max-width: 1024px) {  /* phones: the header wraps instead of scrolling the page sideways */
             .bar-section { flex-wrap: wrap; row-gap: 0.3rem; min-width: 0; }
             #statusText { max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-            body:has(#manualBanner:not([hidden])) { padding-bottom: 72px; }  /* the fixed MANUAL banner must not hide the page end */
         }
         #rerunTimelineBar { display: none; }
         .activity-bar { overflow-y: auto; }  /* a wrapped header leaves less height: the last icon stays reachable */
@@ -706,9 +753,6 @@
         .manual-toggle:has(input:checked) { background: #facc15; border-color: #facc15; color: #1c1917; }
         .manual-toggle:has(input:disabled) { opacity: 0.55; cursor: not-allowed; }
         .manual-target { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-secondary); }
-        /* Limp-arms button: one colour per state this page sends (white text: 10:1 stiff, 5.0:1 limp) */
-        .btn.limp-btn { background: #334155; color: #fff; border-color: transparent; }
-        .btn.limp-btn[aria-pressed="true"] { background: #b45309; }
     </style>
 </head>
 <body>
@@ -812,6 +856,7 @@
             <div class="dock-content">
                 <!-- Section 1: Robot Hierarchy -->
                 <div class="dock-panel-section" id="panelSection_hierarchy" data-title="ROBOT HIERARCHY">
+                    <div id="robotSummary" role="status" style="padding: 0 0 0.5rem; font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-secondary);"></div>
                     <div id="robotList">
                         <div style="text-align: center; color: var(--text-muted); padding: 1.2rem; font-size: 0.78rem;">Waiting for robot packets...</div>
                     </div>
@@ -845,10 +890,10 @@
                 </div>
                 
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.6px;">ENGINE:</span>
+                    <span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.6px;">3D RENDERER:</span>
                     <select id="rendererSelect" onchange="switchRendererEngine(this.value)" style="-webkit-appearance:none; appearance:none; background:var(--bg-panel); color:var(--accent-cyan); border:1px solid var(--border-subtle); font-size:0.75rem; padding:4px 10px; border-radius:6px; cursor:pointer; font-weight:600; outline:none;">
                         <option value="circus">Circus (exact)</option>
-                        <option value="wasm">MuJoCo WASM (T1 model)</option>
+                        <option value="wasm">MuJoCo WASM (T2 / T1 / K1)</option>
                         <option value="threejs">Three.js</option>
                     </select>
                 </div>
@@ -928,7 +973,7 @@
                     <div class="panel-title">
                         <span style="display: flex; align-items: center; gap: 0.5rem;">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="12" x2="10" y2="12"></line><line x1="8" y1="10" x2="8" y2="14"></line><circle cx="15" cy="13" r="1"></circle><circle cx="18" cy="11" r="1"></circle><rect x="2" y="6" width="20" height="12" rx="6"></rect></svg>
-                            MANUAL JOYSTICK OVERRIDE
+                            JOYSTICK
                         </span>
                         <label class="manual-toggle"><input type="checkbox" id="checkManualMode" onchange="toggleManualMode(this.checked)" disabled aria-describedby="manualTarget"><span id="manualToggleText">MANUAL: OFF</span></label>
                     </div>
@@ -940,24 +985,22 @@
                             </div>
                             <div style="flex: 1; display: flex; flex-direction: column; gap: 0.5rem;">
                                 <div style="font-size: 0.72rem; color: var(--text-secondary); display: flex; justify-content: space-between;">
-                                    <span>STRAFE (VY)</span>
+                                    <span title="Multiplies the robot's own manual top speed (manual.maxVy in its settings)">STRAFE (VY) × robot max</span>
                                     <span id="labelVy">1.0</span>
                                 </div>
-                                <input type="range" id="sliderVy" min="0.1" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('labelVy').textContent=this.value">
+                                <input type="range" id="sliderVy" min="0.1" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('labelVy').textContent=Number(this.value).toFixed(1)">
                                 <div style="font-size: 0.72rem; color: var(--text-secondary); display: flex; justify-content: space-between;">
-                                    <span>WALK (VX)</span>
+                                    <span title="Multiplies the robot's own manual top speed (manual.maxVx in its settings)">WALK (VX) × robot max</span>
                                     <span id="labelVx">1.0</span>
                                 </div>
-                                <input type="range" id="sliderVx" min="0.1" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('labelVx').textContent=this.value">
+                                <input type="range" id="sliderVx" min="0.1" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('labelVx').textContent=Number(this.value).toFixed(1)">
                             </div>
                         </div>
-                        <button class="btn limp-btn" id="limpBtn" aria-pressed="false" style="margin-top: 0.5rem;" onclick="toggleLimpArms()"
-                            title="Last arm state commanded by this page (lt in the manual commands, sent only while MANUAL is ticked). The page cannot read the real robot state.">ARMS: STIFF</button>
                     </div>
                 </div>
 
                 <!-- Selective Robot Telemetry Inspector Panel (Progressive Disclosure) -->
-                <div class="panel-box" style="flex: 1;">
+                <div class="panel-box" style="flex: 1 0 auto;">  <!-- no shrink: the dock scrolls, the inspector text is never cut -->
                     <div class="panel-title">
                         <span style="display: inline-flex; align-items: center; gap: 0.5rem;">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect></svg>
@@ -982,8 +1025,8 @@
                     </div>
                     <div class="panel-body">
                         <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 3px;">
-                            <span>TEAM COMM BUDGET</span>
-                            <span id="budgetUsage">0 / 12,000</span>
+                            <span>TEAM MESSAGES</span>
+                            <span id="budgetUsage">unknown</span>
                         </div>
                         <div style="height: 7px; background: var(--bg-dark); border-radius: 4px; overflow: hidden;">
                             <div id="budgetProgressBar" style="width: 0%; height: 100%; background: var(--accent-indigo);"></div>
@@ -1009,12 +1052,15 @@
             </div>
         </div>
 
+        <div id="bypassRow" hidden>  <!-- shown only while this tab has control (syncBypassRow) -->
         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; color: var(--text-secondary);">
             <label for="checkTestingOverride">BYPASS REFEREE RULES</label>
             <input type="checkbox" id="checkTestingOverride" autocomplete="off" aria-describedby="bypassHelp">
         </div>
         <div id="bypassHelp" style="font-size: 0.7rem; line-height: 1.4; color: var(--text-muted);">Engineers only, lab only: manual commands
             then also reach the robot in READY, SET and PLAYING. Only this tab; a reload turns it off. STOP needs no bypass.</div>
+        </div>
+        <div id="bypassNoControl" style="font-size: 0.7rem; line-height: 1.4; color: var(--text-muted);">The referee-rules bypass needs control. Take control in the header first.</div>
 
         <button class="btn danger" style="padding: 0.65rem; margin-top: 0.5rem;" onclick="toggleHamburgerMenu()">CLOSE SETTINGS</button>
     </div>
@@ -1036,17 +1082,20 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/OrbitControls.js';
         import { createCircusView, leaderLines, placeLabels, showNote } from '/static/circus_view.js';
-        import { FIELD, beliefDrawings, drawDrawings2D, drawRobot2D, fieldLines, gcSummary, loadField, penaltyOf, robotName, roleState, teamRgb } from '/static/field_model.js';
-        import { mountControlBar, robotActions, toast, sendStop, stateUrl, withOperator } from '/static/control_bar.js';
+        import { FIELD, beliefDrawings, drawDrawings2D, drawRobot2D, drawRobotTag2D, fieldLines, gcSummary, loadField, penaltyOf, robotName, robotTag, shortName, linkStale, linkCounts, roleState, teamRgb, budgetSummary, isRobot, stateMismatch, teamLegend, teamPrimary, teamSummary, versionMark } from '/static/field_model.js';
+        import { mountControlBar, mountOverlays, robotActions, toast, sendStop, stateUrl, withOperator } from '/static/control_bar.js';
         import { renderInspector as renderInspectorPanel } from '/static/inspector.js';
         await loadField(location.origin);  // the field of the gateway's config.yaml, before the scenes are built
 
         // Global state variables
         let API_URL = window.location.origin;
         // STOP ALL + control lock; when the holder keeps control after our request, MANUAL turns off
+        let controlInFlight = null;  // the /control request on its way, if any (sendControlLoop)
         const ctl = mountControlBar(document.getElementById("controlBar"), () => API_URL,
-                                    { onDenied: () => { if (isManualMode) window.toggleManualMode(false); },
+                                    { beforeRelease: async () => { if (isManualMode) window.toggleManualMode(false); await Promise.race([controlInFlight, new Promise(r => setTimeout(r, 1000))]); },  // at most 1 s: the gateway refuses a late command anyway
+                                      onDenied: () => { if (isManualMode) window.toggleManualMode(false); },
                                       onLost: (holder) => { if (isManualMode) { window.toggleManualMode(false); toast(`${holder || "Nobody"} has control now: MANUAL is off.`); } } });
+        const ov = mountOverlays(() => API_URL);  // GameController + recording controls, overlays on every page
         const cardActions = new Map();  // STOP / Resume per robot address, moved into each rebuilt card
         {   // STOP ALL stays reachable over the "turn your device" overlay (phones in portrait)
             const b = Object.assign(document.createElement("button"), { className: "ctl-stop ctl-stopall", textContent: "STOP ALL" });
@@ -1061,7 +1110,6 @@
         let selectedRobotId = null;
         let selectedRobotIp = "";
         let isManualMode = false;
-        let isLimpArms = false;
         let isTimelinePlaying = false;
         let playbackSpeed = 1.0;
         const knownDrawingPaths = new Set();
@@ -1075,6 +1123,15 @@
         // Elements
         const statusDot = document.getElementById("statusDot");
         const statusText = document.getElementById("statusText");
+        {   // narrow screens: the GC pill moves from over the field into the header (the field keeps its top rows)
+            const pill = document.getElementById("simGcOverlay"), home = pill.parentElement, mq = matchMedia("(max-width: 1024px)");
+            const gcToHeader = () => {
+                pill.classList.toggle("in-header", mq.matches);
+                if (mq.matches) statusText.closest(".connection-status").before(pill); else home.prepend(pill);
+            };
+            mq.addEventListener("change", gcToHeader);
+            gcToHeader();
+        }
         const gcState = document.getElementById("gcState");
         const gcTime = document.getElementById("gcTime");
         const gcScore = document.getElementById("gcScore");
@@ -1093,7 +1150,7 @@
 
         // Renderer engine, same code in index.html and dashboard.html.
         // "circus": the exact circus image (src/static/circus_view.js, B2 renderer, needs WebGL2).
-        // "wasm": Three.js scene, MuJoCo (WebAssembly, src/static/mujoco_robots.js) poses the Booster T1 model.
+        // "wasm": Three.js scene, MuJoCo (WebAssembly, src/static/mujoco_robots.js) poses the Booster T2 / T1 / K1 models (agent.robot; default T2).
         // "threejs": Three.js scene with simple robot shapes.
         // Fallback: circus -> wasm -> simple robots -> the WebGL message (with the 2D button). Only a choice in
         // the select box is saved (key _v2: the old key was written on every load, so it held no choice).
@@ -1103,6 +1160,7 @@
         let mjLoading = null;
         let circusView = null;  // createCircusView() result once the circus scene is loaded
         let circusLoading = null;
+        let engineStarted = false;  // the 3D engine loads the first time the 3D view opens, never on a 2D page
         let lastState = null;   // the last /state, for an engine that finishes loading later
         let lastPolledState = null;  // the last /state of fetchState, for the robot inspector
 
@@ -1153,7 +1211,7 @@
                 const label = opt ? opt.textContent : "";
                 if (opt) opt.textContent = label + " (loading…)";
                 mjLoading = import("/static/mujoco_robots.js")
-                    .then(m => m.loadT1())
+                    .then(m => m.loadRobots())
                     .then(r => { mjRobots = r; if (opt) opt.textContent = label; })
                     .catch(e => {
                         console.error("[WASM] MuJoCo model not loaded, simple robots stay:", e);
@@ -1457,16 +1515,17 @@
         let labelLines = null, shownLines = "";  // SVG of the leader lines (init3D) and its last content
         function layoutLabels() {
             const size = renderer.getSize(new THREE.Vector2());  // CSS pixels, as LABEL_PX
-            const lw = 2 * LABEL_PX, lh = LABEL_PX;
+            const lh = LABEL_PX;
             const items = [];
             for (const sp of Object.values(textBillboards)) {
                 if (!sp.parent || !sp.parent.visible || !sp.parent.parent) continue;  // hidden or removed robot
                 sp.getWorldPosition(_labelPos).project(camera);
                 if (_labelPos.z > 1) continue;  // behind the camera
-                items.push({ sp, x: (_labelPos.x + 1) / 2 * size.x, y: (1 - _labelPos.y) / 2 * size.y, z: _labelPos.z });
+                items.push({ sp, x: (_labelPos.x + 1) / 2 * size.x, y: (1 - _labelPos.y) / 2 * size.y, z: _labelPos.z, k: badgeK(sp) });
             }
             for (const it of placeLabels(items, size.x, size.y, lh, gcPillRect())) {
                 // Sprite centre in badge units: x shifts the badge sideways, a negative y lifts it
+                const lw = it.k * lh;
                 it.sp.center.set(0.5 - (it.left - (it.x - lw / 2)) / lw, -it.up / lh);
             }
             const lines = leaderLines(items, lh);
@@ -1490,7 +1549,7 @@
                 camera.updateProjectionMatrix();
                 renderer.setSize(container.clientWidth, container.clientHeight);
                 const s = labelScale();
-                Object.values(textBillboards).forEach(b => b.scale.set(2 * s, s, 1));
+                Object.values(textBillboards).forEach(b => b.scale.set(badgeK(b) * s, s, 1));
                 renderer.render(scene, camera);  // setSize clears the canvas: redraw before the browser paints
             }
         }
@@ -1510,7 +1569,7 @@
             if (old) old.removeFromParent();
             if (wantMj) {
                 const robot = mjRobots.makeRobot(agent);
-                const label = createTextBillboard(`R${id}`);
+                const label = createTextBillboard(robotName(agent, lastState?.agents), agent);
                 label.position.set(0, robot.userData.height + 0.15, 0);
                 robot.add(label);
                 textBillboards[key] = label;
@@ -1550,7 +1609,7 @@
             nose.position.set(0, 0.63, -0.09);
             group.add(nose);
 
-            const billboard = createTextBillboard(`R${id}`);
+            const billboard = createTextBillboard(robotName(agent, lastState?.agents), agent);
             billboard.position.set(0, 0.78, 0);
             group.add(billboard);
             textBillboards[key] = billboard;
@@ -1561,33 +1620,53 @@
         }
 
         // R<id> badge image, used by the Three.js sprites and by the circus overlay
-        function makeBadgeCanvas(text) {
+        // "T19 R3" label, its border in the team's primary colour (as the 2D ring); the font shrinks to fit the 2:1 badge
+        function makeBadgeCanvas(text, agent) {
             const canvas = document.createElement('canvas');
-            canvas.width = 128;
-            canvas.height = 64;
             const ctx = canvas.getContext('2d');
-            
+            // One font size for every label: a longer text ("T19 R3", a twin "T19 R3 ·.2") gets a wider badge, never a
+            // smaller text. The badge height is LABEL_PX on screen, so the text is 44/64 of it (12 px on phones)
+            const fs = 44;
+            ctx.font = `bold ${fs}px sans-serif`;
+            canvas.width = Math.max(128, 2 * Math.ceil((ctx.measureText(text).width + 28) / 2));
+            canvas.height = 64;
+            const W = canvas.width;
             ctx.fillStyle = 'rgba(17, 20, 32, 0.35)';  // mostly see-through: robots behind stay visible
-            ctx.strokeStyle = '#6366f1';
+            ctx.strokeStyle = agent ? `rgb(${teamRgb({ color: teamPrimary(lastState?.agents).get(agent.team) || agent.color })})` : '#6366f1';
             ctx.lineWidth = 4;
-            ctx.roundRect(4, 4, 120, 56, 12);
+            ctx.roundRect(4, 4, W - 8, 56, 12);
             ctx.fill();
             ctx.stroke();
-            
+
             ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 44px sans-serif';
+            ctx.font = `bold ${fs}px sans-serif`;  // a new canvas width reset the context
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.strokeStyle = '#000000';  // dark outline keeps the text readable on any background
             ctx.lineWidth = 8;
             ctx.lineJoin = 'round';
-            ctx.strokeText(text, 64, 32);
-            ctx.fillText(text, 64, 32);
+            ctx.strokeText(text, W / 2, 32);
+            ctx.fillText(text, W / 2, 32);
             return canvas;
         }
+        const badgeK = sp => sp.material.map.image.width / 64;  // badge width in label heights: 2, more for a twin
 
-        function createTextBillboard(text) {
-            const texture = new THREE.CanvasTexture(makeBadgeCanvas(text));
+        // The badge text follows robotName: when a second robot with the same team and number appears, both badges add the IP end
+        function relabel(key, agent, agents) {
+            const sp = textBillboards[key], text = robotName(agent, agents);
+            if (!sp || sp.userData.text === text) return;
+            if (sp.userData.text !== undefined) {
+                sp.material.map.dispose();
+                sp.material.map = new THREE.CanvasTexture(makeBadgeCanvas(text, agent));
+                sp.material.needsUpdate = true;
+                const s = labelScale();
+                sp.scale.set(badgeK(sp) * s, s, 1);  // a wider badge, the same text size
+            }
+            sp.userData.text = text;
+        }
+
+        function createTextBillboard(text, agent) {
+            const texture = new THREE.CanvasTexture(makeBadgeCanvas(text, agent));
             const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, alphaTest: 0.05, sizeAttenuation: false, depthTest: false });
             const sprite = new THREE.Sprite(mat);
             sprite.center.set(0.5, 0);  // grows upward from its anchor, so it does not cover the head
@@ -1595,7 +1674,7 @@
             sprite.renderOrder = 1;
             sprite.frustumCulled = false;
             const s = labelScale();
-            sprite.scale.set(2 * s, s, 1.0);
+            sprite.scale.set(badgeK(sprite) * s, s, 1.0);
             return sprite;
         }
 
@@ -1621,6 +1700,7 @@
                 state.agents.forEach(agent => {
                     activeIds.add(robotKey(agent));
                     const mesh = getOrCreateRobotMesh(agent);
+                    relabel(robotKey(agent), agent, state.agents);  // a twin appeared or left: "T19 R3" <-> "T19 R3 ·.2"
                     mesh.position.set(agent.x, 0, -agent.y);
                     mesh.rotation.y = agent.angle - Math.PI / 2;  // robots face local -z; heading 0 = scene +x
                     if (mesh.userData.mj) mjRobots.pose(mesh, agent.joints);
@@ -1737,6 +1817,9 @@
                 timelineBar.classList.toggle("active", mode === 'rerun');
             }
 
+            // The engine picker only matters for the 3D view (visibility: the tab row does not jump)
+            document.getElementById("rendererSelect").parentElement.style.visibility = mode === '3d' ? '' : 'hidden';
+            if (mode === '3d' && !engineStarted) { engineStarted = true; switchRendererEngine(activeRendererEngine, false); }  // first 3D view: load the engine now
             if (mode === '3d') onWindowResize();
         };
 
@@ -1792,7 +1875,7 @@
         // The module waits for GET /field first, so 'load' may have fired already.
         const onPageLoad = (fn) => document.readyState === 'complete' ? fn() : window.addEventListener('load', fn);
         onPageLoad(() => {
-            switchRendererEngine(activeRendererEngine, false);
+            // no engine start here: switchView('3d') starts it, so a 2D page never loads the circus scene (STOP ALL stays instant)
             
             if (!document.getElementById("gatewayIp").value) {
                 const host = window.location.host || "localhost:8080";
@@ -1825,6 +1908,8 @@
 
         // One scale for x and y, so circles stay round on any canvas shape
         const fieldScale = () => Math.min((canvas.width - CANVAS_MARGIN * 2) / FIELD_WIDTH, (canvas.height - CANVAS_MARGIN * 2) / FIELD_HEIGHT);
+        // canvas px per CSS px: the canvas is shown with object-fit: contain, so the narrower fit sets the scale
+        const canvasPx = () => Math.max(1, canvas.width / Math.max(1, canvas.clientWidth), canvas.height / Math.max(1, canvas.clientHeight));
         function toCanvasCoords(fx, fy) {
             const k = fieldScale();
             return { x: canvas.width / 2 + fx * k, y: canvas.height / 2 - fy * k };
@@ -1850,7 +1935,7 @@
             }
             ctx.stroke();
 
-            drawDrawings2D(ctx, state.drawings, mapCoords, mapSize, disabledDrawingPaths, Math.max(1, canvas.width / Math.max(1, canvas.clientWidth)));
+            drawDrawings2D(ctx, state.drawings, mapCoords, mapSize, disabledDrawingPaths, canvasPx());
 
             if (state.ball) {
                 const pt = toCanvasCoords(state.ball.x, state.ball.y);
@@ -1864,30 +1949,58 @@
             }
 
             if (state.agents) {
-                const px = Math.max(1, canvas.width / Math.max(1, canvas.clientWidth));  // canvas px per CSS px
+                const px = canvasPx();  // canvas px per CSS px
+                const primary = teamPrimary(state.agents);  // each disc gets a ring in its team's primary colour
                 state.agents.forEach(agent => {
                     const pt = toCanvasCoords(agent.x, agent.y);
-                    drawRobot2D(ctx, agent, pt.x, pt.y, px, agent.id === selectedRobotId ? "rgba(99, 102, 241, 0.8)" : null);
+                    ctx.globalAlpha = linkStale(state, agent) ? 0.4 : 1;  // old data: greyed, as the card says "LINK N s old"
+                    drawRobot2D(ctx, agent, pt.x, pt.y, px, isRobot(agent, selectedRobotId, selectedRobotIp) ? "rgba(99, 102, 241, 0.8)" : null, primary.get(agent.team));
                 });
+                ctx.globalAlpha = 1;
+                for (const agent of state.agents) {  // twin tags (".1", ".2") last: no other disc covers them
+                    const tag = robotTag(agent, state.agents), pt = toCanvasCoords(agent.x, agent.y);
+                    if (tag) drawRobotTag2D(ctx, tag, pt.x, pt.y, px);
+                }
             }
         }
 
         // Gateway status: OFFLINE only after 3 failed polls in a row, so one lost poll (e.g. while a phone
         // loads the 21 MB circus scene) does not flicker; the age is the time since the last good /state.
         let failedPolls = 0;
+        const narrowHeader = matchMedia("(max-width: 1024px)");
         let lastStateAt = 0;  // performance.now() of the last good /state, 0 = none yet
+        let links = { n: 0, stale: 0 };  // robots in the last /state, and how many have a link 1 s old or more
         function showGatewayStatus() {
             // data older than 3 s also counts as offline: a hung request never fails
             const ageS = lastStateAt ? (performance.now() - lastStateAt) / 1000 : Infinity;
             const online = failedPolls < 3 && ageS < 3;
-            statusDot.className = online ? "status-dot online" : "status-dot";
-            const text = online ? `GATEWAY ONLINE · data ${ageS.toFixed(1)} s old` : lastStateAt ? `NO DATA FOR ${ageS.toFixed(0)} s` : "GATEWAY OFFLINE";
-            if (statusText.textContent !== text) statusText.textContent = text;
-            statusText.title = online ? "" : `Is the gateway running on ${new URL(API_URL).host}?`;
+            // The gateway answers, but the robots' own links can be old: then no "online" for the robot data and no "0.0 s"
+            const allStale = online && links.n > 0 && links.stale === links.n, someStale = online && !allStale && links.stale > 0;
+            statusDot.className = online ? `status-dot online${allStale ? " stale" : ""}` : "status-dot";
+            const long = allStale ? "GATEWAY ONLINE · all robot links stale"
+                : online ? `GATEWAY ONLINE · data ${ageS.toFixed(1)} s old` : lastStateAt ? `NO DATA FOR ${ageS.toFixed(0)} s` : "GATEWAY OFFLINE";
+            // narrow headers: "● 0.1 s" (the green dot says online), so a cut never hides the age; the title has it all
+            const text = online && narrowHeader.matches ? (allStale ? "links stale" : `${ageS.toFixed(1)} s`) : long;
+            const nStale = `${links.stale} ${links.stale === 1 ? "link" : "links"} stale`;
+            const extra = someStale ? ` · ${nStale}` : "";
+            // short form: the age first, then the amber "N stale" ("0.1 s · 4 stale")
+            const short = someStale && narrowHeader.matches, amber = short ? `${links.stale} stale` : extra.slice(3);
+            if (statusText.dataset.text !== text + extra) {
+                statusText.dataset.text = text + extra;
+                const warn = Object.assign(document.createElement("span"), { textContent: amber, style: "color: var(--accent-amber, #f59e0b)" });
+                statusText.replaceChildren(...(!someStale ? [text] : [text, " · ", warn]));
+            }
+            statusText.style.color = allStale ? "var(--accent-amber, #f59e0b)" : "var(--text-secondary)";
+            statusText.title = online ? long + extra : `${long}. Is the gateway running on ${new URL(API_URL).host}?`;
             const stale = !!lastStateAt && !online;
             if (stale && !document.body.classList.contains("stale-data")) {  // the old GameController values must not look live
                 gcState.textContent = "—";
                 for (const id of ["gcTime", "gcScore"]) document.getElementById(id).hidden = true;
+            }
+            if (stale) {  // "8/8 live" must not stay under NO DATA: the counts are the last ones seen
+                const sum = document.getElementById("robotSummary"), seen = (sum.dataset.html || "").split(" live")[0];
+                const t = `no data · last seen ${seen.includes("/") ? seen : "—"}`;
+                if (sum.textContent !== t) { sum.textContent = t; sum.dataset.down = "1"; }
             }
             document.body.classList.toggle("stale-data", stale);  // greys the robots: their data is old
         }
@@ -1899,13 +2012,16 @@
                 const res = await fetch(stateUrl(API_URL), { signal: AbortSignal.timeout(10000) });  // only against a hung request
                 const state = await res.json();
                 ctl.update(state);
+                syncBypassRow();
+                ov.update(state);
                 showManualTarget();  // the MANUAL text follows the lock state
                 // Each robot's own ball estimate and seen obstacles: drawings "beliefs/ball", "beliefs/obstacles"
-                state.drawings = (state.drawings || []).concat(beliefDrawings(state.agents));
+                state.drawings = (state.drawings || []).concat(beliefDrawings((state.agents || []).filter(a => !linkStale(state, a))));  // old beliefs of a silent robot are not drawn
                 lastPolledState = state;
                 
                 isOnline = true;
                 failedPolls = 0;
+                links = linkCounts(state);
                 lastStateAt = performance.now();
                 showGatewayStatus();
 
@@ -1914,9 +2030,15 @@
                     gcState.className = g.online ? "sim-gc-badge" : "sim-gc-badge offline";
                     gcState.textContent = g.state;
                     gcState.parentElement.title = g.title;
-                    for (const [id, text] of [["gcTime", g.detail], ["gcScore", g.score]]) {
+                    const gcTime = document.getElementById("gcTime");  // the clock first and never cut: "9:35 · 1st half"
+                    if (gcTime.dataset.text !== g.detail) {
+                        gcTime.dataset.text = g.detail;
+                        gcTime.replaceChildren(Object.assign(document.createElement("span"), { className: "gc-clock", textContent: g.clock || "" }),
+                                               Object.assign(document.createElement("span"), { className: "gc-rest", textContent: g.rest ? `\u00a0· ${g.rest}` : "" }));
+                    }
+                    for (const [id, text] of [["gcTime", null], ["gcScore", g.score]]) {
                         const el = document.getElementById(id);
-                        el.textContent = text;
+                        if (text !== null) el.textContent = text;
                         el.hidden = !g.online;
                         el.style.whiteSpace = "nowrap";
                     }
@@ -1947,7 +2069,11 @@
         robotList.addEventListener("pointerdown", () => { listPointerDown = true; });
         addEventListener("pointerup", () => setTimeout(() => { listPointerDown = false; }), true);
         addEventListener("pointercancel", () => { listPointerDown = false; }, true);
+        const seenRobots = new Map();  // for the summary line: robots heard in the last 60 s
         function updateRobotsList(state) {
+            const legend = teamLegend(state.agents), summary = `${teamSummary(state, seenRobots)}${legend ? `<div>Team colours: ${legend}</div>` : ''}`;
+            const summaryEl = document.getElementById("robotSummary");
+            if (summaryEl.dataset.html !== summary || summaryEl.dataset.down) { summaryEl.innerHTML = summaryEl.dataset.html = summary; delete summaryEl.dataset.down; }
             if (!state.agents || state.agents.length === 0) {
                 robotList.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 1.2rem; font-size: 0.78rem;">No active robots broadcasted.</div>`;
                 return;
@@ -1955,17 +2081,17 @@
 
             let html = "";
             [...state.agents].sort((a, b) => ((a.team || 0) - (b.team || 0)) || (a.id - b.id)).forEach(agent => {  // grouped by team
-                const isSelected = agent.id === selectedRobotId ? "selected" : "";
+                const isSelected = isRobot(agent, selectedRobotId, selectedRobotIp) ? "selected" : "";
                 html += `
                     <div class="robot-item ${isSelected}" onclick="selectRobot(${agent.id}, '${agent.ip || '127.0.0.1'}')">
                         <div class="robot-meta">
-                            <span class="robot-id"><span class="team-swatch" style="background: rgb(${teamRgb(agent)})"></span>${robotName(agent)}</span>
-                            <span class="robot-role">${roleState(agent)}${penaltyOf(agent, state.gamecontroller) ? `<b style="color: var(--accent-amber, #f59e0b);"> · ⛔ ${penaltyOf(agent, state.gamecontroller)}</b>` : ''}${agent.latch ? `<b style="color: var(--accent-red, #ef4444);"> · ${({ damp: 'DAMPED', lie: 'LYING', stop: 'STOPPED' })[agent.latch] || ''}</b>` : ''}</span>
+                            <span class="robot-id"><span class="team-swatch" style="background: rgb(${teamRgb(agent)})"></span>${robotName(agent, state.agents)}</span>
+                            <span class="robot-role">${roleState(agent)}${penaltyOf(agent, state.gamecontroller) ? `<b style="color: var(--accent-amber, #f59e0b);"> · ⛔ ${penaltyOf(agent, state.gamecontroller)}</b>` : ''}${agent.latch ? `<b style="color: var(--accent-red, #ef4444);"> · ${({ damp: 'DAMPED', lie: 'LYING', stop: 'STOPPED' })[agent.latch] || ''}</b>` : ''}${stateMismatch(agent, state.gamecontroller) ? `<b style="color: var(--accent-amber, #f59e0b);" title="${stateMismatch(agent, state.gamecontroller, true)}"> · ⚠ ${stateMismatch(agent, state.gamecontroller)}</b>` : ''}</span>
                         </div>
-                        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; font-size: 0.72rem; color: var(--text-secondary); white-space: nowrap;">
-                            <span>BATT ${typeof agent.battery === 'number' && agent.battery >= 0 ? (agent.battery < 20 ? '<b style="color: var(--accent-red);">⚠ ' + Math.round(agent.battery) + '%</b>' : Math.round(agent.battery) + '%') : 'n/a'}${agent.fallen ? ' · <b style="color: var(--accent-red);">⚠ fallen</b>' : ''}</span>
-                            <a href="/robot.html?robot=${encodeURIComponent((agent.ip || '127.0.0.1') + '|' + agent.id)}" onclick="event.stopPropagation()" style="color: #93c5fd; text-decoration: none;">Robot ›</a>
-                            <span data-act="${agent.ip || '127.0.0.1'}" data-label="${robotName(agent)}"></span>
+                        <div class="robot-stat">
+                            <span>BATT ${typeof agent.battery === 'number' && agent.battery >= 0 ? (agent.battery < 20 ? '<b style="color: var(--accent-red);">⚠ ' + Math.round(agent.battery) + '%</b>' : Math.round(agent.battery) + '%') : 'n/a'}${agent.fallen ? ' · <b style="color: var(--accent-red);">⚠ fallen</b>' : ''}${versionMark(agent, state.fleet?.head) ? ` · <span title="robot code against this gateway's checkout">code ${versionMark(agent, state.fleet?.head)}</span>` : ''}${(() => { const age = state.fleet?.link?.[agent.ip]?.age ?? 0; return age < 1 ? '' : ` · <b style="color: var(--accent-amber, #f59e0b); white-space: nowrap;">LINK ${age.toFixed(0)} s old</b>`; })()}</span>
+                            <span class="card-actions"><span data-act="${agent.ip || '127.0.0.1'}" data-label="${robotName(agent, state.agents)}"></span>
+                            <a href="/robot.html?robot=${encodeURIComponent((agent.ip || '127.0.0.1') + '|' + agent.id)}" onclick="event.stopPropagation()" style="color: #93c5fd; text-decoration: none;">Robot ›</a></span>
                         </div>
                     </div>
                 `;
@@ -2021,14 +2147,12 @@
         };
 
         function updateNetworkDashboard(state) {
-            const usageEl = document.getElementById("budgetUsage");
-            const progressEl = document.getElementById("budgetProgressBar");
-            if (state.gamecontroller && state.gamecontroller.message_budget) {
-                const budget = state.gamecontroller.message_budget[0] || 12000;
-                usageEl.textContent = `${budget} / 12,000`;
-                const pct = Math.min(100, Math.max(0, (budget / 12000) * 100));
-                progressEl.style.width = `${pct}%`;
-            }
+            // Our team's messages left, from the GameController (field_model.js budgetSummary); the bar shows the part used
+            const b = budgetSummary(state.gamecontroller);
+            budgetUsage.textContent = b.text;
+            budgetUsage.title = b.title;
+            budgetProgressBar.style.width = `${b.used}%`;
+            budgetProgressBar.style.background = b.used > 90 ? "var(--accent-red)" : "var(--accent-indigo)";
         }
 
         // Referee-rules bypass (testingOverride in /control): ticking asks first, a red banner shows while on, never persisted
@@ -2039,6 +2163,13 @@
             document.getElementById("bypassModal").hidden = true;
         };
         setBypass(false);  // off on every load, even if the browser restores the form
+        // The bypass shows only to the operator with control; losing control turns it off (called after each /state)
+        function syncBypassRow() {
+            const has = ctl.hasControl();
+            document.getElementById("bypassRow").hidden = !has;
+            document.getElementById("bypassNoControl").hidden = has;
+            if (!has && bypassBox.checked) setBypass(false);
+        }
         bypassBox.addEventListener("change", () => {
             if (!bypassBox.checked) return setBypass(false);
             bypassBox.checked = false;  // stays off until "Enable bypass"
@@ -2051,8 +2182,8 @@
         // says ON / OFF in words; after OFF the panel says the robot is released.
         let manualRobot = null, releasedRobot = null;  // {id, ip}
         const robotLabel = (r) => {
-            const a = (lastPolledState?.agents || []).find(x => x.id === r.id && (x.ip || "127.0.0.1") === r.ip);
-            return `${a ? robotName(a) : "R" + r.id} (${r.ip})`;
+            const agents = lastPolledState?.agents || [], a = agents.find(x => x.id === r.id && (x.ip || "127.0.0.1") === r.ip);
+            return a ? shortName(robotName(a, agents)) : `R${r.id} (${r.ip})`;  // "T19 R3·.2": the same text as its buttons
         };
         // The gateway refuses manual commands in READY, SET and PLAYING unless this tab enabled the bypass
         const refereeBlocks = () => ["READY", "SET", "PLAYING"].includes(lastPolledState?.gamecontroller?.state)
@@ -2079,12 +2210,15 @@
             document.getElementById("manualBanner").hidden = !isManualMode;
         }
 
+        {   // --manual-h: the height of the fixed MANUAL banner (0 while hidden); the page keeps this space free
+            const banner = document.getElementById("manualBanner");
+            new ResizeObserver(() => document.documentElement.style.setProperty("--manual-h", `${banner.offsetHeight}px`)).observe(banner);
+        }
         window.toggleManualMode = (enabled) => {
             if (enabled && !ctl.hasControl()) ctl.take();  // engineer mode: driving needs the control lock
             if (enabled && !isManualMode) {
                 manualRobot = { id: selectedRobotId, ip: selectedRobotIp };
                 releasedRobot = null;
-                if (isLimpArms) toggleLimpArms();  // every manual session starts with stiff arms
             } else if (!enabled && isManualMode) {
                 releasedRobot = manualRobot;
                 manualRobot = null;
@@ -2094,15 +2228,6 @@
             showManualTarget();
         };
         toggleManualMode(false);  // off on every load, even if the browser restores the form
-
-        // The button shows the arm state this page sends (lt); it cannot read the robot's real state
-        window.toggleLimpArms = () => {
-            isLimpArms = !isLimpArms;
-            const btn = document.getElementById("limpBtn");
-            btn.textContent = isLimpArms ? "ARMS: LIMP" : "ARMS: STIFF";
-            btn.setAttribute("aria-pressed", isLimpArms);
-            console.log("[Joystick] Limp arms:", isLimpArms);
-        };
 
         // Joystick pad (same as index.html): the sliders only scale the knob position, so a pad at rest sends 0
         const joyStickEl = document.getElementById("joyStick");
@@ -2158,7 +2283,8 @@
                 const sliderVxVal = parseFloat(document.getElementById("sliderVx").value);
                 const sliderVyVal = parseFloat(document.getElementById("sliderVy").value);
                 try {
-                    const res = await fetch(`${API_URL}/control`, {
+                    // MANUAL is checked above with no await before the fetch: after Release turns it off, no new request starts
+                    const req = fetch(`${API_URL}/control`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(withOperator({
@@ -2168,10 +2294,11 @@
                             vy: -joyX * sliderVyVal,
                             vtheta: 0.0,
                             isManual: true,
-                            lt: isLimpArms,
                             testingOverride: document.getElementById("checkTestingOverride").checked
                         }))
                     });
+                    controlInFlight = req.catch(() => {});
+                    const res = await req;
                     // a reply to a command sent just before MANUAL turned off (control given away) needs no message
                     if ((res.status === 423 || res.status === 403) && isManualMode) ctl.locked(await res.json());
                 } catch(e){}

@@ -27,6 +27,11 @@ from gc_client import (
 STATES = {name.lower(): code for code, name in STATE_NAMES.items()}  # initial, ready, set, playing, finished
 HALF_SECS = 600
 RED, BLUE = 1, 0  # GameController team colours
+# Team-message allowance per team, as a real GameController reports it at kickoff (the SPQR sender's rate is planned
+# on 12000 messages per game). Robots that respect the budget send NOTHING while it is below their reserve
+# (settings.yaml messageBudgetSafetyThreshold, 5000 on mappazzone): the old value 1200 silenced all team communication,
+# so no robot heard a teammate. ponytail: constant, the simulated referee does not count messages down.
+MESSAGE_BUDGET = 12000
 
 
 class SimGameController:
@@ -103,7 +108,7 @@ class SimGameController:
                       int(self.first_half), self.kicking_team, int(self.secs), 0)
             body = []
             for i, (number, colour) in enumerate(zip(self.teams, (RED, BLUE))):
-                body += [number, colour, colour, 1, self.scores[i], 0, 0, 1200]
+                body += [number, colour, colour, 1, self.scores[i], 0, 0, MESSAGE_BUDGET]
                 for player in range(1, MAX_NUM_PLAYERS + 1):  # RobotInfo: penalty, secsTillUnpenalised, cautions(, ...)
                     code, secs = self.penalties.get((i, player), (0, 0))
                     body += [code, int(secs)] + [0] * (info_len - 2)

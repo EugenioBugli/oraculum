@@ -3,7 +3,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const src = readFileSync(process.argv[2] || new URL('../src/static/circus_view.js', import.meta.url), 'utf8');
+const path = process.argv[2] || new URL('../src/static/circus_view.js', import.meta.url);
+// A data: module cannot resolve "./field_model.js": point it at the file next to circus_view.js
+const src = readFileSync(path, 'utf8').replace("'./field_model.js'", `'${new URL('field_model.js', path instanceof URL ? path : new URL(path, `file://${process.cwd()}/`)).href}'`);
 const { placeLabels } = await import('data:text/javascript,' + encodeURIComponent(src));
 
 const boxes = (items, lh) => items.map(it => ({ x: it.left, y: it.y - it.up - lh, w: 2 * lh, h: lh }));

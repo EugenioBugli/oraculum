@@ -1,41 +1,66 @@
 // WASM 3D engine: MuJoCo (official WebAssembly build, src/static/mujoco/) loads the
-// Booster T1 model that circus simulates and computes the pose of every part from the
+// Booster T2, T1 and K1 models that circus simulates and computes the pose of every part from the
 // joint angles; Three.js draws it in the page scene. Assets: tools/fetch_web_assets.sh.
+// An agent with robot "t1" or "k1" gets that model, any other (or none) the T2 (the default); a model whose
+// files do not load is drawn as the T2 (or, without T2 files, the T1).
 import * as THREE from "three";
 import loadMujoco from "./mujoco/mujoco.js";
 
-const MODEL_URL = "/static/models/booster_t1/";
 const GEOM_MESH = 7;     // mjGEOM_MESH
-// Arms down, as a standing robot holds them; joints an agent does not send keep these values.
-const REST_POSE = { Left_Shoulder_Roll: -1.3, Right_Shoulder_Roll: 1.3 };
-const VISUAL_GROUP = 2;  // class "visual" in common.xml
+// Per model: folder, visual geom group (T1 class "visual" and T2 "Booster-T2_visual" are group 2; circus's K1 has
+// class-less group 1 meshes, group 0 = collision), the parts tinted with the team colour (material "metal" = T1/K1
+// trunk + waist; the T2 has one light material everywhere, so its Trunk body), and the arms-down rest pose
+// (joints an agent does not send keep these values).
+const MODELS = {
+    t2: { dir: "booster_t2", group: 2, teamBody: "Trunk", rest: { left_shoulder_roll_joint: -1.3, right_shoulder_roll_joint: 1.3 } },
+    t1: { dir: "booster_t1", group: 2, teamMat: "metal", rest: { Left_Shoulder_Roll: -1.3, Right_Shoulder_Roll: 1.3 } },
+    k1: { dir: "booster_k1", group: 1, teamMat: "metal", rest: { Left_Shoulder_Roll: -1.3, Right_Shoulder_Roll: 1.3 } },
+};
 
 // MuJoCo is z-up with x forward. Robot groups in the page are y-up and face local -z
 // (the page sets their position and heading): mj x -> -z, mj y -> -x, mj z -> y.
 const MJ_TO_SCENE = new THREE.Matrix4().set(0, -1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0, 0, 0, 0, 1);
 
-async function fetchOk(path) {
-    const r = await fetch(MODEL_URL + path);
-    if (!r.ok) throw new Error(`${MODEL_URL}${path}: HTTP ${r.status} (run tools/fetch_web_assets.sh)`);
-    return r;
+// {makeRobot(agent), pose(robot, joints)} for every model whose files load; rejects when none loads.
+export async function loadRobots() {
+    const mujoco = await loadMujoco();
+    const keys = Object.keys(MODELS);
+    const loaded = await Promise.all(keys.map(k => loadModel(mujoco, k).catch(e => {
+        console.warn(`[WASM] no ${k.toUpperCase()} model:`, e.message);
+        return null;
+    })));
+    const models = Object.fromEntries(keys.map((k, i) => [k, loaded[i]]).filter(([, m]) => m));
+    const fallback = models.t2 || models.t1 || models.k1;
+    if (!fallback) throw new Error("no robot model loaded (run tools/fetch_web_assets.sh)");
+    const modelOf = (agent) => models[String(agent?.robot || "").toLowerCase()] || fallback;
+    return {
+        makeRobot: (agent) => { const m = modelOf(agent), r = m.makeRobot(agent); r.userData.model = m; return r; },
+        pose: (robot, joints) => (robot.userData.model || fallback).pose(robot, joints),
+    };
 }
 
-export async function loadT1() {
-    const mujoco = await loadMujoco();
+async function loadModel(mujoco, key) {
+    const { dir, group, teamMat, teamBody, rest } = MODELS[key];
+    const url = `/static/models/${dir}/`;
+    const fetchOk = async (path) => {
+        const r = await fetch(url + path);
+        if (!r.ok) throw new Error(`${url}${path}: HTTP ${r.status} (run tools/fetch_web_assets.sh)`);
+        return r;
+    };
     const files = (await (await fetchOk("files.txt")).text()).trim().split("\n");
     const blobs = await Promise.all(
         ["common.xml", "instance.xml", ...files].map(async f => [f, new Uint8Array(await (await fetchOk(f)).arrayBuffer())]));
     for (const [f, bytes] of blobs) {
-        mujoco.FS.mkdirTree("/t1/" + f.split("/").slice(0, -1).join("/"));
-        mujoco.FS.writeFile("/t1/" + f, bytes);
+        mujoco.FS.mkdirTree(`/${key}/` + f.split("/").slice(0, -1).join("/"));
+        mujoco.FS.writeFile(`/${key}/` + f, bytes);
     }
-    mujoco.FS.writeFile("/t1/scene.xml",
-        '<mujoco model="t1"><compiler meshdir="meshes"/><include file="common.xml"/><include file="instance.xml"/></mujoco>');
-    const model = mujoco.MjModel.from_xml_path("/t1/scene.xml");
+    mujoco.FS.writeFile(`/${key}/scene.xml`,
+        `<mujoco model="${key}"><compiler meshdir="meshes"/><include file="common.xml"/><include file="instance.xml"/></mujoco>`);
+    const model = mujoco.MjModel.from_xml_path(`/${key}/scene.xml`);
     const data = new mujoco.MjData(model);
     const name = (type, id) => mujoco.mj_id2name(model, type, id);
     const OBJ = { JOINT: mujoco.mjtObj.mjOBJ_JOINT.value, GEOM: mujoco.mjtObj.mjOBJ_GEOM.value,
-                  MATERIAL: mujoco.mjtObj.mjOBJ_MATERIAL.value };
+                  MATERIAL: mujoco.mjtObj.mjOBJ_MATERIAL.value, BODY: mujoco.mjtObj.mjOBJ_BODY.value };
 
     // One shared BufferGeometry per visual mesh geom; vertices are in the geom frame.
     // ponytail: full circus meshes, about 170k triangles per robot (1.7M for 10 robots).
@@ -43,7 +68,7 @@ export async function loadT1() {
     const parts = [];
     const vert = model.mesh_vert, face = model.mesh_face;
     for (let g = 0; g < model.ngeom; g++) {
-        if (model.geom_group[g] !== VISUAL_GROUP || model.geom_type[g] !== GEOM_MESH) continue;
+        if (model.geom_group[g] !== group || model.geom_type[g] !== GEOM_MESH) continue;
         // circus floats the jersey digit 0.3 m above the head; the page's R<id> label shows the number instead.
         if ((name(OBJ.GEOM, g) || "").startsWith("num_")) continue;
         const m = model.geom_dataid[g];
@@ -57,7 +82,7 @@ export async function loadT1() {
         const rgba = mat >= 0 ? model.mat_rgba.slice(4 * mat, 4 * mat + 4) : model.geom_rgba.slice(4 * g, 4 * g + 4);
         parts.push({
             g, geo,
-            team: mat >= 0 && name(OBJ.MATERIAL, mat) === "metal",  // trunk + waist: tinted with the team colour
+            team: teamMat ? mat >= 0 && name(OBJ.MATERIAL, mat) === teamMat : name(OBJ.BODY, model.geom_bodyid[g]) === teamBody,
             // circus' "black" parts (0.08) read as flat silhouettes in a browser: lift them to grey,
             // light enough that a black-team trunk still stands out from the limbs.
             material: new THREE.MeshStandardMaterial({
@@ -74,7 +99,7 @@ export async function loadT1() {
         const q = data.qpos;
         q.set(qpos0);
         q[0] = q[1] = q[2] = 0;
-        const angles = { ...REST_POSE, ...(joints || {}) };  // a partial joint set keeps the arms down
+        const angles = { ...rest, ...(joints || {}) };  // a partial joint set keeps the arms down
         for (const [jn, v] of Object.entries(angles)) {
             if (jn in jointAdr && Number.isFinite(v)) q[jointAdr[jn]] = v;
         }
@@ -131,6 +156,7 @@ export async function loadT1() {
         return robot;
     }
 
-    console.log(`[WASM] MuJoCo T1 model ready: ${parts.length} visual meshes, ${model.njnt} joints`);
+    const tris = parts.reduce((t, part) => t + part.geo.index.count / 3, 0);
+    console.log(`[WASM] MuJoCo ${key.toUpperCase()} model ready: ${parts.length} visual meshes, ${tris} triangles, ${model.njnt} joints`);
     return { makeRobot, pose };
 }

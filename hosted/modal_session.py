@@ -42,9 +42,12 @@ image = (
     # environment's libcurl needs; the runtime keeps it (supervisord.conf passes its own --library-path).
     .run_commands(f"cd /workspace && env -u LD_LIBRARY_PATH CONDA_OVERRIDE_CUDA=12.0 EXTRA_CMAKE_ARGS=-DENABLE_TENSORRT=OFF "
                   f"JOBS=$(nproc) {PIXI} run compile --skip-gcdo-update")
+    # iproute2 for the per-robot veth (robot_netns.py); a late layer so it does not re-trigger the compiles above
+    .apt_install("iproute2")
     # oraculum and the session scripts change most often: last layers
     .add_local_dir(STAGE / "oraculum", "/opt/oraculum", copy=True)
-    .add_local_dir(HERE, "/opt/session", copy=True, ignore=["__pycache__", "*.py", ".ruff_cache", "launcher"])
+    .add_local_dir(HERE, "/opt/session", copy=True,
+                   ignore=["__pycache__", "modal_session.py", ".ruff_cache", "launcher"])  # keep robot_netns.py
     .run_commands("gcc -shared -fPIC -O2 -Wno-unused-parameter -o /opt/session/libnort.so /opt/session/nort.c")
     # useRerun also switches on the oraculum link; with no Rerun viewer in the session, Rerun writes to /dev/null
     .run_commands("cp -r /workspace/src/app/config /opt/session/config && "
@@ -69,21 +72,73 @@ def _wait_http(url: str, seconds: float) -> bool:
     return False
 
 
-# Measured 2026-10-19: ~4.5 cores and 1.3-2 GB (Maximus grows ~18 MB/min). Billed max(request, usage), so the limits
-# (second numbers) bound the cost: 5 cores + 6 GiB = $0.85 per session-hour at the Sandbox rates.
+# Measured 2026-10-20: base (circus+Xvfb+gateway+noVNC) ~2.0 cores/1.3 GB; per robot ~1.6 cores/0.78 GB (flat
+# walking vs rest). Billed max(request, usage), so the limits (second numbers) bound the cost.
 CPU, MEMORY = (4.0, 5.0), (4096, 6144)
 
 
-def start(minutes: int = 25, idle_minutes: int = 10, block_network: bool = False) -> dict:
+def _scene_robot_ips(scene_path: str) -> list:
+    """Loopback IP per robot from a scene file: 10*(color+1)+player, matching robot_netns.py:robot_loopback_ip."""
+    ips, cidx, in_players = [], None, False
+    for raw in open(scene_path):
+        s = raw.strip()
+        if s.startswith("red:"):
+            cidx, in_players = 0, False
+        elif s.startswith("blue:"):
+            cidx, in_players = 1, False
+        elif s.startswith("players:"):
+            in_players = True
+        elif in_players and s.startswith("number:") and cidx is not None:
+            ips.append(f"127.0.0.{10 * (cidx + 1) + int(s.split(':')[1].strip())}")
+    return ips
+
+
+def _scene_teams(scene_path: str) -> list:
+    """Team numbers from a scene file (the 'number:' line right after red:/blue:, before players:)."""
+    teams, after_color = [], False
+    for raw in open(scene_path):
+        s = raw.strip()
+        if s.startswith("red:") or s.startswith("blue:"):
+            after_color = True
+        elif s.startswith("players:"):
+            after_color = False
+        elif after_color and s.startswith("number:"):
+            teams.append(s.split(":")[1].strip())
+            after_color = False
+    return teams
+
+
+def _autosize(n: int):
+    """Size the sandbox to n robots: base ~2 cores/1.3 GB + ~1.6 cores each; per-robot memory includes Maximus
+    growth (~18 MB/min, ~0.45 GB over a session), so ~1.3 GB each, plus 3 GB headroom on the limit."""
+    cpu_req = max(4.0, round(2 + 1.7 * n))
+    mem_req = max(4096, 1500 + 1300 * n)
+    return (cpu_req, cpu_req + 4), (mem_req, mem_req + 3072)
+
+
+def start(minutes: int = 25, idle_minutes: int = 10, block_network: bool = False,
+          scene: str = "1v0.yaml", cpu=None, memory=None) -> dict:
     app = modal.App.lookup(APP_NAME, create_if_missing=True)
     t0 = time.time()
     token = secrets.token_urlsafe(16)
+    base = os.path.basename(scene)
+    ips = _scene_robot_ips(HERE / "scenes" / base)
+    teams = _scene_teams(HERE / "scenes" / base)
+    isolate = "1" if len(ips) > 1 else "0"
+    if cpu is None or memory is None:
+        acpu, amem = _autosize(max(1, len(ips)))
+        cpu, memory = cpu or acpu, memory or amem
+    print(f"scene {base}: {len(ips)} robot(s) {ips or '[default]'}; teams={teams}; isolate={isolate}; cpu={cpu} mem={memory}")
+    env = {"ORACULUM_ACCESS_TOKEN": token, "SCENE": f"/opt/session/scenes/{base}",
+           "ORACULUM_ISOLATE": isolate, "GC_TARGETS": ",".join(ips) if ips else "127.0.0.1"}
+    if len(teams) == 2:  # two-team game -> the simulated referee runs both teams
+        env["SIM_GC_TEAMS"] = ",".join(teams)
     # idle_timeout: Modal ends the sandbox when no connection through its tunnels was open for that long (an open
     # oraculum page polls /state several times per second; an open circus view holds a websocket).
-    sb = modal.Sandbox.create("bash", "/opt/session/session.sh", app=app, image=image, cpu=CPU, memory=MEMORY,
+    sb = modal.Sandbox.create("bash", "/opt/session/session.sh", app=app, image=image, cpu=cpu, memory=memory,
                               encrypted_ports=[8080, 6080], timeout=minutes * 60, idle_timeout=idle_minutes * 60,
                               cidr_allowlist=["127.0.0.1/32"] if block_network else None,  # Modal refuses block_network with open ports
-                              secrets=[modal.Secret.from_dict({"ORACULUM_ACCESS_TOKEN": token})])
+                              secrets=[modal.Secret.from_dict(env)])
     tunnels = sb.tunnels()
     gateway, vnc = tunnels[8080].url, tunnels[6080].url
     print(f"session {sb.object_id} started in {time.time() - t0:.0f} s (stops after {minutes} min, or {idle_minutes} min with no page)")
@@ -103,6 +158,7 @@ if __name__ == "__main__":
     st = sub.add_parser("start")
     st.add_argument("--minutes", type=int, default=25)
     st.add_argument("--idle-minutes", type=int, default=10)
+    st.add_argument("--scene", default="1v0.yaml", help="scene file in hosted/scenes/ (e.g. 2v0.yaml); >1 robot auto-isolates")
     st.add_argument("--block-network", action="store_true", help="no outbound network (test: do the tunnels still work?)")
     sub.add_parser("stop").add_argument("id")
     ex = sub.add_parser("exec")
@@ -110,7 +166,7 @@ if __name__ == "__main__":
     ex.add_argument("command")
     a = ap.parse_args()
     if a.cmd == "start":
-        start(a.minutes, a.idle_minutes, a.block_network)
+        start(a.minutes, a.idle_minutes, a.block_network, scene=a.scene)
     elif a.cmd == "stop":
         modal.Sandbox.from_id(a.id).terminate()
         print(f"session {a.id} stopped")

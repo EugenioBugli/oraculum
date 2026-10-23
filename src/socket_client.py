@@ -25,6 +25,7 @@ from typing import Optional, Type, TypeVar
 
 T = TypeVar("T")
 LINK_WINDOW = 2.0  # seconds of packets that link_stats() averages over
+KEEP_SILENT_S = 10.0  # a silent sender's robots stay in /state (greyed on the pages) this long
 
 
 def _from_dict(cls: Type[T], d: dict) -> T:
@@ -54,6 +55,7 @@ class AgentMsg:
     battery: float = -1.0   # percent; -1 = unknown
     fallen: bool = False
     latch: str = ""         # the robot's oraculum latch: "stop", "lie", "damp" (POST /stop) or "" (none)
+    robot: str = ""         # model (deploy.yaml robot): "t2", "t1", "k1"; the 3D views draw that model, else (or "") a T2
     # This robot's own beliefs, field frame: its ball estimate {x, y} (None = not seen) and the
     # obstacles it sees [{x, y, type}] (type 0 goal post, 1 person, 2 robot). A one-agent packet's
     # top-level "ball" / "obstacles" (DebugMessageSender) are copied here by GameStateMsg.from_dict.
@@ -79,6 +81,7 @@ class DrawingMsg:
     agent_id: int = 0
     frame: str = "field"       # "field" or "viewport"
     condition: str = ""        # condition expression (e.g. role/state)
+    ip: str = ""               # sender IP, set by the gateway: two teams can both have a robot 3
 
 
 @dataclass
@@ -86,6 +89,7 @@ class TextMsg:
     path: str
     text: str
     agent_id: int = 0
+    ip: str = ""               # sender IP, set by the gateway: two teams can both have a robot 3
 
 
 @dataclass
@@ -211,30 +215,32 @@ class UDPReceiver:
         """Return the merged latest game state, or None if no data received yet."""
         with self._lock:
             now = time.time()
-            timeout_duration = 2.0
-            
-            # Identify active IPs
+            timeout_duration = 3.5  # robots in oraculum: match send 1 packet/s: one lost packet must not drop them
+
+            # Senders heard in the last 3.5 s are active. A silent sender's robots stay KEEP_SILENT_S in /state, so the
+            # pages show them greyed ("LINK N s old", fleet.link[ip].age keeps growing) for a whole Wi-Fi gap.
             active_ips = {ip for ip, t in self._last_update_times.items() if now - t < timeout_duration}
-            
-            # Prune agents
-            # An agent goes stale when its sender is silent OR when the sender stops reporting it.
+            known_ips = {ip for ip, t in self._last_update_times.items() if now - t < KEEP_SILENT_S}
+
+            # Prune agents: the sender is silent for KEEP_SILENT_S, OR it is active and no longer reports this agent.
             stale_agents = [key for key in self._cached_agents.keys()
-                            if key[0] not in active_ips or now - self._agent_times.get(key, 0) >= timeout_duration]
+                            if key[0] not in known_ips
+                            or (key[0] in active_ips and now - self._agent_times.get(key, 0) >= timeout_duration)]
             for key in stale_agents:
                 del self._cached_agents[key]
                 self._agent_times.pop(key, None)
-                
-            # Prune drawings/texts from inactive agents
-            active_agent_ids = {agent.id for agent in self._cached_agents.values()}
-            
-            stale_drawings = [key for key in self._cached_drawings.keys() if key[0] not in active_agent_ids]
+
+            # Drawings, texts and the team ball come only from robots of active senders (old drawings are not greyed)
+            fresh = {key: a for key, a in self._cached_agents.items() if key[0] in active_ips}
+
+            stale_drawings = [key for key in self._cached_drawings.keys() if key[:2] not in fresh]
             for key in stale_drawings:
                 del self._cached_drawings[key]
-                
-            stale_texts = [key for key in self._cached_texts.keys() if key[0] not in active_agent_ids]
+
+            stale_texts = [key for key in self._cached_texts.keys() if key[:2] not in fresh]
             for key in stale_texts:
                 del self._cached_texts[key]
-                
+
             # Prune ball
             if self._cached_ball is not None and now - self._last_ball_update_time > timeout_duration:
                 self._cached_ball = None
@@ -243,7 +249,7 @@ class UDPReceiver:
                 return None
             return GameStateMsg(
                 agents=list(self._cached_agents.values()),
-                ball=self._cached_ball or team_ball(self._cached_agents.values()),
+                ball=self._cached_ball or team_ball(fresh.values()),
                 drawings=list(self._cached_drawings.values()),
                 texts=list(self._cached_texts.values())
             )
@@ -304,11 +310,11 @@ class UDPReceiver:
                         self._cached_ball = msg.ball
                         self._last_ball_update_time = now
                     for drawing in msg.drawings:
-                        drawing.agent_id = sender_id
-                        self._cached_drawings[(sender_id, drawing.path)] = drawing
+                        drawing.agent_id, drawing.ip = sender_id, addr[0]
+                        self._cached_drawings[(addr[0], sender_id, drawing.path)] = drawing
                     for t in msg.texts:
-                        t.agent_id = sender_id
-                        self._cached_texts[(sender_id, t.path)] = t
+                        t.agent_id, t.ip = sender_id, addr[0]
+                        self._cached_texts[(addr[0], sender_id, t.path)] = t
         finally:
             sock.close()
             print("[UDPReceiver] Socket closed.")

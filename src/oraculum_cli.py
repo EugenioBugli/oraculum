@@ -2,6 +2,7 @@ import argparse
 import atexit
 import getpass
 import json
+import os
 import secrets
 import socket
 import sys
@@ -9,16 +10,43 @@ import time
 import urllib.error
 import urllib.request
 
-SERVER_URL = "http://localhost:8080"
-# Engineer mode (src/control_lock.py): this run is one client; walk/stiffness need the control lock
+# The gateway: ORACULUM_URL (default http://localhost:8080). A gateway started with ORACULUM_ACCESS_TOKEN needs the same
+# token: the CLI sends it as the oraculum_token cookie, as the pages do after their first ?token= visit.
+SERVER_URL = os.environ.get("ORACULUM_URL", "http://localhost:8080").rstrip("/")
+TOKEN = os.environ.get("ORACULUM_ACCESS_TOKEN", "")
+# Engineer mode (src/control_lock.py): this run is one client; walk and resume need the control lock
 CLIENT = f"cli-{secrets.token_hex(6)}"
 OPERATOR = f"cli {getpass.getuser()}@{socket.gethostname()}"
 
 
+def request(path, payload=None):
+    """A GET (no payload) or a JSON POST to the gateway, with the access token when one is set."""
+    headers = {"Content-Type": "application/json"} if payload is not None else {}
+    if TOKEN:
+        headers["Cookie"] = f"oraculum_token={TOKEN}"
+    data = json.dumps(payload).encode('utf-8') if payload is not None else None
+    return urllib.request.Request(f"{SERVER_URL}{path}", data=data, headers=headers)
+
+
+def refused(e):
+    """Print why the gateway refused (HTTP 401: token; 423: another operator has control; 409: no robot reached)."""
+    if e.code == 401:
+        print(f"Refused (401): {SERVER_URL} needs its access token. Set ORACULUM_ACCESS_TOKEN to the token the gateway was started with.")
+        return
+    try:
+        body = json.loads(e.read().decode('utf-8') or "{}")
+    except ValueError:
+        body = {}
+    print(f"Refused ({e.code}): {body.get('reason') or body.get('error') or body or e.reason}")
+
+
 def get_state():
     try:
-        with urllib.request.urlopen(f"{SERVER_URL}/state", timeout=1.0) as r:
+        with urllib.request.urlopen(request("/state"), timeout=1.0) as r:
             return json.loads(r.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        refused(e)
+        sys.exit(1)
     except Exception as e:
         print(f"Error connecting to Control Server at {SERVER_URL}: {e}")
         sys.exit(1)
@@ -26,16 +54,10 @@ def get_state():
 
 def post(path, payload):
     try:
-        req = urllib.request.Request(
-            f"{SERVER_URL}{path}",
-            data=json.dumps(payload).encode('utf-8'),
-            headers={"Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(req, timeout=2.0) as r:
+        with urllib.request.urlopen(request(path, payload), timeout=2.0) as r:
             return json.loads(r.read().decode('utf-8'))
-    except urllib.error.HTTPError as e:  # 423: another operator has control; 409: no robot reached
-        body = json.loads(e.read().decode('utf-8') or "{}")
-        print(f"Refused ({e.code}): {body.get('reason') or body.get('error') or body}")
+    except urllib.error.HTTPError as e:
+        refused(e)
         sys.exit(1)
     except Exception as e:
         print(f"Error sending command to Control Server at {SERVER_URL}: {e}")
@@ -53,9 +75,7 @@ def release_lock():
 @atexit.register
 def _release_on_exit():  # also after a refused command: a CLI run never keeps the lock
     try:
-        urllib.request.urlopen(urllib.request.Request(
-            f"{SERVER_URL}/control_lock", data=json.dumps({"action": "release", "client": CLIENT}).encode('utf-8'),
-            headers={"Content-Type": "application/json"}), timeout=1.0).read()
+        urllib.request.urlopen(request("/control_lock", {"action": "release", "client": CLIENT}), timeout=1.0).read()
     except Exception:
         pass
 
@@ -65,8 +85,9 @@ def do_status(args):
 
     print("\n=== GameController Match State ===")
     gc = state.get("gamecontroller")
-    if gc:
-        print(f"State: {gc['state']} | Score: {gc['score'][0]} - {gc['score'][1]} | Time remaining: {gc['secsRemaining']}s")
+    if gc and "state" in gc:  # without a GameController the gateway sends only {"external_gc_online": false}
+        score = gc.get("score") or ["-", "-"]
+        print(f"State: {gc['state']} | Score: {score[0]} - {score[1]} | Time remaining: {gc.get('secsRemaining', '-')}s")
     else:
         print("No active GameController broadcast detected.")
 
@@ -75,10 +96,15 @@ def do_status(args):
     if not agents:
         print("No robot status broadcasts received yet.")
     else:
-        print(f"{'ID':<4} | {'X':<8} | {'Y':<8} | {'Heading':<8} | {'Role':<6} | {'State':<10}")
-        print("-" * 55)
+        # Link: seconds since the gateway's last packet from the robot's IP; 1 s or more = stale (old data, as the pages grey it)
+        link = (state.get("fleet") or {}).get("link") or {}
+        print(f"{'Robot':<8} | {'IP':<15} | {'X':<8} | {'Y':<8} | {'Heading':<8} | {'Role':<6} | {'State':<10} | Link")
+        print("-" * 92)
         for a in agents:
-            print(f"{a['id']:<4} | {a['x']:<8.3f} | {a['y']:<8.3f} | {a['angle']:<8.3f} | {a['role']:<6} | {a['state']:<10}")
+            age = (link.get(a.get("ip")) or {}).get("age")
+            age_text = "?" if age is None else f"{age:.1f} s" + (" STALE" if age >= 1 else "")
+            print(f"{'T' + str(a.get('team', '?')) + ' R' + str(a['id']):<8} | {a.get('ip', '?'):<15} | {a['x']:<8.3f} | {a['y']:<8.3f} | "
+                  f"{a['angle']:<8.3f} | {a['role']:<6} | {a['state']:<10} | {age_text}")
 
     print("\n=== Active Debug Drawings ===")
     drawings = state.get("drawings", [])
@@ -117,22 +143,6 @@ def do_walk(args):
     print(f"Sent walk command to robot at {args.ip}:{args.port} for {args.duration}s -> vx={args.vx}, vy={args.vy}, vtheta={args.vtheta}")
 
 
-def do_stiffness(args):
-    lt_val = (args.mode == "limp")
-    payload = {
-        "ip": args.ip,
-        "port": args.port,
-        "vx": 0.0,
-        "vy": 0.0,
-        "vtheta": 0.0,
-        "isManual": True,
-        "lt": lt_val
-    }
-    post_control(payload)
-    release_lock()
-    print(f"Sent stiffness command to robot at {args.ip}:{args.port} -> stiffness mode: {args.mode}")
-
-
 def do_stop(args):
     """STOP (stand in the Prep pose), DAMP (motors soft) or RESUME (the Play combo) through POST /stop."""
     kind = args.command
@@ -143,11 +153,14 @@ def do_stop(args):
     reply = post("/stop", {"robot": robot, "kind": kind, "client": CLIENT, "name": OPERATOR, "confirm": robot})
     if kind == "resume":
         release_lock()
-    print(f"Sent {kind.upper()} to {', '.join(reply['targets'])}")
+    print(f"Sent {kind.upper()} to {', '.join(reply.get('names') or reply['targets'])}")  # "T19 R3 (10.0.0.3)"
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Oraculum CLI Control Utility")
+    parser = argparse.ArgumentParser(
+        description="Oraculum CLI Control Utility",
+        epilog="Gateway: ORACULUM_URL (default http://localhost:8080). Access token: ORACULUM_ACCESS_TOKEN (needed when the "
+               "gateway was started with one).")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Status command
@@ -162,18 +175,15 @@ def main():
     walk_parser.add_argument("--port", type=int, default=10007, help="Target robot port (default: 10007)")
     walk_parser.add_argument("--duration", type=float, default=1.0, help="Seconds to keep sending at 10 Hz (default: 1.0)")
 
-    # Stiffness command
-    stiff_parser = subparsers.add_parser("stiffness", help="Toggle arm stiffness gains")
-    stiff_parser.add_argument("mode", choices=["stiff", "limp"], help="Desired stiffness mode")
-    stiff_parser.add_argument("--ip", default="127.0.0.1", help="Target robot IP (default: 127.0.0.1)")
-    stiff_parser.add_argument("--port", type=int, default=10007, help="Target robot port (default: 10007)")
+    # No "stiffness" command: it only set the joystick's left trigger (lt), and the robot uses lt only in button
+    # combos (lt + start = Prep), so the robot never went limp. To make a robot soft, use "damp" (it falls) or "lie".
 
     # STOP / DAMP / RESUME: through POST /stop (STOP and DAMP need no control lock)
     for name, text in (("stop", "STOP: the robot stands in the Prep pose until RESUME or a Play/Manual combo"),
                        ("lie", "LIE DOWN: the firmware lays the robot on its back until RESUME"),
                        ("damp", "DAMP: motors soft, the robot FALLS and can break (one robot, needs --really)"),
-                       ("resume", "RESUME: the Play combo (clears STOP and DAMP); needs the control lock")):
-        sp = subparsers.add_parser(name, help=text)
+                       ("resume", "RESUME: the Play combo (clears STOP; a DAMPed robot needs STOP first); needs the control lock")):
+        sp = subparsers.add_parser(name, help=text, description=text)  # "resume -h" shows it too
         target = sp.add_mutually_exclusive_group(required=True)
         target.add_argument("--ip", help="robot IP (one that sends telemetry)")
         if name != "damp":  # DAMP is never sent to all robots
@@ -187,8 +197,6 @@ def main():
         do_status(args)
     elif args.command == "walk":
         do_walk(args)
-    elif args.command == "stiffness":
-        do_stiffness(args)
     elif args.command in ("stop", "lie", "damp", "resume"):
         do_stop(args)
 

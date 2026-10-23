@@ -122,9 +122,13 @@ def build_index(root, model, commit, scene_yaml):
         robot = bname[: -len("_Trunk")]
         el = trunks[bname]
         geoms = el.findall("geom")
-        color = next(g.get("rgba") for g in geoms if g.get("class") == "visual" and g.get("rgba") and "_num_" not in g.get("name", ""))
-        rgb = tuple(round(float(v) * 255) for v in color.split()[:3])
         shown = [g.get("name") for g in geoms if g.get("name", "").startswith(robot + "_num_") and g.get("rgba") != "1 1 1 0"]
+        # SceneParser colours every class="visual" (or "<prefix>_visual", Booster-T2) geom of the Trunk. A Booster-K1
+        # Trunk has no visual mesh geom (its meshes are group 1 without a class): only its shown number has the colour.
+        visual = [g for g in geoms if g.get("class", "") == "visual" or g.get("class", "").endswith("_visual")]
+        colored = [g for g in visual if g.get("rgba") and g.get("rgba") != "1 1 1 0"]
+        color = next((g.get("rgba") for g in colored if "_num_" not in g.get("name", "")), None) or colored[0].get("rgba")
+        rgb = tuple(round(float(v) * 255) for v in color.split()[:3])
         subtree = [i for i in range(model.nbody) if model.body_rootid[i] == bid]
         joints = {name(mujoco.mjtObj.mjOBJ_JOINT, j): int(model.jnt_qposadr[j])
                   for j in range(model.njnt) if model.body_rootid[model.jnt_bodyid[j]] == bid and model.jnt_type[j] != mujoco.mjtJoint.mjJNT_FREE}

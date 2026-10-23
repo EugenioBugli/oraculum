@@ -1,0 +1,77 @@
+diff --git a/src/app/nodes/brain/behaviors/states/Fallen.cpp b/src/app/nodes/brain/behaviors/states/Fallen.cpp
+index 0c01d070..2dc00d29 100644
+--- a/src/app/nodes/brain/behaviors/states/Fallen.cpp
++++ b/src/app/nodes/brain/behaviors/states/Fallen.cpp
+@@ -1,5 +1,7 @@
+ // SDK headers must come before BehaviorNode.h: CABSL defines an `action` macro
+ // that breaks SDK declarations using `action` as a parameter name.
++#include <cstdlib>
++
+ #include "booster/BoosterRobotPortal.h"
+ 
+ #include "nodes/brain/behaviors/BehaviorNode.h"
+@@ -44,7 +46,10 @@ option((BehaviorNode)fallen) {
+                 // is the whole reason a robot stopped kicking after its first fall.
+                 // Same mode BoosterController::runningMode() asserts for MotionState::Running,
+                 // so the robot comes up already in the one play is about to ask for.
+-                const auto getUpMode = Settings::isSimulation() ? booster::robot::RobotMode::kWalking : booster::robot::RobotMode::kSoccer;
++                // SPQR_SIM_FW18=1 (simulated robot on booster-motion 1.8): kSoccer as on the real robot, see
++                // BoosterController::runningMode().
++                const auto getUpMode = Settings::isSimulation() && !std::getenv("SPQR_SIM_FW18") ? booster::robot::RobotMode::kWalking
++                                                                                                 : booster::robot::RobotMode::kSoccer;
+                 lastGetUpSucceded = BoosterRobotPortal::instance().getUp(getUpMode);
+             }
+         }
+diff --git a/src/app/nodes/brain/rl/BoosterController.cpp b/src/app/nodes/brain/rl/BoosterController.cpp
+index 432d2340..318f0c9f 100644
+--- a/src/app/nodes/brain/rl/BoosterController.cpp
++++ b/src/app/nodes/brain/rl/BoosterController.cpp
+@@ -2,6 +2,7 @@
+ 
+ #include <algorithm>
+ #include <cmath>
++#include <cstdlib>
+ 
+ #include "booster/BoosterRobotPortal.h"
+ #include "nodes/brain/behaviors/BehaviorNode.h"
+@@ -23,6 +24,14 @@ namespace spqr {
+ 
+ using RobotMode = booster::robot::RobotMode;
+ 
++// SPQR_SIM_FW18=1: the simulated robot runs booster-motion 1.8 (the T1 firmware's own binary, e.g. on the Jetson). 1.8
++// maps kWalking to BoosterAgentMode, where the simulated robot falls at the first step, and kSoccer to RobocupMode,
++// the gait real robots use. kWalking stays for the 0.0.11 simulation package, which has no RobocupMode.
++static bool simFirmware18() {
++    static const bool on = std::getenv("SPQR_SIM_FW18") != nullptr;
++    return on;
++}
++
+ BoosterController::BoosterController() : behaviorNode(this), lowControlBridge(this), fallDownState(this), ball(this), robotPose(this), playerRole(this), gameControllerData(this), jointPositionCommand(this) {
+     bodyPolicies_[static_cast<int>(BodyPolicyId::None)] = nullptr;
+     bodyPolicies_[static_cast<int>(BodyPolicyId::Locomotion)] = &locomotion_;
+@@ -76,6 +85,16 @@ void BoosterController::updateLeds(MotionState motionState) {
+ }
+ 
+ void BoosterController::update() {
++    // booster-motion 1.8 boots in damping (on a real robot the operator sends Prepare): ask for Prepare once, as soon
++    // as its RPC server answers, so the simulated robot stands instead of sagging to the ground. Retried every 500 ms.
++    static bool fw18PrepDone = !simFirmware18();
++    static Timestamp fw18PrepLastTry = 0;
++    if (!fw18PrepDone && Clock::getTimeSince(fw18PrepLastTry) >= 500) {
++        fw18PrepLastTry = Clock::now();
++        fw18PrepDone = BoosterRobotPortal::instance().changeMode(RobotMode::kPrepare) == 0;
++        LOG_INFO("BoosterController", "SPQR_SIM_FW18: boot ChangeMode(kPrepare) " << (fw18PrepDone ? "done" : "not answered yet, retrying"));
++    }
++
+     MotionState req = behaviorNode->commandedMotionState;
+ 
+     if (req == MotionState::Unknown) {
+@@ -203,7 +222,7 @@ void BoosterController::enterLieDown() {
+ // ── Running ──────────────────────────────────────────────────────────────────
+ 
+ RobotMode BoosterController::runningMode() {
+-    return Settings::isSimulation() ? RobotMode::kWalking : RobotMode::kSoccer;
++    return Settings::isSimulation() && !simFirmware18() ? RobotMode::kWalking : RobotMode::kSoccer;
+ }
+ 
+ bool BoosterController::enterRunning() { // |-_|

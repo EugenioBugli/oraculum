@@ -1,6 +1,7 @@
 """Config and field YAML loading."""
 
 import os
+
 import yaml
 
 
@@ -28,7 +29,7 @@ def load_config(root_dir: str) -> tuple[dict, dict, str]:
 
 
 def load_teams(root_dir: str) -> dict[int, dict]:
-    """Return {team_number: {"name": str, "colors": [str]}} from config/teams.yaml."""
+    """Return {team_number: {"name": str, "colors": [str], "logo": str | None}} from config/teams.yaml."""
     teams_path = os.path.join(root_dir, "config", "teams.yaml")
     if not os.path.exists(teams_path):
         return {}
@@ -37,6 +38,7 @@ def load_teams(root_dir: str) -> dict[int, dict]:
         e["number"]: {
             "name":   e["name"],
             "colors": e.get("fieldPlayerColors", []),
+            "logo":   e.get("logo"),  # file in src/static/logos/; None = "<number>.png" if it exists
         }
         for e in entries if "number" in e and "name" in e
     }

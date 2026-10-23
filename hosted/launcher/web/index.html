@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Work in progress — demo.emanuelemusumeci.com</title>
+<meta name="robots" content="noindex">
+<style>
+    :root { --bg: #13161d; --ink: #eceef2; --mut: #9fa4b2; --orange: #f59e0b; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, Inter, sans-serif;
+        display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .card { width: min(880px, 100%); background: #181c25; border: 1px solid #2a2f3a; border-radius: 16px;
+        overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.45); }
+    .hero { display: block; width: 100%; height: auto; }
+    .body { padding: 22px 26px 26px; }
+    .tag { display: inline-block; font: 700 12px/1 ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase;
+        color: var(--bg); background: var(--orange); padding: 6px 10px; border-radius: 999px; }
+    h1 { font-size: 26px; margin: 14px 0 6px; }
+    p { color: var(--mut); margin: 0 0 14px; max-width: 60ch; }
+    a { color: #93c5fd; }
+    code { font-family: ui-monospace, monospace; color: var(--ink); background: #0f1218; padding: 1px 6px; border-radius: 5px; }
+</style>
+</head>
+<body>
+    <main class="card">
+        <img class="hero" src="wip.png" alt="A humanoid robot doing roadworks, hi-vis vest and hard hat, traffic cones and barriers">
+        <div class="body">
+            <span class="tag">Work in progress</span>
+            <h1>This is where the demos will live.</h1>
+            <p><code>demo.emanuelemusumeci.com</code> hosts live, self-service demos — each under its own path. The
+               hub is being set up; come back soon.</p>
+            <p>In the meantime, visit <a href="https://emanuelemusumeci.com">emanuelemusumeci.com</a>.</p>
+        </div>
+    </main>
+</body>
+</html>

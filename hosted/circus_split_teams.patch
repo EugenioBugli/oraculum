@@ -1,0 +1,34 @@
+--- a/src/RobotManager.cpp	2026-10-21 09:57:44.318590692 +0200
++++ b/src/RobotManager.cpp	2026-10-21 09:57:44.338900505 +0200
+@@ -1,5 +1,7 @@
+ #include "RobotManager.h"
+ 
++#include <netinet/in.h>
++#include <netinet/tcp.h>
+ #include <unistd.h>
+ 
+ #include <filesystem>
+@@ -279,6 +281,10 @@
+                     // The only event for the server is someone knocking
+                     int client_fd = accept(serverFd_, nullptr, nullptr);
+                     if (client_fd >= 0) {
++                        // oraculum split: a robot on another host sends one state per 2 ms substep; Nagle + delayed ACK
++                        // would hold a state larger than one TCP segment for up to 40 ms
++                        int one = 1;
++                        setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+                         pollFds_.push_back({client_fd, POLLIN, 0});
+ 
+                         // Receive initial message with robot name
+@@ -446,7 +452,11 @@
+         binds.push_back(shmPath + ":" + shmPath);
+     }
+     for (std::shared_ptr<Robot> r : robots_) {
+-        r->container = std::make_unique<Container>("CIRCUS_" + r->name + "_container");
++        // oraculum split: CIRCUS_DOCKER_SOCK_TEAM<n> = the Docker socket of another host (forwarded over SSH) that runs
++        // team n's containers; its robots reach this circus in socket mode through a TCP relay on that host
++        const char* teamSock = std::getenv(("CIRCUS_DOCKER_SOCK_TEAM" + std::to_string(r->team->number)).c_str());
++        r->container = std::make_unique<Container>("CIRCUS_" + r->name + "_container",
++                                                   teamSock && *teamSock ? teamSock : "/var/run/docker.sock");
+         r->container->create(r, image, binds, connectMode);
+         r->container->start();
+     }

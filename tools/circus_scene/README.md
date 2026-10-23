@@ -63,6 +63,27 @@ docker run ... -e FRAMEWORK_PATH=/work/maximus circus-scene-export <ref> /work/o
   /work/maximus/src/app/sim/1v1.yaml /work/maximus/src/app/sim/5v5.yaml
 ```
 
+### The match scene: `maximus_4v4_rcap` (default of `createCircusView` since 2026-10-22)
+
+Matches are 4v4 at most, on the RCAP field (22 x 14 m, goal 3.0 m, maximus `mappazzone`
+`src/app/config/fields/fieldRCAP.yaml`). No maximus sim config selects that field (all use `fieldLarge`),
+and a circus scene cannot swap a robot's model, so the scene has per team 4 Booster-T2 + 4 Booster-T1 +
+4 Booster-K1 slots; `circus_view.js` puts each robot in a slot of its reported model (`robot`, default T2).
+Built 2026-10-22 on droplet-midmain (Docker, circus `48154ea1`, about 15 minutes with a cold cache) from a
+small framework folder:
+
+```
+maximus/src/app/config/fields/fieldRCAP.yaml               # git show origin/mappazzone:src/app/config/fields/fieldRCAP.yaml
+maximus/src/app/sim/simulation_configs/rcap.yaml           # maximus default.yaml with "field: fieldRCAP"
+maximus/src/app/sim/maximus_4v4_rcap.yaml                  # simulation_config: rcap; 4 T2 (z 0.98), 4 T1 (z 0.68), 4 K1 (z 0.53) per team
+docker run ... -e FRAMEWORK_PATH=/work/maximus circus-scene-export 48154ea1 /work/out /work/maximus/src/app/sim/maximus_4v4_rcap.yaml
+renderer/package_scenes.sh src/static/models <out>/circus_scene_maximus_4v4_rcap
+```
+
+The CI workflow does not build it yet (it exports maximus `1v1` and `5v5`). circus's K1 Trunk has no class "visual"
+mesh, so circus draws a K1 trunk grey in both teams; only its number has the team colour (`package_scene.py`
+takes the team colour from it).
+
 ### Automatic runs (CI)
 
 `.github/workflows/circus-scene.yml` in this repository runs the export on GitHub Actions:

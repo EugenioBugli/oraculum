@@ -1,0 +1,10 @@
+# circus --framework file for the Jetson, Box64 path + GPU (opt-in: BOOSTER_MOTION=box64 GPU=1). Maximus NNs on the Orin GPU.
+# circus already requests the GPU for each container (Docker lists CDI nvidia.com/gpu devices). JetPack 6's container
+# runtime mounts only the driver, so CUDA 12.6 (host) and cuDNN 9.3 + TensorRT 10.3 (copied from the host's
+# /usr/lib/aarch64-linux-gnu into ~/oraculum-sim-arm/gpulibs by build_all.sh) are mounted here. The entrypoint
+# drops SPQR_NN_CPU when /opt/gpulibs exists. booster-motion: Box64.
+image: oraculum-arm-robot
+volumes:
+  - ":/workspace"
+  - "/usr/local/cuda-12.6:/usr/local/cuda-12.6:ro"
+  - "/home/jetsonspqr/oraculum-sim-arm/gpulibs:/opt/gpulibs:ro"

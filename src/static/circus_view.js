@@ -8,6 +8,7 @@
 // Files (git-ignored; tools/fetch_circus_scene.py fetches them from the CI release):
 //   /static/circus/                        b2.js, b2_engine.js, b2_engine.wasm
 //   /static/models/circus_scene_<scene>/   scene package: files.json, scene.xml, scene_index.json, assets/
+import { FIELD, robotName } from './field_model.js';
 
 const BASE = '/static/circus';
 const LABEL_Z = 1.3;  // m: label anchor just above the head of the T1 (1.18 m tall)
@@ -15,7 +16,8 @@ const DRAW_Z = 0.02;  // m: debug drawings just above the field, as in the Three
 
 // R<id> label layout, shared by all engines: a label that would overlap a nearer one is lifted by one
 // label height per overlap, and every badge is kept inside the view.
-// items: [{x, y, z}] anchors in CSS pixels, z = depth (smaller = nearer); w, h: view size; lh: label height;
+// items: [{x, y, z, k}] anchors in CSS pixels, z = depth (smaller = nearer), k = badge width in label heights (default 2,
+// wider for a twin's "T19 R3 ·.2"); w, h: view size; lh: label height;
 // top: a bar over the top of the view that labels must not go under: a height in px (full width), or
 // {left, right, bottom} in view px for a bar over part of the width (dashboard GC pill).
 // avoid: [{left, right, top, bottom}] boxes in view px that labels must not cover (the team ball).
@@ -23,10 +25,10 @@ const DRAW_Z = 0.02;  // m: debug drawings just above the field, as in the Three
 // ponytail: O(n²) over the labels, fine for the few robots on a field. At the top edge a badge steps down
 // to the first free place; it overlaps only when the column is full down to the bottom of the view.
 export function placeLabels(items, w, h, lh, top = 0, avoid = []) {
-    const lw = 2 * lh;
     items.sort((a, b) => a.z - b.z);  // nearest first: nearer labels keep their place
     const placed = [...avoid];
     for (const it of items) {
+        const lw = (it.k || 2) * lh;
         const left = Math.min(Math.max(it.x - lw / 2, 0), w - lw);
         const bar = typeof top === 'number' ? top : (left < top.right && top.left < left + lw ? top.bottom : 0);
         let up = Math.max(0, it.y - h);  // a robot below the view starts at its edge
@@ -47,7 +49,7 @@ export function placeLabels(items, w, h, lh, top = 0, avoid = []) {
 // SVG of a 1 px leader line from the bottom centre of each label that placeLabels lifted by a label height
 // or more to its anchor, so a lifted label still points at its robot. Shared by all engines.
 export function leaderLines(items, lh) {
-    return items.filter(it => it.up >= lh).map(it => `<line x1="${(it.left + lh).toFixed(1)}" y1="${(it.y - it.up).toFixed(1)}"`
+    return items.filter(it => it.up >= lh).map(it => `<line x1="${(it.left + (it.k || 2) * lh / 2).toFixed(1)}" y1="${(it.y - it.up).toFixed(1)}"`
         + ` x2="${it.x.toFixed(1)}" y2="${it.y.toFixed(1)}" stroke="#00d2ff" stroke-opacity="0.8" stroke-width="1"/>`).join('');
 }
 
@@ -98,11 +100,11 @@ function shape(dr) {
 }
 
 // container: an empty element of the page; it gets the WebGL2 canvas, the SVG overlay and a status line.
-// opts: scene (default 'maximus_5v5'), badge(text) -> canvas of an R<id> label, labelPx (label height),
+// opts: scene (default 'maximus_4v4_rcap': RCAP field, 4 T2 + 4 T1 + 4 K1 per team; 'maximus_5v5' = old 14 x 9 m T1), badge(text, agent) -> canvas of a "T19 R3" label, labelPx (label height),
 // hiddenPaths (Set of the drawing paths the user turned off), labelTop() -> placeLabels top (px or {left, right, bottom}).
 // Rejects with e.code 'B2_NO_WEBGL2', 'B2_ENGINE' or 'B2_SCENE' (see b2.js); the page then falls back.
 export async function createCircusView(container, opts) {
-    const scene = `/static/models/circus_scene_${opts.scene || 'maximus_5v5'}`;
+    const scene = `/static/models/circus_scene_${opts.scene || 'maximus_4v4_rcap'}`;
     const layer = 'position:absolute; inset:0; width:100%; height:100%;';
     const canvas = document.createElement('canvas');
     canvas.style.cssText = layer + 'display:block;';
@@ -134,8 +136,17 @@ export async function createCircusView(container, opts) {
     status.textContent = '';
     status.hidden = true;
 
-    // Robot slots of the scene (5 per team in maximus_5v5), each showing at most one agent of /state.
-    const slots = new Map(v.listRobots().map(r => [r.name, { team: r.team, number: r.number, key: null, agent: null }]));
+    // Robot slots of the scene (maximus_4v4_rcap: 4 T2 + 4 T1 + 4 K1 per team), each showing at most one agent of /state.
+    // Slot model from the circus robot name <team>_Booster-<model>_<i>. An agent takes a slot of its robot model
+    // ("t2", "t1", "k1"); no or another model = T2 (the default). A model the scene lacks: T2 slots, else T1
+    // (maximus_5v5 has T1 only).
+    const modelOf = (name) => (/_Booster-([A-Za-z0-9]+)_\d+$/.exec(name)?.[1] || 'T1').toLowerCase();
+    const slots = new Map(v.listRobots().map(r => [r.name, { team: r.team, number: r.number, model: modelOf(r.name), key: null, agent: null }]));
+    const sceneModels = new Set([...slots.values()].map(s => s.model));
+    const agentModel = (a) => {
+        const r = String(a.robot || '').toLowerCase(), m = ['t2', 't1', 'k1'].includes(r) ? r : 't2';
+        return sceneModels.has(m) ? m : sceneModels.has('t2') ? 't2' : 't1';
+    };
     for (const name of slots.keys()) v.setRobotVisible(name, false);
 
     // Team of an agent: 'red' or 'blue' in agent.color or agent.team (the framework sends color names);
@@ -185,17 +196,17 @@ export async function createCircusView(container, opts) {
             if (Number.isFinite(a.x) && Number.isFinite(a.y)) present.set(`${a.ip || ''}|${a.id}`, a);
         }
         const kept = new Set();
-        for (const s of slots.values()) {  // a robot keeps its slot while it is present and in the same team
+        for (const s of slots.values()) {  // a robot keeps its slot while it is present, in the same team and model
             const a = s.key && present.get(s.key);
-            if (a && teamOf(a) === s.team) kept.add(s.key); else s.key = null;
+            if (a && teamOf(a) === s.team && agentModel(a) === s.model) kept.add(s.key); else s.key = null;
         }
         const unplaced = [];
         for (const [key, a] of present) {
             if (kept.has(key)) continue;
-            const team = teamOf(a);
-            const free = [...slots].filter(([, s]) => s.team === team && !s.key);
+            const team = teamOf(a), model = agentModel(a);
+            const free = [...slots].filter(([, s]) => s.team === team && s.model === model && !s.key);
             const pick = free.find(([, s]) => s.number === a.id) || free[0];  // prefer the slot with its number
-            if (!pick) { unplaced.push(`${team} R${a.id}`); continue; }
+            if (!pick) { unplaced.push(`${team} ${model.toUpperCase()} R${a.id}`); continue; }
             pick[1].key = key;
             resetJoints(pick[0]);
         }
@@ -225,8 +236,9 @@ export async function createCircusView(container, opts) {
     let pending = false;
     // Default view: circus's camera (lookat, azimuth, elevation). On views narrower than circus's 16:9 window
     // the camera moves back so the whole field fits (user decision 2026-10-12); a resize or rotation keeps the
-    // user's zoom relative to that fit. Double-click / double-tap returns here.
-    const fitFactor = (w, h) => Math.max(1, (16 / 9) / (w / h));
+    // user's zoom relative to that fit. Double-click / double-tap returns here. circus's camera frames its 14 x 9 m
+    // field; a larger field (GET /field, e.g. RCAP 22 x 14 m) moves it back by the size ratio.
+    const fitFactor = (w, h) => Math.max(1, (16 / 9) / (w / h)) * Math.max(1, FIELD.width / 14, FIELD.height / 9);
     let fitted = 1;
     function resetView() {
         const [lookat, dist, az, el] = window.B2Viewer.CIRCUS_CAMERA;
@@ -258,7 +270,7 @@ export async function createCircusView(container, opts) {
     resetView();
     new ResizeObserver(frame).observe(container);  // synchronous: no blank frame after a resize
 
-    const badges = new Map();  // label text -> PNG data URL of the page's badge
+    const badges = new Map();  // label text -> {url: PNG data URL of the page's badge, k: its width / height}
     const f1 = (n) => n.toFixed(1);
     function drawOverlay(w, h) {
         const m = v.getViewProjection().viewProj;
@@ -305,7 +317,7 @@ export async function createCircusView(container, opts) {
         const items = [];
         for (const s of slots.values()) {
             const p = s.agent && P(s.agent.x, s.agent.y, LABEL_Z);
-            if (p) items.push({ x: p[0], y: p[1], z: p[2], text: `R${s.agent.id}` });
+            if (p) items.push({ x: p[0], y: p[1], z: p[2], text: robotName(s.agent, last.agents), agent: s.agent });  // "T19 R3", "T19 R3 ·.2" for twins
         }
         // Labels must not cover the team ball: its screen box (radius = ball radius x projection scale / distance;
         // the norm of viewProj's y row is the projection's y scale), at least 4 px
@@ -317,9 +329,12 @@ export async function createCircusView(container, opts) {
         }
         const lh = opts.labelPx || 26;
         let tags = '';
+        for (const it of items) {  // the badge's width sets its place: a twin's badge is wider, its text the same size
+            if (!badges.has(it.text)) { const c = opts.badge(it.text, it.agent); badges.set(it.text, { url: c.toDataURL(), k: c.width / c.height }); }
+            it.k = badges.get(it.text).k;
+        }
         for (const it of placeLabels(items, w, h, lh, opts.labelTop ? opts.labelTop() : 0, avoid)) {
-            if (!badges.has(it.text)) badges.set(it.text, opts.badge(it.text).toDataURL());
-            tags += `<image href="${badges.get(it.text)}" x="${f1(it.left)}" y="${f1(it.y - it.up - lh)}" width="${2 * lh}" height="${lh}"/>`;
+            tags += `<image href="${badges.get(it.text).url}" x="${f1(it.left)}" y="${f1(it.y - it.up - lh)}" width="${f1(it.k * lh)}" height="${lh}"/>`;
         }
         overlay.innerHTML = svg + leaderLines(items, lh) + tags;  // a line that passes a lower label goes under it
     }

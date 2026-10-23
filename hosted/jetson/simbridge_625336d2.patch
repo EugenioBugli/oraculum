@@ -1,0 +1,102 @@
+From 625336d20f574e0a9826216b24ad041a0fdec33a Mon Sep 17 00:00:00 2001
+From: FlavioFoxes <flaviovolpi2000@gmail.com>
+Date: Thu, 22 Oct 2026 16:46:51 +0200
+Subject: [PATCH] camera info fix
+
+---
+ src/RobotSharedState.hpp | 21 ++++++++++++++++++++-
+ src/bridge_node.cpp      | 23 +++++++++++++++++++++++
+ 2 files changed, 43 insertions(+), 1 deletion(-)
+
+diff --git a/src/RobotSharedState.hpp b/src/RobotSharedState.hpp
+index 83cf9c1..c6d78eb 100644
+--- a/src/RobotSharedState.hpp
++++ b/src/RobotSharedState.hpp
+@@ -7,7 +7,7 @@
+ 
+ // Reader-side mirror of the trivially-copyable state structs circus writes to
+ // shared memory (external/circus/include/sensors/Pose.h, Imu.h, Joint.h,
+-// Oracle.h, external/circus/include/robots/BoosterT1.h, BoosterT2.h). Shared memory carries
++// Oracle.h, CameraInfo.h, external/circus/include/robots/BoosterT1.h, BoosterT2.h). Shared memory carries
+ // no schema of its own, so these definitions must be kept byte-layout-identical
+ // to circus's copies by hand -- same discipline used for the SharedMemoryWriter/
+ // SharedMemoryReader Header and ImageMeta structs mirrored in this directory.
+@@ -56,6 +56,23 @@ struct GroundRelativePositionData {
+     double position[3] = {};
+ };
+ 
++struct CameraInfoData {
++    uint32_t height = 0;
++    uint32_t width = 0;
++    char distortionModel[16] = {};
++    double d[5] = {};
++    double k[9] = {};
++    double r[9] = {};
++    double p[12] = {};
++    uint32_t binningX = 0;
++    uint32_t binningY = 0;
++    uint32_t roiXOffset = 0;
++    uint32_t roiYOffset = 0;
++    uint32_t roiHeight = 0;
++    uint32_t roiWidth = 0;
++    uint32_t roiDoRectify = 0;
++};
++
+ constexpr size_t kBoosterT1JointCount = 23;
+ 
+ struct BoosterT1SharedState {
+@@ -64,6 +81,7 @@ struct BoosterT1SharedState {
+     JointState<kBoosterT1JointCount> joints;
+     OracleData oracle;
+     GroundRelativePositionData headPose;
++    CameraInfoData cameraInfo;
+ };
+ 
+ // Every robot type identifies its state and image layouts with its own schema
+@@ -101,6 +119,7 @@ struct BoosterT2SharedState {
+     JointState<kBoosterT2JointCount> joints;
+     OracleData oracle;
+     GroundRelativePositionData headPose;
++    CameraInfoData cameraInfo;
+ };
+ 
+ constexpr uint32_t kBoosterT2SchemaId = 0xB0057E73;
+diff --git a/src/bridge_node.cpp b/src/bridge_node.cpp
+index 2c98561..2a7cd05 100644
+--- a/src/bridge_node.cpp
++++ b/src/bridge_node.cpp
+@@ -4,6 +4,8 @@
+ #include <sys/types.h>
+ 
+ #include <algorithm>
++#include <cstring>
++#include <iterator>
+ 
+ const std::map<std::string, std::vector<std::string>> BridgeNode::ROBOT_JOINTS_NAMES_MAP
+     = {{"Booster-T1",
+@@ -641,4 +643,25 @@ void BridgeNode::receiveAndPublishSHM() {
+         goal_posts_positions_msg.points.push_back(pt);
+     }
+     goal_posts_positions_pub_->publish(goal_posts_positions_msg);
++
++    sensor_msgs::msg::CameraInfo camera_info_msg{};
++    camera_info_msg.header.stamp = stamp;
++    camera_info_msg.header.frame_id = "booster_rgb_cam";
++    camera_info_msg.height = state.cameraInfo.height;
++    camera_info_msg.width = state.cameraInfo.width;
++    camera_info_msg.distortion_model
++        = std::string(state.cameraInfo.distortionModel,
++                      strnlen(state.cameraInfo.distortionModel, sizeof(state.cameraInfo.distortionModel)));
++    camera_info_msg.d.assign(std::begin(state.cameraInfo.d), std::end(state.cameraInfo.d));
++    std::copy(std::begin(state.cameraInfo.k), std::end(state.cameraInfo.k), camera_info_msg.k.begin());
++    std::copy(std::begin(state.cameraInfo.r), std::end(state.cameraInfo.r), camera_info_msg.r.begin());
++    std::copy(std::begin(state.cameraInfo.p), std::end(state.cameraInfo.p), camera_info_msg.p.begin());
++    camera_info_msg.binning_x = state.cameraInfo.binningX;
++    camera_info_msg.binning_y = state.cameraInfo.binningY;
++    camera_info_msg.roi.x_offset = state.cameraInfo.roiXOffset;
++    camera_info_msg.roi.y_offset = state.cameraInfo.roiYOffset;
++    camera_info_msg.roi.height = state.cameraInfo.roiHeight;
++    camera_info_msg.roi.width = state.cameraInfo.roiWidth;
++    camera_info_msg.roi.do_rectify = state.cameraInfo.roiDoRectify != 0;
++    camera_info_pub_->publish(camera_info_msg);
+ }

@@ -1,0 +1,60 @@
+simulation_config: default
+# Team numbers 1 and 2 on purpose: team N uses UDP 10000+N for team comm; 6-9 would collide with the oraculum
+# ports 10006-10009 inside each robot's namespace. Loopback IPs: red -> 127.0.0.1{1..5}, blue -> 127.0.0.2{1..5}.
+teams:
+  red:
+    number: 1
+    players:
+      - type: Booster-T1
+        number: 1
+        role: defender
+        position: [-6.0, 0.0, 0.68]
+        orientation: [0.0, 0.0, 0.0]
+      - type: Booster-T1
+        number: 2
+        role: defender
+        position: [-4.0, 2.0, 0.68]
+        orientation: [0.0, 0.0, 0.0]
+      - type: Booster-T1
+        number: 3
+        role: defender
+        position: [-4.0, -2.0, 0.68]
+        orientation: [0.0, 0.0, 0.0]
+      - type: Booster-T1
+        number: 4
+        role: striker
+        position: [-2.0, 1.0, 0.68]
+        orientation: [0.0, 0.0, 0.0]
+      - type: Booster-T1
+        number: 5
+        role: striker
+        position: [-2.0, -1.0, 0.68]
+        orientation: [0.0, 0.0, 0.0]
+  blue:
+    number: 2
+    players:
+      - type: Booster-T1
+        number: 1
+        role: defender
+        position: [6.0, 0.0, 0.68]
+        orientation: [0.0, 0.0, 3.14159]
+      - type: Booster-T1
+        number: 2
+        role: defender
+        position: [4.0, 2.0, 0.68]
+        orientation: [0.0, 0.0, 3.14159]
+      - type: Booster-T1
+        number: 3
+        role: defender
+        position: [4.0, -2.0, 0.68]
+        orientation: [0.0, 0.0, 3.14159]
+      - type: Booster-T1
+        number: 4
+        role: striker
+        position: [2.0, 1.0, 0.68]
+        orientation: [0.0, 0.0, 3.14159]
+      - type: Booster-T1
+        number: 5
+        role: striker
+        position: [2.0, -1.0, 0.68]
+        orientation: [0.0, 0.0, 3.14159]

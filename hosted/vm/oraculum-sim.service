@@ -1,0 +1,21 @@
+[Unit]
+Description=oraculum hosted session (circus native Docker mode)
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+WorkingDirectory=/opt/circus
+# Optional: SCENE=/opt/session/<scene>.yaml
+EnvironmentFile=-/etc/oraculum-sim.env
+# The "Reset session" button of the pages (POST /session_restart): only the service offers it, not measure_rtf.sh
+Environment="ORACULUM_RESTART_CMD=systemctl --no-block restart oraculum-sim"
+ExecStartPre=/opt/session/cleanup.sh
+ExecStart=/opt/session/vm_session.sh
+ExecStopPost=/opt/session/cleanup.sh
+Restart=always
+RestartSec=10
+# A new match every hour: Maximus grows about 18 MB/min per robot (measured on Modal), about 11 GB/h for 10 robots.
+RuntimeMaxSec=1h
+
+[Install]
+WantedBy=multi-user.target

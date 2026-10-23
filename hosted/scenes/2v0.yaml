@@ -1,0 +1,15 @@
+simulation_config: default
+teams:
+  red:
+    number: 8
+    players:
+      - type: Booster-T1
+        number: 2
+        role: striker
+        position: [-4.0, 1.0, 0.68]
+        orientation: [0.0, 0.0, 0.0]
+      - type: Booster-T1
+        number: 3
+        role: defender
+        position: [-4.0, -1.0, 0.68]
+        orientation: [0.0, 0.0, 0.0]

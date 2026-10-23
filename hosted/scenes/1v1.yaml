@@ -1,0 +1,19 @@
+simulation_config: default
+# Smoke test on the builder VM: 2 robots, teams 1 and 2 (team N uses UDP 10000+N; 6-9 collide with the oraculum ports).
+teams:
+  red:
+    number: 1
+    players:
+      - type: Booster-T1
+        number: 2
+        role: striker
+        position: [-2.0, 0.0, 0.68]
+        orientation: [0.0, 0.0, 0.0]
+  blue:
+    number: 2
+    players:
+      - type: Booster-T1
+        number: 2
+        role: striker
+        position: [2.0, 0.0, 0.68]
+        orientation: [0.0, 0.0, 3.14159]

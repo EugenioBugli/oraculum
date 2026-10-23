@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Oraculum · Fleet</title>
+<link rel="icon" href="data:,">
 <style>
 :root {
     --bg-dark: #121316; --bg-panel: #1e2025; --bg-card: #24272e; --bg-input: #2b2e37;
@@ -39,6 +40,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .rec-dot { background: var(--red); animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: .25; } }
 main { padding: 16px; display: grid; gap: 16px; max-width: 1500px; margin: 0 auto; }
+.tabbar { display: flex; gap: 4px; margin-bottom: -8px; }
+.tabbar .tab { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-2); padding: 7px 16px;
+    border-radius: 8px 8px 0 0; font: 600 14px var(--font); min-height: 36px; cursor: pointer; }
+.tabbar .tab:hover { color: var(--text); }
+.tabbar .tab.active { background: var(--bg-panel); color: var(--text); border-bottom-color: var(--bg-panel); }
 section { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 section > h2 { font-size: 13px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; color: var(--text-2);
     padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -49,7 +55,32 @@ th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--bor
 th { font-size: 12px; font-weight: 600; color: var(--text-2); background: var(--bg-panel); position: sticky; top: 0; }
 td.num, th.num { text-align: right; }
 tbody tr:hover { background: var(--bg-card); }
-#fleet tr.offline td { opacity: 0.55; } #fleet tr.offline td:nth-last-child(3) { opacity: 1; }  /* keep the red Link cell */
+#fleet tr.offline td { opacity: 0.55; } #fleet tr.offline td.link { opacity: 1; }  /* keep the red Link cell */
+#fleet tr.stale td[data-act] { opacity: 1; }  /* a stale link: STOP still goes out, its buttons must not look disabled */
+#fleet td.rs, .phone-only.rs { white-space: normal; overflow-wrap: anywhere; }  /* long state texts wrap, not push Control off */
+#fleet td.rs { min-width: 11em; }
+/* Version: one line, cut with "…" (the title has the full text), so "✗ 4ceb74f0 expected …" never widens the table */
+#fleet .vtxt { max-width: 9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#fleet tr.flash td, #fleet tr.flash td:first-child { background: rgba(245, 158, 11, .28); }  /* the stale row the "N stale" pill jumps to */
+button.pill { min-height: 0; color: var(--text); } button.pill:disabled { cursor: default; opacity: 1; }
+#live.warn:not(:disabled) { text-decoration: underline dotted; }
+/* Up to 1400 px every column fits: the IP and "Robot ›" go (the name links to the robot page, its title has the IP) */
+@media (max-width: 1400px) { #fleet td:first-child .mono, #fleet .rp, #fleet .hold-pre { display: none; } #fleet th, #fleet td { padding-left: 7px; padding-right: 7px; } }
+.pills { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; min-width: 0; }
+/* Phones and phone landscape: the pills leave the header for one line under it (pollState's placePills), cut with "…"
+   (each title has the full text); the header keeps the pages, the control, STOP ALL and ⚑ */
+@media (max-width: 700px), (max-height: 500px) {
+    .pills { flex-wrap: nowrap; gap: 6px; overflow: hidden; padding: 8px 10px 0; }
+    .pills .pill { min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; padding: 4px 8px; }
+    .pills #live { flex-shrink: 0; }
+    #budget { flex-shrink: 2; }
+}
+@media (max-width: 700px) {  /* two header rows: the pages, then the control, STOP ALL and ⚑ */
+    header .logo, header .spacer { display: none; }
+    #controlBar { margin-left: auto; }
+}
+.pills .pill { white-space: nowrap; }
+.vmark { margin-top: 2px; padding: 2px 8px; min-height: 28px; font: 600 12px var(--mono); color: var(--red); border-color: var(--red); background: transparent; }
 #fleet td:first-child, #fleet th:first-child { position: sticky; left: 0; background: var(--bg-panel); }
 #fleet tbody tr:hover td:first-child { background: var(--bg-card); }
 #fleet th:first-child { z-index: 2; } #fleet td:first-child { z-index: 1; }
@@ -76,14 +107,26 @@ a.rname { color: #c7d2fe; text-decoration: underline dotted rgba(199, 210, 254, 
 #fleet td[data-act] .ctl-act { flex-wrap: nowrap; }  /* a wrapped button pair doubled every row's height */
 #fleet .ctl-act button { padding: 3px 7px; font-size: 11px; }
 .phone-only.rs { font-size: 12px; margin-top: 2px; }
-@media (min-width: 701px) { #fleet td:nth-child(2) { white-space: nowrap; } }  /* a badge must not grow the row */
+/* Phone landscape and tablets: Load, Temp, Wi-Fi and Robot log go, so Battery and Link show without a sideways scroll */
+.ovl-head { display: none; min-width: 44px; min-height: 40px; padding: 0; font-size: 18px; }
+.ovl-head.rec { color: var(--red); border-color: var(--red); }
+/* Phones (the sizes where control_bar.js folds the menus into a round button): the menus open from a header button; the round button covered a table cell */
+@media (max-width: 600px), (max-height: 500px) { .ovl-head { display: inline-flex; align-items: center; justify-content: center; } body .ctl-ovl .ovl-fab { display: none; } }
+@media (max-height: 500px) { header { position: static; } #fleet .ver { display: none; } }  /* phone landscape: the header scrolls away, the table gets the height; no Version column */
+/* The buttons put the robot under the word ("STOP" over "T19 R3·.2"): a button is as wide as its longer line, so the table fits */
+#fleet td[data-act] .ctl-who { display: block; } #fleet td[data-act] .ctl-act button { line-height: 1.15; }
+@media (max-width: 1024px) { #fleet .mid, #fleet .bar { display: none; } #fleet td.rs { min-width: 10em; } }
 @media (max-width: 700px) {
     header { padding: 8px 10px; }
     main { padding: 10px; gap: 10px; }
     th, td { padding: 6px 5px; }
     #events .wide, #fleet .wide, #recordings .wide { display: none; }  /* phones: Robot (links to its page), state, Battery, Link, Control */
-    #fleet td[data-act] .ctl-act { flex-direction: column; align-items: stretch; }
-    .phone-only.rs { display: block; }
+    #fleet td[data-act] .ctl-act { gap: 3px; }  /* STOP, Resume, LIE DOWN in one row: a robot row stays about 70 px high */
+    #fleet td[data-act] .ctl-act button { min-height: 44px; padding: 3px 4px; line-height: 1.15; font-size: 10.5px; }
+    #fleet td:first-child a.rname { white-space: normal; }  /* a twin "T19 R3 ·.2" breaks before "·": the column stays narrow */
+    #fleet th, #fleet td { padding-left: 3px; padding-right: 3px; }  /* the four columns fit 390 px with no sideways scroll */
+    .phone-only.rs { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80px; line-height: 1.25; }  /* one line: a row stays under 70 px; the title has it all */
+    .vmark { margin: 0 0 0 4px; padding: 0 5px; min-height: 18px; font-size: 10.5px; line-height: 1.2; vertical-align: 1px; }
     #fleet .bar { display: none; }  /* phones: the battery percentage without its bar */
     .phone-only { display: inline; }  /* the robot and the recording of an event, as their columns are hidden */
     #events td.text { min-width: 0; }
@@ -101,33 +144,38 @@ a.rname { color: #c7d2fe; text-decoration: underline dotted rgba(199, 210, 254, 
         <a href="/index.html">Field</a>
         <a href="/dashboard.html">Dashboard</a>
         <a href="/fleet.html" aria-current="page">Fleet</a>
+        <a href="/director.html">TV director</a>
     </nav>
     <span class="spacer"></span>
-    <span class="pill" id="gc" title="GameController">GC: —</span>
-    <span class="referee" id="referee" role="group" aria-label="Session referee" hidden>
-        <button data-state="initial">Initial</button><button data-state="ready">Ready</button><button data-state="set">Set</button><button data-state="playing">Play</button><button data-state="finished">Finish</button>
-        <button data-goal="0" title="Goal for the first team">Goal A</button><button data-goal="1" title="Goal for the second team">Goal B</button>
-    </span>
+    <div class="pills" id="pills">
+        <button class="pill" id="live" disabled title="Robots that send data now / robots seen in the last 60 s">—</button>
+        <span class="pill" id="gc" title="GameController">GC: —</span>
+        <span class="pill" id="budget" title="Team messages our team can still send">Messages: —</span>
+    </div>
     <span id="controlBar"></span>
-    <span class="pill" id="recInfo" hidden></span>
-    <button class="rec-btn" id="recBtn" title="Record all telemetry and GameController packets to oraculum/recordings/">● Record</button>
+    <button id="ovlBtn" class="ovl-head" title="Record and GameController menus" aria-label="Record and GameController menus">⚑</button>
 </header>
 <main>
-    <section aria-labelledby="fleetTitle">
-        <h2 id="fleetTitle">Fleet <span class="note" id="headNote"></span></h2>
+    <div class="tabbar" id="tabbar" role="tablist" aria-label="Fleet sections">
+        <button class="tab active" role="tab" data-tab="fleet" aria-selected="true">Fleet</button>
+        <button class="tab" role="tab" data-tab="events" aria-selected="false">Events</button>
+        <button class="tab" role="tab" data-tab="recordings" aria-selected="false">Recordings</button>
+    </div>
+    <section id="tab-fleet" aria-labelledby="fleetTitle">
+        <h2 id="fleetTitle">Fleet <span class="note" id="headNote"></span> <span class="note" id="legend"></span></h2>
         <div class="scroll">
             <table id="fleet">
                 <thead><tr>
-                    <th>Robot</th><th class="wide">Role · state</th><th class="wide">Version</th><th class="num wide">CPU</th><th class="num wide">Load</th>
-                    <th class="num wide">Temp</th><th>Battery</th><th class="num wide" title="Robot Wi-Fi traffic, kbit/s">Wi-Fi ↑ / ↓</th>
-                    <th class="num" title="As the gateway receives this robot's IP">Link</th><th class="wide">Rec</th><th class="wide">Robot page</th><th>Control</th>
+                    <th>Robot</th><th>Control</th><th class="num link" title="As the gateway receives this robot's IP">Link</th><th class="wide">Role · state</th><th class="wide ver">Version</th><th class="num wide">CPU</th><th class="num wide mid">Load</th>
+                    <th class="num wide mid">Temp</th><th><span class="wide">Battery</span><span class="phone-only" title="Battery">Bat.</span></th><th class="num wide mid" title="Robot Wi-Fi traffic, kbit/s">Wi-Fi ↑ / ↓</th>
+                    <th class="wide mid" title="The robot records its own log. This is not the gateway recording (Record button).">Robot log</th><th class="wide rp">Robot page</th>
                 </tr></thead>
                 <tbody></tbody>
             </table>
         </div>
         <p class="empty" id="fleetEmpty">No robot sends data. Start a robot with <span class="mono">useRerun: true</span>, or run <span class="mono">python3 tools/udp_sender.py</span>.</p>
     </section>
-    <section aria-labelledby="eventsTitle">
+    <section id="tab-events" aria-labelledby="eventsTitle" hidden>
         <h2 id="eventsTitle">Events <span class="note">newest first · from the GameController, the robots and marks</span></h2>
         <div class="toolbar">
             <div role="group" aria-label="Filter events" id="filters"></div>
@@ -146,31 +194,48 @@ a.rname { color: #c7d2fe; text-decoration: underline dotted rgba(199, 210, 254, 
         </div>
         <p class="empty" id="eventsEmpty">No events yet.</p>
     </section>
-    <section aria-labelledby="recTitle">
+    <section id="tab-recordings" aria-labelledby="recTitle" hidden>
         <h2 id="recTitle">Recordings <span class="note">telemetry and GameController packets (.jsonl), not video · replay: python3 tools/replay_rrd.py &lt;file&gt;</span></h2>
         <div class="scroll"><table id="recordings"><thead><tr><th>Recording</th><th class="num">Size</th><th class="wide">Saved</th><th></th></tr></thead><tbody></tbody></table></div>
         <p class="empty" id="recEmpty">No recording yet. ● Record in the header starts one.</p>
     </section>
 </main>
 <script type="module">
-import { gcSummary, penaltyOf, robotName, roleState, teamRgb } from '/static/field_model.js';
-import { mountControlBar, operator, robotActions, stateUrl } from '/static/control_bar.js';
+import { budgetSummary, gcSummary, linkCounts, linkStale, penaltyOf, robotName, roleState, stateMismatch, teamLegend, teamPrimary, teamRgb, versionMark } from '/static/field_model.js';
+import { mountControlBar, mountOverlays, robotActions, stateUrl, toast } from '/static/control_bar.js';
 const API = location.origin;
 const $ = id => document.getElementById(id);
 const GROUPS = { All: null, Game: ['PHASE', 'SETPLAY', 'GOAL', 'PENALTY', 'GC', 'REFEREE'], Robots: ['ONLINE', 'OFFLINE', 'FALL', 'ROLE', 'BATTERY'],
                  Control: ['STOP', 'DAMP', 'RESUME', 'CONTROL'], Marks: ['MARK'], Recording: ['REC'] };
 const ctl = mountControlBar($('controlBar'), API);
+// Phones and phone landscape: the pills go on one line under the header, which stays 2 rows (390 px) or 1 row (landscape)
+const narrow = matchMedia('(max-width: 700px), (max-height: 500px)');
+const placePills = () => narrow.matches ? document.querySelector('header').after($('pills')) : $('controlBar').before($('pills'));
+placePills(); narrow.addEventListener('change', placePills);
+const ov = mountOverlays(API);  // GameController + recording controls, as expandable overlays on every page
+// Narrow screens: the header button stands in for the round button (same menus, same ● while recording)
+$('ovlBtn').onclick = () => document.querySelector('.ctl-ovl .ovl-fab').click();
+new MutationObserver(() => syncOvlBtn()).observe(document.querySelector('.ctl-ovl .ovl-fab'), { attributes: true, childList: true });  // aria-expanded and ● at once
+const syncOvlBtn = () => { const fab = document.querySelector('.ctl-ovl .ovl-fab'); $('ovlBtn').textContent = fab.textContent; $('ovlBtn').classList.toggle('rec', fab.classList.contains('rec'));
+    $('ovlBtn').setAttribute('aria-expanded', fab.getAttribute('aria-expanded')); };
+// Tabs: Fleet | Events | Recordings (one section at a time)
+$('tabbar').addEventListener('click', ev => {
+    const t = ev.target.closest('.tab');
+    if (!t) return;
+    $('tabbar').querySelectorAll('.tab').forEach(b => { const on = b === t; b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on)); });
+    ['fleet', 'events', 'recordings'].forEach(name => { $('tab-' + name).hidden = name !== t.dataset.tab; });
+});
 // One set of STOP / Resume / hold-LIE-DOWN buttons per robot (address and name), moved into each rebuilt row (keeps its listeners)
 const actions = new Map();
 const actionsFor = (ip, label) => actions.get(`${ip}|${label}`) || actions.set(`${ip}|${label}`, robotActions(ip, API, { lie: true, label })).get(`${ip}|${label}`);
 let filter = 'All', lastId = 0, events = [], pendingDelete = null, state = null;
 let wasRecording = false;  // renderHeader lists the recordings when one ends
 let lastBoot = null;  // the gateway's start id (/state boot)
-let recAsk = 0;  // Date.now() of the first click that asked to stop someone else's recording
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const robotKey = a => `${a.ip}|${a.id}`;
-const colorOf = a => `rgb(${teamRgb(a)})`;  // all GameController colour names; dark colours lifted
+let primary = new Map();  // team -> its primary colour (teamPrimary), so one team has one dot colour
+const colorOf = a => `rgb(${teamRgb({ color: primary.get(a.team) || a.color })})`;  // all GameController colour names; dark colours lifted
 const num = (v, d = 0, u = '') => (typeof v === 'number' && v >= 0) ? v.toFixed(d) + u : '—';
 const clock = s => s == null ? '—' : `${s < 0 ? '-' : ''}${Math.floor(Math.abs(s) / 60)}:${String(Math.abs(s) % 60).padStart(2, '0')}`;
 const hhmmss = t => new Date(t * 1000).toLocaleTimeString([], { hour12: false });
@@ -186,14 +251,23 @@ function versionCell(sys, head) {
     if (!v) return '<span class="muted">—</span>';
     if (v === 'dev') return '<span class="muted" title="No config/version.txt: not installed with pixi run deploy">dev</span>';
     const hash = v.split(/[+ ]/)[0], dirty = v.includes('+dirty'), when = v.split(' ').slice(1).join(' ');
-    if (head && hash !== head) return `<span class="bad" title="This checkout is at ${esc(head)}">✗ ${esc(hash)}</span> <span class="muted">${esc(when)}</span>`;
+    if (head && hash !== head) return `<span class="bad" title="Not the gateway checkout (${esc(head)})">✗ ${esc(hash)}</span> <span class="muted">${esc(when)} · gateway checkout ${esc(head)}</span>`;
     const cls = dirty ? 'warn' : 'ok', mark = dirty ? '± ' : '✓ ';
-    return `<span class="${cls}" title="${dirty ? 'deployed with uncommitted changes' : 'same commit as this checkout'}">${mark}${esc(hash)}${dirty ? '+dirty' : ''}</span> <span class="muted">${esc(when)}</span>`;
+    return `<span class="${cls}" title="${dirty ? 'deployed with uncommitted changes' : 'same commit as the gateway checkout'}">${mark}${esc(hash)}${dirty ? '+dirty' : ''}</span> <span class="muted">${esc(when)}</span>`;
 }
 
-// A robot that stops sending stays 60 s as an "offline" row (the gateway drops it after 2 s).
+// A robot that stops sending stays 60 s as an "offline" row (the gateway keeps it 10 s with a stale link, then drops it).
 const lastSeen = new Map();  // robot key -> {agent, t}
 const OFFLINE_KEEP_MS = 60000;
+const phone = matchMedia('(max-width: 700px)');  // phones: the link age in whole seconds, the table fits 368 px
+let flashKey = '', flashUntil = 0;  // the stale row the "N stale" pill showed: kept through the 1 s rebuilds
+$('live').onclick = () => {
+    const row = [...document.querySelectorAll('#fleet tr.stale')][0];
+    if (!row) return;
+    flashKey = row.dataset.key; flashUntil = Date.now() + 3000;
+    row.classList.add('flash');
+    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+};
 
 function renderFleet() {
     const now = Date.now();
@@ -202,9 +276,19 @@ function renderFleet() {
     const agents = [...lastSeen.values()].map(v => ({ ...v.agent, offlineFor: v.t === now ? 0 : (now - v.t) / 1000 }))
         .sort((a, b) => (a.team - b.team) || (a.id - b.id));
     const live = agents.filter(a => !a.offlineFor);
+    primary = teamPrimary(agents);
     const head = state?.fleet?.head || '', link = state?.fleet?.link || {};
-    $('headNote').textContent = head ? `robot code checkout: ${head}` : '';
+    $('headNote').textContent = head ? `gateway checkout: ${head}` : '';
+    const legend = teamLegend(live);
+    if ($('legend').dataset.html !== legend) $('legend').innerHTML = $('legend').dataset.html = legend;
     $('fleetEmpty').hidden = agents.length > 0;
+    // "N/M live" as on the Field page; amber while robot links are stale (the gateway answers, the robots do not)
+    const lc = linkCounts(state), allStale = lc.n > 0 && lc.stale === lc.n;
+    const liveText = `${allStale ? 'ONLINE · links stale · ' : ''}${lc.n - lc.stale}/${agents.length} live${!allStale && lc.stale ? ` · ${lc.stale} stale` : ''}`;
+    $('live').textContent = liveText;
+    $('live').className = lc.stale ? 'pill warn' : 'pill';
+    $('live').disabled = !lc.stale;  // with stale links: a click shows the first stale row
+    $('live').title = `${lc.n - lc.stale} robots send data now, ${agents.length} seen in the last 60 s` + (lc.stale ? `. ${lc.stale} ${lc.stale === 1 ? 'link is' : 'links are'} stale: no packet for 1 s or more. Click to show the first one` : '');
     const ftb = $('fleet').querySelector('tbody');
     const focusHref = ftb.contains(document.activeElement) ? document.activeElement.getAttribute('href') : null;
     const focusBtn = document.activeElement?.closest?.('#fleet .ctl-act') ? document.activeElement : null;  // re-focused below
@@ -213,27 +297,34 @@ function renderFleet() {
         const bat = a.battery, batCls = bat < 0 ? 'muted' : bat < 20 ? 'bad' : bat < 40 ? 'warn' : 'ok';
         const cpuCls = level(s.cpu, 85, 95), tCls = level(s.temp, 80, 90), ageCls = a.offlineFor ? 'bad' : level(l.age, 1, 2);
         const warn = c => c ? (c === 'bad' ? '⚠ ' : '! ') : '';
-        const linkText = a.offlineFor ? `offline · ${a.offlineFor.toFixed(0)} s` : `<span class="wide">${num(l.hz, 0, ' Hz')} · </span>${num(l.age, 1, ' s')}`;
+        // a stale link: "— Hz", an old rate looked live (the row is greyed, its title says "Stale link")
+        const stale = !a.offlineFor && linkStale(state, a);
+        const linkText = a.offlineFor ? `${phone.matches ? 'off' : 'offline ·'}<br class="phone-only"> ${a.offlineFor.toFixed(0)} s` : `<span class="wide">${stale ? '— Hz' : num(l.hz, 0, ' Hz')} · </span>${num(l.age, phone.matches ? 0 : 1, ' s')}`;
         // role, state and the badges: their own column on wide screens, under the robot name on phones
-        const rs = `${esc(roleState(a))}${a.fallen ? ' <span class="bad">⚠ fallen</span>' : ''}${latchBadge(a)}${penaltyOf(a, state?.gamecontroller) ? ` <b class="warn">⛔ ${esc(penaltyOf(a, state.gamecontroller))}</b>` : ''}`;
-        return `<tr${a.offlineFor ? ' class="offline" title="No data from this robot: last values shown"' : ''}>
-            <td><span class="dot" style="background:${colorOf(a)}"></span><a class="rname" href="/robot.html?robot=${encodeURIComponent(robotKey(a))}"><b>${esc(robotName(a))}</b></a> <span class="muted mono">${esc(a.ip)}</span><div class="phone-only rs">${rs}</div></td>
-            <td class="wide${a.state === 'P' ? ' warn' : ''}">${rs}</td>
-            <td class="mono wide">${versionCell(s, head)}</td>
+        const badges = `${latchBadge(a)}${a.fallen ? ' <span class="bad">⚠ fallen</span>' : ''}${penaltyOf(a, state?.gamecontroller) ? ` <b class="warn">⛔ ${esc(penaltyOf(a, state.gamecontroller))}</b>` : ''}${!a.offlineFor && stateMismatch(a, state?.gamecontroller) ? ` <b class="warn" title="${esc(stateMismatch(a, state.gamecontroller, true))}">⚠ ${esc(stateMismatch(a, state.gamecontroller))}</b>` : ''}`;
+        const rs = esc(roleState(a)) + badges;
+        const rsPhone = badges ? `${badges.trim()} · ${esc(roleState(a))}` : rs;  // phones cut the line: STOPPED, fallen, penalty first
+        // phones hide the Version column: a wrong version shows as a red mark under the name; a tap tells the commits
+        const vm = versionMark(a, head) === '✗' ? `<button class="vmark phone-only" data-ver="${esc(String(s.version).split(/[+ ]/)[0])} · gateway checkout ${esc(head)}" aria-label="Wrong robot code: show the commits">✗ code</button>` : '';
+        const vc = versionCell(s, head).replace(/ title="[^"]*"/g, ''), flash = robotKey(a) === flashKey && now < flashUntil ? ' flash' : '';
+        return `<tr data-key="${esc(robotKey(a))}"${a.offlineFor || stale ? ` class="offline${stale ? ' stale' : ''}${flash}" title="${a.offlineFor ? 'No data from this robot' : 'Stale link: no packet for 1 s or more'}: last values shown"` : ''}>
+            <td><span class="dot" style="background:${colorOf(a)}"></span><a class="rname" href="/robot.html?robot=${encodeURIComponent(robotKey(a))}" title="${esc(a.ip)}: open the robot page"><b>${esc(robotName(a, live))}</b></a>${vm} <span class="muted mono">${esc(a.ip)}</span><div class="phone-only rs" title="${rs.replace(/<[^>]+>/g, '')}">${rsPhone}</div></td>
+            <td data-act="${esc(a.ip)}" data-label="${esc(robotName(a, live))}"></td>
+            <td class="num mono link ${ageCls}" title="${num(l.kbps)} kbit/s received">${warn(ageCls)}${linkText}</td>
+            <td class="wide rs${a.state === 'P' ? ' warn' : ''}">${rs}</td>
+            <td class="mono wide ver"><div class="vtxt" title="${vc.replace(/<[^>]+>/g, '')}">${vc}</div></td>
             <td class="num wide ${cpuCls}">${warn(cpuCls)}${num(s.cpu, 0, '%')}</td>
-            <td class="num wide">${num(s.load, 1)}</td>
-            <td class="num wide ${tCls}">${warn(tCls)}${num(s.temp, 0, '°C')}</td>
+            <td class="num wide mid">${num(s.load, 1)}</td>
+            <td class="num wide mid ${tCls}">${warn(tCls)}${num(s.temp, 0, '°C')}</td>
             <td class="${batCls}">${bat < 0 ? '<span class="muted">n/a</span>' : `<span class="bar"><i style="width:${Math.min(100, bat)}%;background:currentColor"></i></span>${warn(bat < 20 ? 'bad' : bat < 40 ? 'warn' : '')}${bat.toFixed(0)}%`}</td>
-            <td class="num mono wide">${num(s.tx)} / ${num(s.rx)}</td>
-            <td class="num mono ${ageCls}" title="${num(l.kbps)} kbit/s received">${warn(ageCls)}${linkText}</td>
-            <td class="wide">${s.rec ? '<span class="dot rec-dot"></span>rec' : '<span class="muted">—</span>'}</td>
-            <td class="wide"><a href="/robot.html?robot=${encodeURIComponent(robotKey(a))}" style="color:#93c5fd">Robot ›</a></td>
-            <td data-act="${esc(a.ip)}" data-label="${esc(robotName(a))}"></td></tr>`;
+            <td class="num mono wide mid">${num(s.tx)} / ${num(s.rx)}</td>
+            <td class="wide mid">${s.rec ? '<span class="dot rec-dot"></span>on' : `<span class="muted">${s.rec === false ? 'off' : '—'}</span>`}</td>
+            <td class="wide rp"><a href="/robot.html?robot=${encodeURIComponent(robotKey(a))}" style="color:#93c5fd">Robot ›</a></td></tr>`;
     }).join('');
     ftb.querySelectorAll('td[data-act]').forEach(td => td.append(actionsFor(td.dataset.act, td.dataset.label)));
     if (focusBtn && focusBtn.isConnected) focusBtn.focus({ preventScroll: true });  // the moved button keeps the keyboard focus
     if (focusHref) ftb.querySelector(`a[href="${CSS.escape(focusHref)}"]`)?.focus();  // the 1 s rebuild must not drop focus
-    const sel = $('markRobot'), cur = sel.value, names = [...new Set(live.map(robotName))];
+    const sel = $('markRobot'), cur = sel.value, names = [...new Set(live.map(a => robotName(a, live)))];
     if (sel.options.length - 1 !== names.length || names.some((n, i) => sel.options[i + 1].value !== n)) {
         sel.innerHTML = '<option value="">no robot</option>' + names.map(n => `<option>${esc(n)}</option>`).join('');
         sel.value = names.includes(cur) ? cur : '';
@@ -242,18 +333,16 @@ function renderFleet() {
 
 function renderHeader() {
     const gc = state?.gamecontroller || {};
-    $('referee').hidden = !gc.sim;  // only a hosted session has its own referee (POST /gc)
-    $('referee').querySelectorAll('[data-state]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state.toUpperCase() === gc.state)));
     const g = gcSummary(gc);
-    $('gc').textContent = g.online ? `${g.state} · ${g.score} · ${g.detail}` : g.state;
+    $('gc').textContent = g.online ? `${g.state} ${g.clock} · ${g.score} · ${g.rest}` : g.state;  // the clock first: a cut hides the half, not the time
     $('gc').title = g.title;
+    const b = budgetSummary(gc);
+    $('budget').textContent = `Messages: ${gc.state ? b.text : 'unknown'}`;  // the GC pill already says "No GameController"
+    $('budget').title = b.title;
+    $('budget').className = b.known && b.used > 90 ? 'pill bad' : 'pill';
     const rec = state?.rec || {};
-    $('recBtn').classList.toggle('on', !!rec.on);
-    $('recBtn').textContent = rec.on && Date.now() - recAsk < 3000 ? `Stop the recording of ${rec.by}?` : rec.on ? '■ Stop recording' : '● Record';
-    $('recInfo').hidden = !rec.on;
-    if (rec.on) $('recInfo').innerHTML = `<span class="dot rec-dot"></span>${esc(rec.name)} · by ${esc(rec.by || '?')} · ${clock(Math.round(rec.secs))} · ${mb(rec.bytes)}`;
     if (wasRecording && !rec.on) pollRecordings();  // a recording just ended: list it
-    wasRecording = !!rec.on;
+    wasRecording = !!rec.on;  // the GameController buttons and the Record button are now in the overlays (control_bar.js)
 }
 
 function renderEvents() {
@@ -272,6 +361,8 @@ function renderEvents() {
     if (focusId) etb.querySelector(`button[data-id="${focusId}"]`)?.focus();  // a keyboard user confirms with a second Enter
 }
 
+$('fleet').addEventListener('click', ev => { const m = ev.target.closest('.vmark'); if (m) toast(m.dataset.ver);
+    const s = ev.target.closest('.phone-only.rs'); if (s) toast(s.title); });  // phones: a tap shows the whole cut state line
 $('filters').innerHTML = Object.keys(GROUPS).map(g => `<button class="chip" aria-pressed="${g === filter}" data-g="${g}">${g}</button>`).join(' ');
 $('filters').addEventListener('click', ev => {
     const g = ev.target.dataset.g;
@@ -303,30 +394,6 @@ $('markForm').addEventListener('submit', async ev => {
     $('markText').value = '';
     pollEvents();
 });
-$('referee').addEventListener('click', async ev => {
-    const b = ev.target.closest('button');
-    if (!b) return;
-    await post('/gc', b.dataset.state ? { state: b.dataset.state } : { goal: Number(b.dataset.goal) });
-    pollState();
-});
-// Record / Stop: the stop names the recording, so a stale page cannot stop a newer one; stopping a recording that
-// another operator started needs a second click within 3 s.
-$('recBtn').addEventListener('click', async () => {
-    state = state || {};
-    const rec = state.rec || {};
-    if (rec.on && rec.by && rec.by !== operator.name && Date.now() - recAsk > 3000) {
-        recAsk = Date.now();
-        $('recBtn').textContent = `Stop the recording of ${rec.by}?`;
-        setTimeout(renderHeader, 3000);
-        return;
-    }
-    recAsk = 0;
-    const r = await post('/record', rec.on ? { on: false, name: rec.name, by: operator.name } : { on: true, by: operator.name });
-    if ('on' in r) state.rec = { on: r.on, name: r.name, secs: r.secs, bytes: r.bytes, by: r.by };
-    renderHeader();
-    pollEvents();
-});
-
 async function pollRecordings() {
     try {
         const d = await (await fetch(API + '/recordings', { signal: AbortSignal.timeout(4000) })).json();
@@ -360,11 +427,18 @@ async function pollState() {
     } catch (e) {
         // the rows keep their last values, greyed, with the time since the last good answer
         $('gc').textContent = lastGood ? `No data for ${Math.round((Date.now() - lastGood) / 1000)} s: is the gateway running on ${location.host}?` : 'Gateway offline';
+        $('live').textContent = 'no data'; $('live').className = 'pill warn'; $('live').disabled = true;  // the old "N/M live" must not look current
+        if (lastGood) {  // the Link cells must not keep "0 s": the time since the last good answer
+            const s = Math.round((Date.now() - lastGood) / 1000);
+            document.querySelectorAll('#fleet td.link').forEach(td => { td.className = 'num mono link bad'; td.textContent = `— · ${s} s`; });
+        }
         document.body.classList.add('stale-data');
         return;
     }
     renderHeader();
     ctl.update(state);
+    ov.update(state);
+    syncOvlBtn();
     // no rebuild while a pointer is down or a hold-to-LIE-DOWN runs (a rebuild would cut the hold)
     if (!pointerDown && !document.querySelector('#fleet [data-holding]')) renderFleet();
     if (state.boot !== lastBoot) {  // a (re)started gateway: event ids begin at 1 again

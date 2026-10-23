@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oraculum · TV</title>
+<link rel="icon" href="data:,">
+<!--
+Public TV view (roadmap G.3). Read-only: it sends GET requests only, polls plain /state (no client id, so it never
+touches the control lock) and has no STOP or robot controls. The director console (/director.html) sets the program
+with POST /tv; in AUTO this page picks the shots itself from the game events (/static/tv_auto.js).
+No debug drawings, beliefs, battery or health data, and no event text: it is a public screen.
+Kiosk bookmark: keep ?token=... in it when the gateway has an access token (the cookie ends with the browser).
+-->
+<style>
+:root { --bg: #0b0d12; --panel: #151922; --text: #f4f6fa; --muted: #a3a9b8; --accent: #fbbf24;
+    --pen: #facc15; }  /* penalty: the row edge and the dashed ring on the disc (a yellow team still sees the dashes and a gap) */
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif; cursor: none; }
+* { box-sizing: border-box; }
+.score { position: absolute; top: 0; left: 0; right: 0; height: 10vh; display: grid; grid-template-columns: 1fr auto 1fr;
+    align-items: center; gap: 2vw; padding: 0 1.5vw; background: var(--panel); border-bottom: 1px solid #262b36; transition: opacity .3s; }
+.side { display: flex; align-items: center; gap: 1.2vw; min-width: 0; }
+.side.right { justify-content: flex-end; }
+.bar { flex: none; width: 0.8vw; min-width: 6px; height: 7vh; border-radius: 3px; background: #555; }
+/* team logo next to the name, as tall as the colour bar; a team without a logo gets none (hidden), not a broken image.
+   A wide logo stays within 9vh, so "whIRLwind Amsterdam (T8)" still fits at 1920 x 1080; on a phone it is square. */
+.logo { flex: none; height: min(7vh, 9vw); max-width: min(9vh, 9vw); object-fit: contain; }
+.tname { font-size: min(3.6vh, 5vw); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tscore { font-size: min(7vh, 9vw); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+.mid { text-align: center; line-height: 1.1; white-space: nowrap; }
+.clock { font-size: min(5vh, 7vw); font-weight: 700; font-variant-numeric: tabular-nums; }
+.clock.small { font-size: min(3vh, 4.5vw); }
+.gstate, .setplay { font-size: min(2.6vh, 3.6vw); color: var(--muted); }
+#gsState:empty + .sep { display: none; }  /* no GameController: no lone " · " */
+.setplay { color: var(--accent); }
+/* Wide header: the clock and ONE text line under it (2 lines do not fit in 10vh). A running set play joins that line
+   and takes the place of the half: "Playing · Pushing free kick · 30 s". */
+@media (min-width: 701px) { .gstate, .setplay { display: inline; } }
+.mid:has(.setplay:not(:empty)) #gsHalf { display: none; }
+.gstate .sep:has(+ #gsHalf:empty) { display: none; }  /* "Half time": no lone " · " */
+.tnum { color: var(--muted); font-weight: 600; }
+body.paused .score { opacity: .4; }
+.status { position: absolute; top: 10.6vh; right: 1vw; z-index: 5; font-size: 2.2vh; color: var(--muted); }
+main { position: absolute; top: 10vh; left: 0; right: 0; height: 90vh; }
+.fieldbox { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.fieldbox canvas { display: block; }
+.box3d { position: absolute; inset: 0; }
+/* a game runs but no robot sends: over the 2D field and over the 3D view */
+.nodata { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 2; padding: 1vh 2vw; border-radius: 1vh;
+    background: rgba(10,12,18,.85); font-size: min(3.4vh, 5vw); font-weight: 700; white-space: nowrap; }
+.cams { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
+    gap: 1vh; container-type: size; }
+/* The camera box has the shape of the image, so the caption and "No image" sit on the image, not in a black margin.
+   ponytail: 4:3 (the fake sender's 320 x 240); a camera with another shape gets thin bars (object-fit: contain). */
+.cam { position: relative; flex: none; aspect-ratio: 4 / 3; width: min(100cqw, (100cqh - 1vh) / 2 * 4 / 3); background: #000; overflow: hidden; }
+.cam:only-child { width: min(100cqw, 100cqh * 4 / 3); }
+.cam img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+main.v-camera .cap { top: 1vh; bottom: auto; }  /* the penalty rows sit at the bottom left of the full-screen image */
+.cap { position: absolute; left: 1vw; bottom: 1vh; max-width: calc(100% - 2vw); padding: .3vh .8vw; border-radius: .6vh;
+    background: rgba(0,0,0,.6); font-size: min(2.4vh, 4vw); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nocam { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 2vw;
+    text-align: center; font-size: min(3vh, 4.5vw); color: var(--muted); }
+main.v-camera .fieldbox { display: none; }
+main.v-camera .cams, main.v-split .cams { display: flex; }
+main.v-split .fieldbox { right: 38vw; }
+main.v-split .cams { left: 62vw; }
+.pens { position: absolute; left: 1vw; bottom: 1.5vh; max-width: 98vw; margin: 0; padding: 0; list-style: none; z-index: 3; }
+main.v-split .pens { max-width: 60vw; }
+.pens li { display: flex; font-size: min(2.6vh, 4vw); line-height: 1.35; padding: 0 .8vw; margin-top: .4vh; border-radius: .5vh;
+    background: rgba(0,0,0,.65); border-left: .5vh solid var(--pen); white-space: nowrap; }
+.pens .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; }  /* the name and penalty give way first */
+.pens .secs { flex-shrink: 0; white-space: pre; }  /* " · 28 s" is never cut */
+/* Small banner in the 0.7 m margin above the top touchline (2D field, landscape) */
+.banner { position: absolute; left: 20vw; width: 60vw; top: .6vh; z-index: 4; padding: .6vh 2vw; border-radius: 1vh;
+    background: rgba(10,12,18,.88); border: 1px solid #39404f; font-size: 3vh; line-height: 1.2; font-weight: 700; text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+main.v-split .banner { left: 1vw; width: 60vw; }  /* over the field half only, not over the cameras */
+main.v-camera:has(#banner:not([hidden])) .cams { top: calc(6vh + 4px); }  /* the camera image starts below the banner */
+.big { position: absolute; left: 20vw; width: 60vw; top: 50%; transform: translateY(-50%); z-index: 4; padding: 3vh 2vw;
+    border-radius: 1.5vh; background: rgba(10,12,18,.9); border: 2px solid var(--accent); text-align: center; }
+.big .t { font-size: min(9vh, 10vw); font-weight: 900; color: var(--accent); line-height: 1.1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.big .s { font-size: min(5vh, 6vw); font-weight: 700; margin-top: 1vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+[hidden] { display: none !important; }
+@media (max-width: 700px) {
+    main .banner, .big { left: 3vw; width: 94vw; }
+    /* 2 lines, then "…": the clamp is on the inner span, which has no padding, so no part of line 3 shows */
+    .banner { font-size: min(3.4vh, 5.5vw); white-space: normal; }
+    .banner span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+    main.v-camera:has(#banner:not([hidden])) .cams { top: calc(2.4 * min(3.4vh, 5.5vw) + 2.4vh + 4px); }
+    .tnum { display: none; }  /* "(T19)": no room next to the name and the score */
+    .gstate .sep { display: none; }  /* "Ready" and "1st half" on two lines: the team names keep their room */
+    #gsHalf { display: block; }
+    /* a running set play wraps in a narrow centre and replaces the half line, so "B-Human" is not cut */
+    .mid { max-width: 30vw; white-space: normal; }
+    .setplay { font-size: 3vw; line-height: 1.1; }
+    .tname { font-size: min(3.6vh, 4.2vw); }
+}
+/* Phone or TV in portrait, field and split view: banner, then the field at full width, then the penalty rows, each in
+   its own row (no gap between them); split: the cameras below */
+@media (orientation: portrait) {
+    main.v-field, main.v-split { display: flex; flex-direction: column; }
+    main.v-field .fieldbox, main.v-split .fieldbox { position: relative; inset: auto; flex: none; height: 68vw; }  /* 15.4 x 10.4 m with margin */
+    main.v-split .cams { position: relative; inset: auto; flex: 1 1 0; min-height: 0; order: 2; }  /* below the penalty rows */
+    main.v-field .pens, main.v-split .pens { position: relative; left: auto; bottom: auto; flex: none; align-self: flex-start; max-width: 98vw; margin: .4vh 1vw; }
+    main.v-field .banner, main.v-split .banner { position: relative; left: auto; top: auto; width: auto; flex: none; order: -1; margin: .4vh 3vw; }
+}
+</style>
+</head>
+<body>
+<header class="score" id="score">
+    <div class="side"><span class="bar" id="c0"></span><img class="logo" id="l0" alt="" hidden><span class="tname"><span id="n0"></span><span class="tnum" id="t0"></span></span><span class="tscore" id="s0"></span></div>
+    <div class="mid"><div class="clock" id="clock">…</div><div class="gstate" id="gstate"><span id="gsState"></span><span class="sep"> · </span><span id="gsHalf"></span></div><div class="setplay" id="setplay"></div></div>
+    <div class="side right"><span class="tscore" id="s1"></span><span class="tname"><span id="n1"></span><span class="tnum" id="t1"></span></span><img class="logo" id="l1" alt="" hidden><span class="bar" id="c1"></span></div>
+</header>
+<div class="status" id="status"></div>
+<main id="main" class="v-field">
+    <div class="fieldbox" id="fieldBox"><canvas id="field"></canvas><div class="box3d" id="box3d" hidden></div><div class="nodata" id="nodata" hidden>No robot data</div></div>
+    <div class="cams" id="cams"></div>
+    <ul class="pens" id="pens" hidden></ul>
+    <div class="banner" id="banner" hidden><span id="bannerT"></span></div>
+    <div class="big" id="big" hidden><div class="t" id="bigT"></div><div class="s" id="bigS"></div></div>
+</main>
+<script type="module">
+import { FIELD, drawRobot2D, drawRobotTag2D, fieldLines, gcSummary, linkStale, loadField, rawRgb, teamPrimary, teamRgb } from '/static/field_model.js';
+import { DEFAULT_SHOT, nextShot, robotName, robotTag, teamName } from '/static/tv_auto.js';
+
+const API = location.origin;
+const $ = id => document.getElementById(id);
+const MARGIN = 0.7;  // m around the field
+const nowS = () => performance.now() / 1000;
+const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
+
+let state = null, lastGood = 0, boot = null, since = 0, eventsBusy = false;
+let names = {}, logos = {};  // team number -> name, -> logo URL ("/static/logos/19.png"), from GET /tv
+let dirUntil = 0;  // nowS() until which the director banner shows
+const ctx = { scoreSeen: null, lastPhase: null, current: null, now: 0, names };
+const name = n => teamName(n, names);
+
+// ---- data ------------------------------------------------------------------------------------------------
+async function loadNames() {
+    try {
+        const j = await (await fetch(`${API}/tv`, { signal: AbortSignal.timeout(3000) })).json();
+        names = j.team_names || {}; logos = j.team_logos || {};
+    } catch { /* next boot retries */ }
+    ctx.names = names;
+}
+
+async function pollState() {
+    try {
+        const s = await (await fetch(`${API}/state`, { signal: AbortSignal.timeout(2000), cache: 'no-store' })).json();
+        const gc = s.gamecontroller || {};
+        if (s.boot !== boot) {  // first answer or a restarted gateway: start after its newest event, no replay
+            boot = s.boot;
+            since = s.last_event || 0;
+            ctx.scoreSeen = gc.score ? gc.score.slice() : null;
+            ctx.lastPhase = gc.state || null;
+            ctx.current = null;  // no shot of the old gateway (e.g. "Full time") stays
+            loadNames();
+        }
+        if (!ctx.scoreSeen && gc.score) ctx.scoreSeen = gc.score.slice();  // the GameController came later
+        if (!ctx.lastPhase && gc.state) ctx.lastPhase = gc.state;
+        state = s;
+        lastGood = performance.now();
+        const tv = s.tv || {};
+        dirUntil = tv.banner && tv.banner_left > 0 ? nowS() + tv.banner_left : 0;
+        if ((s.last_event || 0) > since) pollEvents();
+        render();
+    } catch { /* the status line shows "Live data paused" after 3 s */ }
+    setTimeout(pollState, 250);
+}
+
+async function pollEvents() {
+    if (eventsBusy) return;
+    eventsBusy = true;
+    const b = boot;
+    try {
+        const d = await (await fetch(`${API}/events?since=${since}`, { signal: AbortSignal.timeout(3000) })).json();
+        if (b !== boot) return;  // the gateway restarted meanwhile
+        for (const ev of (d.events || []).sort((x, y) => x.id - y.id)) {
+            since = Math.max(since, ev.id);
+            if (!['GOAL', 'PENALTY', 'PHASE', 'SETPLAY'].includes(ev.type)) continue;
+            ctx.now = nowS();
+            const shot = nextShot(ev, state, ctx);
+            if (shot) ctx.current = { ...shot, from: ctx.now, until: ctx.now + shot.hold_s };
+        }
+    } catch { /* next poll retries */ } finally { eventsBusy = false; }
+}
+
+// ---- what to show ----------------------------------------------------------------------------------------
+function currentShot() {
+    const c = ctx.current;
+    return c && nowS() < c.until ? c : DEFAULT_SHOT;
+}
+function program() {
+    const tv = state?.tv || {}, shot = currentShot();
+    if (tv.mode === 'manual') return { view: tv.view || 'field', robots: tv.robots || [], manual: true };
+    if (shot.delay_s && nowS() - shot.from < shot.delay_s) return { view: 'field', robots: [] };  // GOAL: score card first
+    return { view: shot.view, robots: shot.robots };
+}
+
+const agentOf = key => (state?.agents || []).find(a => `${a.ip}|${a.id}` === key);
+// One colour per team on the whole TV (scoreboard bar, 2D discs, 3D labels): its primary colour, so a black or white
+// robot still shows its team. Order: a team colour a robot sent (now or before: it stays while the robots are silent),
+// then the GameController jersey colour (gc.colors, so a fresh kiosk with only a black robot is not grey), then a black
+// or white robot's colour; null = none (grey bar).
+const lastColor = new Map();  // team -> non-neutral colour
+const neutral = c => { const v = rawRgb(c); return !v || Math.max(...v) - Math.min(...v) < 40; };
+const teamColor = team => {
+    const c = teamPrimary(state?.agents).get(team);
+    if (c != null && !neutral(c)) lastColor.set(team, c);  // a black robot never hides the maroon
+    const gc = state?.gamecontroller || {}, i = (gc.teams || []).indexOf(team);
+    return lastColor.get(team) ?? ((i >= 0 && gc.colors?.[i]) || null) ?? c ?? null;
+};
+const robotLabel = key => { const a = agentOf(key); return a ? robotName(a, state.agents, names) : `Robot #${key.split('|').pop()}`; };
+
+// ---- scoreboard ------------------------------------------------------------------------------------------
+const mmss = s => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.max(0, s) % 60).padStart(2, '0')}`;
+const words = s => { s = String(s || '').replaceAll('_', ' ').toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1); };
+function renderScore() {
+    const gc = state?.gamecontroller || {}, g = gcSummary(gc);
+    const clock = $('clock');
+    // FINISHED ends each half: "Half time" or "Full time", as the tv_auto.js card; no clock then
+    const finished = String(gc.state || '').toUpperCase() === 'FINISHED', second = gc.first_half === false;
+    clock.classList.toggle('small', !g.online);
+    setText(clock, !g.online ? 'No GameController' : finished ? (second ? 'Full time' : 'Half time') : mmss(gc.secsRemaining || 0));
+    setText($('gsState'), g.online && !finished ? words(gc.state) : '');
+    setText($('gsHalf'), g.online && !finished ? (second ? '2nd half' : '1st half') : '');
+    // no-break spaces: "·" never ends a line and "30 s" stays whole
+    setText($('setplay'), g.online && gc.set_play_name ? `${words(gc.set_play_name)}${gc.secondary_time ? `\u00a0·\u00a0${gc.secondary_time}\u00a0s` : ''}` : '');
+    for (const i of [0, 1]) {
+        const team = gc.teams?.[i];
+        setText($('n' + i), g.online && team != null ? name(team) : '');
+        setText($('t' + i), g.online && team != null && names[String(team)] ? ` (T${team})` : '');  // "SPQR (T19)", never "T19 (T19)"
+        setText($('s' + i), g.online ? String(gc.score?.[i] ?? 0) : '');
+        const logo = $('l' + i), src = g.online && team != null ? logos[String(team)] : null;
+        if (src && logo.getAttribute('src') !== src) logo.src = src;
+        logo.hidden = !src || (logo.complete && !logo.naturalWidth);  // no logo, or a file that failed to load
+        const col = teamColor(team);
+        $('c' + i).style.background = g.online && col != null ? `rgb(${teamRgb({ color: col })})` : '#555';
+    }
+    // penalty strip: "SPQR #3 · Pushing · 23 s", at most 5 rows; a narrow screen cuts the name part, never the seconds
+    const rows = [];
+    for (const [team, players] of Object.entries(g.online ? gc.penalties || {} : {})) {
+        for (const [p, [pen, secs]] of Object.entries(players)) rows.push([`${name(team)} #${p} · ${pen}`, ` · ${secs} s`]);
+    }
+    const pens = $('pens'), key = rows.slice(0, 5).join('\n');
+    if (pens.dataset.key !== key) {
+        pens.dataset.key = key;
+        pens.replaceChildren(...rows.slice(0, 5).map(([who, secs]) => {
+            const li = document.createElement('li');
+            li.append(Object.assign(document.createElement('span'), { className: 'who', textContent: who }),
+                      Object.assign(document.createElement('span'), { className: 'secs', textContent: secs }));
+            return li;
+        }));
+    }
+    pens.hidden = !rows.length;
+}
+
+// ---- field (2D, or the circus 3D view on request) --------------------------------------------------------
+const canvas = $('field'), c2d = canvas.getContext('2d');
+function drawField() {
+    const box = $('fieldBox'), pens = $('pens'), banner = $('banner'), W = FIELD.width + 2 * MARGIN, H = FIELD.height + 2 * MARGIN;
+    // The banner (top) and the penalty rows (bottom) float over main. They may cover the 0.7 m margins, never the field:
+    // T = the top touchline is below the banner, with room for a disc on that line; B = the bottom touchline is above the
+    // rows. The canvas is the largest that meets both. It stays centred when it can, else it moves just enough; the
+    // paddings place it. Portrait: the rows and the banner are in the page flow, nothing to reserve.
+    const bw = box.clientWidth, bh0 = box.clientHeight, top0 = box.getBoundingClientRect().top;  // border-box: padding inside bh0
+    const floats = el => !el.hidden && getComputedStyle(el).position === 'absolute';
+    const T = floats(banner) ? banner.getBoundingClientRect().bottom - top0 + 4 + bh0 / 30 : 0;  // 4 px gap + a disc radius
+    const B = floats(pens) ? pens.getBoundingClientRect().top - top0 - 4 : bh0;
+    const m = MARGIN / H;  // margin share of the canvas height
+    const h = Math.max(0, Math.min(bw * H / W, bh0, (B - T) / (1 - 2 * m), (bh0 - T) / (1 - m), B / (1 - m)));
+    const lo = Math.max(h / 2, T + h / 2 - m * h), hi = Math.min(bh0 - h / 2, B - h / 2 + m * h);
+    const pt = Math.max(0, Math.round(Math.min(Math.max(bh0 / 2, lo), hi) - h / 2)), pb = Math.max(0, Math.floor(bh0 - pt - h));
+    if (box.style.paddingTop !== pt + 'px') box.style.paddingTop = pt + 'px';
+    if (box.style.paddingBottom !== pb + 'px') box.style.paddingBottom = pb + 'px';
+    if (!bw || !(h >= 1)) return;
+    const cssW = Math.floor(Math.min(bw, h * W / H)), cssH = Math.floor(cssW * H / W), dpr = devicePixelRatio || 1;
+    if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
+        canvas.style.width = cssW + 'px';
+        canvas.style.height = cssH + 'px';
+        canvas.width = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+    }
+    // the mapping of index.html draw2DField: centre of the canvas, one scale for x and y
+    const k = Math.min(canvas.width / W, canvas.height / H), px = dpr * cssH / 450;
+    const to = (x, y) => [canvas.width / 2 + x * k, canvas.height / 2 - y * k];
+    c2d.fillStyle = '#17562f';
+    c2d.fillRect(0, 0, canvas.width, canvas.height);
+    c2d.strokeStyle = 'rgba(255,255,255,0.85)';
+    c2d.lineWidth = 2 * px;
+    c2d.beginPath();
+    for (const line of fieldLines(FIELD)) line.forEach(([x, y], i) => { const [cx, cy] = to(x, y); i ? c2d.lineTo(cx, cy) : c2d.moveTo(cx, cy); });
+    c2d.stroke();
+    const ball = state?.ball;
+    if (ball && Number.isFinite(ball.x) && Number.isFinite(ball.y)) {
+        const [bx, by] = to(ball.x, ball.y);
+        c2d.fillStyle = '#ff7f00';
+        c2d.beginPath();
+        c2d.arc(bx, by, 7 * px, 0, 2 * Math.PI);
+        c2d.fill();
+        c2d.strokeStyle = '#fff';
+        c2d.lineWidth = 1.5 * px;
+        c2d.stroke();
+    }
+    const gc = state?.gamecontroller || {}, agents = state?.agents || [];
+    const placed = agents.filter(a => Number.isFinite(a.x) && Number.isFinite(a.y)).map(a => [a, ...to(a.x, a.y)]);
+    const penColor = getComputedStyle(document.documentElement).getPropertyValue('--pen').trim();
+    for (const [a, x, y] of placed) {
+        const tc = teamColor(a.team);
+        c2d.globalAlpha = linkStale(state, a) ? 0.4 : 1;  // old data: greyed, as in dashboard.html
+        // a dashed yellow ring, a grass gap away from the team outline, on a penalised robot: the GameController has no IP, so both
+        // twins of "SPQR #3" get it
+        if (gc.penalties?.[String(a.team)]?.[String(a.id)]) {
+            c2d.save();
+            c2d.strokeStyle = penColor;
+            c2d.lineWidth = 4 * px;
+            c2d.setLineDash([6 * px, 4 * px]);
+            c2d.beginPath();
+            c2d.arc(x, y, 20 * px, 0, 2 * Math.PI);  // where drawRobot2D puts its ring (r + 8 px)
+            c2d.stroke();
+            c2d.restore();
+        }
+        drawRobot2D(c2d, { ...a, color: tc ?? a.color }, x, y, px, null, tc, '');  // team colour
+    }
+    c2d.globalAlpha = 1;
+    for (const [a, x, y] of placed) {  // twin tags (".1", ".2") last: no other disc covers them
+        const tag = robotTag(a, agents);
+        if (tag) drawRobotTag2D(c2d, tag, x, y, px);
+    }
+}
+
+let view3d = null, loading3d = false, failed3d = false;
+function badge(text, agent) {  // label of the circus view: "#3" on the team colour, as the 2D discs (text "T19 R3" is the cache key)
+    const b = document.createElement('canvas');
+    b.width = 128; b.height = 64;
+    const g = b.getContext('2d'), col = teamColor(agent?.team) ?? agent?.color, rgb = rawRgb(col);
+    const lum = rgb ? (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255 : 0;
+    g.fillStyle = rgb ? `rgb(${teamRgb({ color: col })})` : 'rgba(7, 9, 14, 0.55)';
+    g.strokeStyle = '#ffffff';
+    g.lineWidth = 4;
+    g.roundRect(4, 4, 120, 56, 12);
+    g.fill();
+    g.stroke();
+    text = `#${agent?.id ?? '?'}`;
+    g.fillStyle = lum > 0.6 ? '#111' : '#fff';
+    let fs = 44;
+    do g.font = `bold ${fs}px sans-serif`; while (g.measureText(text).width > 104 && (fs -= 2) > 16);
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(text, 64, 32);
+    return b;
+}
+function start3d() {
+    if (view3d || loading3d || failed3d) return;
+    loading3d = true;
+    import('/static/circus_view.js')
+        .then(m => m.createCircusView($('box3d'), { badge, labelPx: Math.max(18, Math.round(innerHeight / 36)), hiddenPaths: new Set() }))
+        .then(v => { view3d = v; })
+        .catch(e => { failed3d = true; console.warn('[TV] 3D view not available (' + (e.code || 'error') + '): showing the 2D field', e); })
+        .finally(() => { loading3d = false; render(); });
+}
+function renderField() {
+    const want3d = state?.tv?.engine === '3d' && !failed3d;
+    if (want3d) start3d();
+    const show3d = want3d && !!view3d;
+    // a game runs but no robot sends: say so, not a field of old discs (2D and 3D)
+    $('nodata').hidden = !(gcSummary(state?.gamecontroller || {}).online && !(state?.agents || []).some(a => !linkStale(state, a)));
+    $('box3d').hidden = !want3d;
+    canvas.hidden = show3d || (want3d && loading3d);
+    if (show3d) view3d.update({ ...state, drawings: [], texts: [] });  // no debug drawings, no beliefs
+    else if (!canvas.hidden) drawField();
+}
+
+// ---- cameras ---------------------------------------------------------------------------------------------
+const cams = new Map();  // key -> {el, img, cap, msg, ts, since, fresh, busy}
+let camKeys = [];
+function setCams(keys, manual) {
+    if (keys.join() !== camKeys.join()) {
+        for (const k of cams.keys()) if (!keys.includes(k)) cams.delete(k);
+        $('cams').replaceChildren(...keys.map(k => {
+            if (!cams.has(k)) {
+                const el = Object.assign(document.createElement('div'), { className: 'cam' });
+                const img = Object.assign(document.createElement('img'), { alt: '', hidden: true });
+                const msg = Object.assign(document.createElement('div'), { className: 'nocam', hidden: true });
+                const cap = Object.assign(document.createElement('div'), { className: 'cap' });
+                el.append(img, msg, cap);
+                cams.set(k, { el, img, cap, msg, ts: null, since: performance.now(), fresh: 0, busy: false });
+            }
+            return cams.get(k).el;
+        }));
+        camKeys = keys.slice();
+    }
+    const t = performance.now();
+    for (const k of keys) {
+        const c = cams.get(k);
+        if (agentOf(k)) c.label = robotLabel(k);  // keep the name after the robot stops sending
+        c.label ||= robotLabel(k);
+        setText(c.cap, c.label);  // "SPQR · T19 R3", the label of the director and the other pages
+        const stale = t - (c.fresh || c.since) > 3000;
+        // a pane with no image yet says so, not a black box
+        const text = manual && stale ? 'No image from this robot.' : !c.fresh ? 'Waiting for camera…' : '';  // the caption names it
+        setText(c.msg, text);
+        c.msg.hidden = !text;
+        c.img.hidden = !c.fresh || (manual && stale);
+    }
+}
+async function fetchCam(k) {
+    const c = cams.get(k);
+    if (!c || c.busy) return;
+    c.busy = true;
+    try {
+        const d = await (await fetch(`${API}/camera?robot=${encodeURIComponent(k)}`, { signal: AbortSignal.timeout(2000) })).json();
+        // a frame counts only when it is under 2 s old; a new meta.ts replaces the image
+        // (the gateway keeps serving the last frame after the robot stops: only a new frame refreshes the time)
+        if (d && d.jpeg && d.meta && d.age < 2 && d.meta.ts !== c.ts) {
+            c.ts = d.meta.ts;
+            c.img.src = 'data:image/jpeg;base64,' + d.jpeg;
+            c.fresh = performance.now() - d.age * 1000;
+        }
+    } catch { /* next tick retries */ } finally { c.busy = false; }
+}
+setInterval(() => {  // only the robots on screen (at most 2), and not while the gateway is silent
+    if (performance.now() - lastGood > 3000) return;
+    for (const k of camKeys.slice(0, 2)) fetchCam(k);
+}, 250);
+
+// AUTO: a camera with no fresh frame ends its shot (a GOAL keeps its score card on the field after 1.5 s)
+function checkAutoCams() {
+    const c = currentShot(), t = performance.now();
+    if (c === DEFAULT_SHOT || state?.tv?.mode === 'manual') return;
+    for (const k of c.robots) {
+        const cam = cams.get(k);
+        if (!cam) continue;  // not on screen yet (GOAL: the score card comes first)
+        const limit = c.kind === 'goal' && !cam.fresh ? 1500 : 3000;
+        if (t - (cam.fresh || cam.since) > limit) {
+            if (c.kind === 'goal') Object.assign(c, { view: 'field', robots: [], banner_s: c.hold_s });
+            else ctx.current = null;
+            return;
+        }
+    }
+}
+
+// ---- banners ---------------------------------------------------------------------------------------------
+function renderBanners() {
+    const shot = currentShot(), t = nowS(), on = shot !== DEFAULT_SHOT && t - shot.from < shot.banner_s;
+    const big = on && shot.big;
+    $('big').hidden = !big;
+    if (big) { setText($('bigT'), big.title); setText($('bigS'), big.sub); }
+    const text = on && shot.banner ? shot.banner : t < dirUntil ? state?.tv?.banner || '' : '';
+    setText($('bannerT'), text);
+    $('banner').hidden = !text;
+}
+
+// ---- render ----------------------------------------------------------------------------------------------
+function render() {
+    if (!state) return;
+    checkAutoCams();
+    const p = program();
+    const view = ['field', 'camera', 'split'].includes(p.view) ? p.view : 'field';
+    const keys = view === 'field' ? [] : (p.robots || []).slice(0, view === 'camera' ? 1 : 2);
+    const main = $('main'), cls = 'v-' + (keys.length ? view : 'field');
+    if (main.className !== cls) main.className = cls;
+    setCams(keys, !!p.manual);
+    renderScore();
+    renderBanners();  // before the field: drawField keeps the field below a banner that shows now
+    if (cls !== 'v-camera') renderField();
+    // preload the circus 3D view, hidden, after the first paint: a later 3D shot shows the field at once.
+    // No WebGL: failed3d, and every shot stays 2D.
+    if (!view3d && !loading3d && !failed3d) requestAnimationFrame(() => setTimeout(start3d));
+}
+
+function tick() {  // status line and timed banners also run while the gateway is silent
+    const paused = performance.now() - lastGood > 3000;  // lastGood 0: no answer yet since the page loaded
+    document.body.classList.toggle('paused', paused);
+    setText($('status'), paused ? 'Live data paused' : '');
+    if (paused) render();
+}
+setInterval(tick, 250);
+addEventListener('resize', () => render());
+// Kiosk: a click anywhere asks for full screen. It is not a control.
+addEventListener('click', () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {}); });
+
+await loadField(API);
+pollState();
+</script>
+</body>
+</html>

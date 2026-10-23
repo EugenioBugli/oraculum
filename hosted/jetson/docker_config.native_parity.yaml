@@ -1,0 +1,12 @@
+# PARITY variant (BOOSTER_MOTION_RE.md section 9): + the firmware's system_settings_config.yaml, T1_2.3.4 robot_config.yaml and
+# "Model Version: 2.3.4" (enables the face-down stand-up trajectory). Base: the NATIVE aarch64 booster-motion (T1 firmware 1.8.0.9, unpacked by
+# build_all.sh into ~/oraculum-sim-arm/booster-native and fw-1.8.0.9). Same image as docker_config.yaml.
+image: oraculum-arm-robot
+volumes:
+  - ":/workspace"
+  - "/home/jetsonspqr/oraculum-sim-arm/booster-native:/opt/booster-native:ro"
+  - "/home/jetsonspqr/oraculum-sim-arm/fw-1.8.0.9/booster/lib:/opt/booster-native/fwlib:ro"
+  - "/home/jetsonspqr/oraculum-sim-arm/booster-native/configs:/opt/booster/Gait/configs:ro"
+  - "/home/jetsonspqr/oraculum-sim-arm/booster-native/robot_info_2.3.4.txt:/opt/booster/robot_info.txt:ro"
+  - "/home/jetsonspqr/oraculum-sim-arm/fw-1.8.0.9/booster/configs/common/system_settings_config.yaml:/opt/booster/configs/system_settings_config.yaml:ro"
+  - "/home/jetsonspqr/oraculum-sim-arm/fw-1.8.0.9/booster/configs/Booster_T1/T1_2.3.4/robot_config.yaml:/opt/booster/configs/robot_config.yaml:ro"

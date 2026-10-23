@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Oraculum · Robot</title>
+<link rel="icon" href="data:,">
 <style>
 :root {
     --bg-dark: #121316; --bg-panel: #1e2025; --bg-card: #24272e; --bg-input: #2b2e37;
@@ -26,6 +27,9 @@ button, select { font: inherit; color: var(--text); background: var(--bg-input);
 button:focus-visible, select:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .picker { display: flex; gap: 6px; align-items: center; }
 .picker select { min-width: 170px; }
+/* The robot picker, then the commands for that robot: below the header, never next to STOP ALL */
+.robot-bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; max-width: 1500px; margin: 0 auto; padding: 12px 16px 0; }
+@media (max-width: 600px) { .robot-bar { padding: 10px 10px 0; } #robotAct { flex-basis: 100%; } .picker select { flex: 1; min-width: 0; } .picker { flex: 1; } }
 main { padding: 16px; display: grid; gap: 16px; align-items: start; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); max-width: 1500px; margin: 0 auto; }
 section { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; min-width: 0; }
 section > h2 { font-size: 13px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; color: var(--text-2);
@@ -48,9 +52,30 @@ h2 input { width: 16px; height: 16px; }
 .legend { padding: 8px 14px; font-size: 13px; color: var(--text-2); display: flex; flex-wrap: wrap; gap: 4px 14px; border-top: 1px solid var(--border); }
 .sw { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
 .ok { color: var(--green); } .warn { color: var(--amber); } .bad { color: var(--red); }
+/* The gateway is down: the last values stay, greyed as on the fleet page; the buttons stay clickable (a STOP still tries) */
+body.stale-data main, body.stale-data #robotAct { opacity: 0.45; filter: grayscale(1); }
+.last { color: var(--muted); font-weight: 400; }
+#choice { margin: 16px 16px 0; padding: 10px 14px; border: 1px solid var(--amber); border-radius: 10px; line-height: 2; }
+#choice a { color: #93c5fd; padding: 4px 2px; }
 @media (max-width: 500px) { .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 10px; gap: 10px; } header { padding: 8px 10px; } }
 @media (max-width: 700px) { header { position: static; } }  /* phones: the tall header scrolls away, as on the fleet page */
+/* Phone landscape: the header is one 40 px row, the robot bar one row, the camera (top left) at least 300 px high:
+   its title row goes under the image, and camera and map sit side by side */
+@media (max-height: 500px) {
+    header { flex-wrap: nowrap; height: 40px; padding: 0 8px; gap: 8px; }
+    .logo { display: none; }
+    nav a { padding: 4px 6px; }
+    header button, #controlBar button { min-height: 34px; padding-top: 2px; padding-bottom: 2px; }
+    #controlBar .ctl-lock { padding: 1px 6px; }
+    #gcPill { flex: 0 1 auto; }
+    body:has(.ctl-bypass:not([hidden])) #gcPill { display: none; }  /* room for "BP: name": STOP ALL and Take stay on screen */
+    .robot-bar { flex-wrap: nowrap; padding: 4px 8px 0; max-width: none; }
+    .picker select { min-width: 0; width: 150px; }
+    main { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: 4px 8px 8px; gap: 8px; max-width: none; }
+    section:has(#camBox) { display: flex; flex-direction: column; }
+    section:has(#camBox) > h2 { order: 2; border-bottom: none; border-top: 1px solid var(--border); }
+}
 </style>
 </head>
 <body>
@@ -58,15 +83,18 @@ h2 input { width: 16px; height: 16px; }
     <a class="logo" href="/index.html">ORACULUM</a>
     <nav aria-label="Pages"><a href="/index.html">Field</a><a href="/dashboard.html">Dashboard</a><a href="/fleet.html">Fleet</a></nav>
     <span class="spacer"></span>
-    <span id="gcPill" title="GameController" style="font: 600 12px var(--mono, monospace); padding: 4px 8px; border: 1px solid var(--border, #2d3038); border-radius: 6px; white-space: nowrap;">GC: —</span>
+    <span id="gcPill" title="GameController" style="font: 600 12px var(--mono, monospace); padding: 4px 8px; border: 1px solid var(--border, #2d3038); border-radius: 6px; white-space: nowrap; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis;">GC: —</span>
     <span id="controlBar"></span>
-    <span id="robotAct" title="Commands for the robot chosen on the right"></span>
+</header>
+<div class="robot-bar">
     <div class="picker">
         <button id="prev" aria-label="Previous robot">‹</button>
         <select id="robotSel" aria-label="Robot"></select>
         <button id="next" aria-label="Next robot">›</button>
     </div>
-</header>
+    <span id="robotAct" title="Commands for the robot chosen in the list"></span>
+</div>
+<p id="choice" role="status" hidden></p>
 <main>
     <section aria-labelledby="camTitle">
         <h2><span id="camTitle">Camera</span>
@@ -101,12 +129,13 @@ h2 input { width: 16px; height: 16px; }
     <section id="danger" style="grid-column: 1 / -1;" aria-label="Danger"></section>
 </main>
 <script type="module">
-import { FIELD as field, gcSummary, loadField, fieldLines, penaltyOf, robotName as nameOf, roleWord, stateWord, teamRgb } from '/static/field_model.js';
-import { dangerDamp, mountControlBar, robotActions, stateUrl } from '/static/control_bar.js';
+import { FIELD as field, gcSummary, loadField, fieldLines, linkStale, penaltyOf, robotName, roleWord, stateMismatch, stateWord, teamRgb } from '/static/field_model.js';
+import { dangerDamp, mountControlBar, mountOverlays, robotActions, stateUrl } from '/static/control_bar.js';
 const API = location.origin;
 const $ = id => document.getElementById(id);
 const ctl = mountControlBar($('controlBar'), API);  // STOP ALL + control lock
-const actions = new Map();  // STOP / Resume / hold-DAMP of the robot this page shows, one set per address
+const ov = mountOverlays(API, { right: true });  // GameController + recording controls; bottom-right: the camera legend is bottom-left
+const actions = new Map();  // STOP / Resume / hold-DAMP of the robot this page shows, one set per robot key and label
 const TEAM_COLORS = { red: '#e5484d', blue: '#3b82f6' };
 const DET_COLORS = { ball: '#facc15', goalpost: '#38bdf8', robot: '#ef4444', person: '#f97316' };
 let robotKey = new URLSearchParams(location.search).get('robot') || '';
@@ -117,6 +146,8 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const keyOf = a => `${a.ip}|${a.id}`;
 const colorOf = a => TEAM_COLORS[String(a.color).toLowerCase()] || (/^#[0-9a-f]{6}$/i.test(a.color) ? a.color : '#9095a3');
 const current = () => (state?.agents || []).find(a => keyOf(a) === robotKey);
+const nameOf = a => robotName(a, state?.agents);  // "T19 R3", or "T19 R3 ·.2" when two robots read "T19 R3"
+const choosing = () => !robotKey || !robotKey.includes('|');  // no robot chosen yet (?robot=3 lists the matches)
 
 // ---- camera projection: T = camera-to-field 4x4 (row-major), K = [fx, fy, cx, cy] ----
 function projector(meta) {
@@ -201,12 +232,14 @@ function drawWorld() {
         g.beginPath(); fp.forEach(([x, y], i) => i ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y))); g.closePath(); g.fill(); g.stroke();
     }
     const robot = (a, mine) => {
-        const r = 0.25 * sc;
+        const r = 0.25 * sc, old = linkStale(state, a);  // old data: a dashed marker at half opacity, as the cards grey it
+        if (old) { g.globalAlpha = 0.5; g.setLineDash([6, 4]); }
         g.beginPath(); g.arc(X(a.x), Y(a.y), r, 0, 2 * Math.PI);
         if (mine) { g.fillStyle = colorOf(a); g.fill(); g.lineWidth = 3; g.strokeStyle = '#fff'; g.stroke(); }
         else { g.lineWidth = 2; g.strokeStyle = `rgb(${teamRgb(a)})`; g.stroke(); }
         g.beginPath(); g.moveTo(X(a.x), Y(a.y)); g.lineTo(X(a.x + 0.45 * Math.cos(a.angle)), Y(a.y + 0.45 * Math.sin(a.angle)));
         g.lineWidth = mine ? 3 : 2; g.strokeStyle = mine ? '#fff' : `rgb(${teamRgb(a)})`; g.stroke();
+        g.globalAlpha = 1; g.setLineDash([]);
         labels[mine ? 'unshift' : 'push']({ text: nameOf(a), x: X(a.x), y: Y(a.y), r, mine });  // this robot's label first
     };
     // Labels last, >= 12 CSS px, left of the robot at the right edge; a label that would cover a placed one
@@ -226,9 +259,9 @@ function drawWorld() {
             g.fillText(l.text, lx, ly);
         }
     };
-    for (const a of state?.agents || []) if (keyOf(a) !== robotKey) robot(a, false);
+    if (me) for (const a of state?.agents || []) if (keyOf(a) !== robotKey) robot(a, false);  // no map under the "no data" message
     if (!me) {
-        const msg = robotKey ? 'This robot sends no data now.' : 'Choose a robot.', fs = 16 * cssPx;
+        const msg = choosing() ? 'Choose a robot.' : 'This robot sends no data now.', fs = 16 * cssPx;
         g.font = `600 ${fs}px system-ui, sans-serif`;
         const w = g.measureText(msg).width;
         drawLabels([[ox - w / 2 - fs / 2, oy + fs * 0.6, w + fs], [ox - w / 2 - fs / 2, oy, w + fs]]);  // keep the message box free
@@ -248,34 +281,56 @@ function drawWorld() {
     drawLabels(me.ball ? [[X(me.ball.x) - br, Y(me.ball.y) + br, 2 * br]] : []);
 }
 
-function renderFacts() {
+// downS: seconds since the last good /state while the gateway does not answer (null when it answers)
+function renderFacts(downS = null) {
     const a = current();
     if (!a) { $('facts').innerHTML = ''; return; }
     const s = a.sys || {}, l = state?.fleet?.link?.[a.ip] || {};
     const v = (x, d = 0, unit = '') => (typeof x === 'number' && x >= 0) ? x.toFixed(d) + unit : '—';
     const bat = !(a.battery >= 0) ? '—' : `<span class="${a.battery < 20 ? 'bad' : a.battery < 40 ? 'warn' : 'ok'}">${a.battery < 20 ? '⚠ ' : a.battery < 40 ? '! ' : ''}${a.battery.toFixed(0)}%</span>`;
+    // Old data must not look fresh: the gateway is down ("no data · N s", red), or this robot's link is stale (amber)
+    const old = downS !== null || linkStale(state, a);
+    const link = downS !== null ? `<span class="bad">no data · ${downS} s</span>`
+        : old ? `<span class="warn" title="No packet from this robot for 1 s or more">⚠ — Hz · ${v(l.age, 1, ' s')}</span>` : `${v(l.hz, 0, ' Hz')} · ${v(l.age, 1, ' s')}`;
     const head = state?.fleet?.head, hash = String(s.version || '').split(/[+ ]/)[0];
     const ver = !s.version ? '—' : s.version === 'dev' ? 'dev' : head && hash !== head
-        ? `<span class="bad" title="this checkout is at ${esc(head)}">✗ ${esc(s.version)}</span>` : `<span class="ok">✓ ${esc(s.version)}</span>`;
+        ? `<span class="bad" title="the gateway checkout is at ${esc(head)}">✗ ${esc(s.version)}</span> <span style="color: var(--muted)">expected ${esc(head)}</span>`
+        : `<span class="ok" title="same commit as the gateway checkout">✓ ${esc(s.version)}</span>`;
     $('facts').innerHTML = [
-        ['Role', esc(roleWord(a.role))], ['State', esc(stateWord(a.state)) + (a.fallen ? ' <span class="bad">⚠ fallen</span>' : '') + (({ damp: ' <b class="bad">⚠ DAMPED</b>', lie: ' <b class="bad">▬ LYING</b>', stop: ' <b class="bad">■ STOPPED</b>' })[a.latch] || '')
-                  + (penaltyOf(a, state?.gamecontroller) ? ` <b class="warn">⛔ ${esc(penaltyOf(a, state.gamecontroller))}</b>` : '')], ['Battery', bat],
+        ['Role', esc(roleWord(a.role))], ['State', esc(stateWord(a.state)) + (old ? ' <span class="last">(last known)</span>' : '') + (a.fallen ? ' <span class="bad">⚠ fallen</span>' : '') + (({ damp: ' <b class="bad">⚠ DAMPED</b>', lie: ' <b class="bad">▬ LYING</b>', stop: ' <b class="bad">■ STOPPED</b>' })[a.latch] || '')
+                  + (penaltyOf(a, state?.gamecontroller) ? ` <b class="warn">⛔ ${esc(penaltyOf(a, state.gamecontroller))}</b>` : '')
+                  + (stateMismatch(a, state?.gamecontroller) ? ` <b class="warn" title="${esc(stateMismatch(a, state.gamecontroller, true))}">⚠ ${esc(stateMismatch(a, state.gamecontroller))}</b>` : '')], ['Battery', bat],
         ['Ball', a.ball ? `${a.ball.x.toFixed(2)}, ${a.ball.y.toFixed(2)} m` : 'not seen'], ['Obstacles', (a.obstacles || []).length],
         ['Version', ver], ['CPU · temp', `${v(s.cpu, 0, '%')} · ${v(s.temp, 0, '°C')}`],
-        ['Link', `${v(l.hz, 0, ' Hz')} · ${v(l.age, 1, ' s')}`],
+        ['Link', link],
     ].map(([k, x]) => `<div><b>${k}</b>${x}</div>`).join('');
 }
 
 function renderPicker() {
     const agents = (state?.agents || []).slice().sort((a, b) => (a.team - b.team) || (a.id - b.id));
+    if (!robotKey.includes('|')) {  // ?robot=3 or ?robot=<ip>: the one robot it names, else a list; no ?robot=: the list
+        const hits = robotKey ? agents.filter(a => String(a.id) === robotKey || a.ip === robotKey) : [];
+        if (hits.length === 1) return choose(keyOf(hits[0]));
+        if (agents.length) return hits.length ? showChoice(hits, `${hits.length} robots match "${robotKey}".`)
+            : showChoice(agents, robotKey ? `No robot "${robotKey}" sends data now.` : 'No robot chosen.');
+    }
+    $('choice').hidden = true;
     const sel = $('robotSel'), keys = agents.map(keyOf);
     if (robotKey && !keys.includes(robotKey)) keys.unshift(robotKey);
     for (const a of agents) knownNames.set(keyOf(a), nameOf(a));
     const html = keys.map(k => { const a = agents.find(x => keyOf(x) === k); return `<option value="${esc(k)}">${a ? `${esc(nameOf(a))} · ${esc(roleWord(a.role))}` : `${esc(knownNames.get(k) || 'R' + k.split('|').pop())} (offline)`}</option>`; }).join('');
     if (sel.dataset.html !== html) { sel.innerHTML = html; sel.dataset.html = html; }
     sel.value = robotKey;
-    if (!robotKey && agents.length) choose(keyOf(agents[0]));
 }
+
+function showChoice(agents, why) {
+    const html = `${esc(why)} Choose one: ` + agents.map(a => `<a href="?robot=${encodeURIComponent(keyOf(a))}" data-key="${esc(keyOf(a))}">${esc(nameOf(a))}</a>`).join(' · ');
+    if ($('choice').dataset.html !== html) $('choice').innerHTML = $('choice').dataset.html = html;
+    $('choice').hidden = false;
+    const sel = $('robotSel'), opt = '<option value="">Choose a robot</option>';
+    if (sel.dataset.html !== opt) sel.innerHTML = sel.dataset.html = opt;
+}
+$('choice').addEventListener('click', e => { const k = e.target.dataset?.key; if (k) { e.preventDefault(); choose(k); } });
 
 function choose(key) {
     if (key === robotKey) return;
@@ -298,7 +353,7 @@ function render() {
     const a = current();
     document.title = `Oraculum · ${a ? nameOf(a) : 'Robot'}`;
     $('camTitle').textContent = a ? `Camera · ${nameOf(a)}` : 'Camera';
-    renderPicker(); renderFacts(); drawWorld(); drawOverlay();
+    renderPicker(); syncActions(); renderFacts(); drawWorld(); drawOverlay();
 }
 
 let lastGood = 0;  // Date.now() of the last good /state
@@ -310,24 +365,45 @@ async function pollState() {
         // the gateway is down: keep the last state (greyed) and say so; the robot is not to blame
         const s = lastGood ? Math.round((Date.now() - lastGood) / 1000) : 0;
         $('gcPill').textContent = lastGood ? `No data for ${s} s: is the gateway running on ${location.host}?` : 'Gateway offline';
-        document.querySelector('main').style.filter = lastGood ? 'grayscale(1)' : '';  // the header (STOP ALL) stays in colour
+        document.body.classList.toggle('stale-data', !!lastGood);  // the header (STOP ALL) stays in colour
+        if (lastGood) renderFacts(s);
         return;
     }
-    document.querySelector('main').style.filter = '';
+    document.body.classList.remove('stale-data');
     const g = gcSummary(state.gamecontroller);
-    $('gcPill').textContent = g.online ? `${g.state} · ${g.score}` : g.state;  // short: the header stays one row
-    $('gcPill').title = g.online ? `${g.detail}\n${g.title}` : g.title;
+    $('gcPill').textContent = g.online ? `${g.state} ${g.clock} · ${g.score} · ${g.rest}` : g.state;  // as the other pages; a narrow header cuts the detail
+    $('gcPill').title = g.online ? `${g.state} · ${g.score} · ${g.detail}\n${g.title}` : g.title;
     ctl.update(state);
+    ov.update(state);
     render();
-    // the robot's controls, built once its name is known ("T19 R3": the DAMP lock asks for "R3")
+}
+
+// The robot's controls, built once its name is known ("T19 R3": the DAMP lock asks for "R3"). Called by render(), so a
+// change of robot (list, ‹, ›) swaps or empties them at once: the buttons never act on the robot shown before.
+function syncActions() {
     const ip = robotKey.split('|')[0], name = knownNames.get(robotKey), box = $('robotAct');
-    if (ip && name && !actions.has(robotKey)) actions.set(robotKey, [robotActions(ip, API, { lie: true, label: name }), dangerDamp(ip, API, name)]);
-    const mine = actions.get(robotKey);
-    if (mine && box.firstChild !== mine[0]) { box.replaceChildren(mine[0]); $('danger').replaceChildren(mine[1]); }
+    const akey = `${robotKey}|${name}`;  // a new label (a twin appeared) builds new buttons with the new name
+    if (ip && name && !choosing() && !actions.has(akey)) actions.set(akey, [robotActions(ip, API, { lie: true, label: name, named: true }), dangerDamp(ip, API, name)]);
+    const mine = !choosing() && name && actions.get(akey);
+    if (mine ? box.firstChild === mine[0] : !box.firstChild) return;
+    // a LIE DOWN or DAMP hold started on the robot shown before must not fire: blur cancels it (holdButton)
+    for (const b of document.querySelectorAll('#robotAct [data-holding], #danger [data-holding]')) b.dispatchEvent(new Event('blur'));
+    box.replaceChildren(...(mine ? [mine[0]] : [])); $('danger').replaceChildren(...(mine ? [mine[1]] : []));  // no robot or no name yet: no buttons
 }
 
 async function pollCamera() {
-    if (!robotKey || Date.now() - lastGood > 3000) return;  // no camera requests while the gateway is down
+    if (Date.now() - lastGood > 3000) return;  // no camera requests while the gateway is down
+    if (choosing()) {  // no robot chosen: no /camera request, the camera says so as the map does
+        $('camWait').hidden = false; $('camWait').innerHTML = '<span>Choose a robot.</span>'; $('camStatus').hidden = true;  // no lone "—"
+        return;
+    }
+    $('camStatus').hidden = false;
+    if (!current()) {  // offline or unknown robot: no /camera request (the gateway answers 400), say why
+        const st = $('camStatus');
+        if (frame) { $('camWait').hidden = true; st.classList.add('stale'); st.textContent = '⚠ robot offline: this is its last camera image'; }
+        else { $('camWait').hidden = false; $('camWait').innerHTML = '<span>No camera image: this robot sends no data now.</span>'; st.textContent = 'no image yet'; }
+        return;
+    }
     const key = robotKey;
     let d = null;
     try { d = await (await fetch(`${API}/camera?robot=${encodeURIComponent(key)}`)).json(); } catch (e) { /* retry */ }

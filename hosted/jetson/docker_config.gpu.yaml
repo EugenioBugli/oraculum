@@ -1,0 +1,12 @@
+# circus --framework file for the Jetson, DEFAULT + GPU (GPU=1): native booster-motion as docker_config.yaml, plus
+# CUDA 12.6 (host) and cuDNN 9.3 + TensorRT 10.3 (~/oraculum-sim-arm/gpulibs) for Maximus's NNs; the entrypoint drops
+# SPQR_NN_CPU when /opt/gpulibs exists.
+image: oraculum-arm-robot
+volumes:
+  - ":/workspace"
+  - "/home/jetsonspqr/oraculum-sim-arm/booster-native:/opt/booster-native:ro"
+  - "/home/jetsonspqr/oraculum-sim-arm/fw-1.8.0.9/booster/lib:/opt/booster-native/fwlib:ro"
+  - "/home/jetsonspqr/oraculum-sim-arm/booster-native/configs:/opt/booster/Gait/configs:ro"
+  - "/home/jetsonspqr/oraculum-sim-arm/booster-native/robot_info.txt:/opt/booster/robot_info.txt:ro"
+  - "/usr/local/cuda-12.6:/usr/local/cuda-12.6:ro"
+  - "/home/jetsonspqr/oraculum-sim-arm/gpulibs:/opt/gpulibs:ro"

@@ -497,23 +497,31 @@ class B2Viewer {
     this.vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
     gl.bufferData(gl.ARRAY_BUFFER, M.HEAPF32.subarray(vertPtr, vertPtr + this.nvert * VERT), gl.STATIC_DRAW);
-    // 16-bit indices relative to each list's first vertex (every list has < 65536 vertices);
-    // the vertex attributes are re-pointed at the list's base vertex for each draw
-    const idx32 = M.HEAPU32.subarray(indexPtr, indexPtr + nindex), idx16 = new Uint16Array(nindex);
+    // Indices relative to each list's first vertex; the vertex attributes are re-pointed at the list's base vertex
+    // for each draw. 16 bits while every list has < 65536 vertices, else 32 bits (a Booster-T2 mesh has more).
+    const idx32 = M.HEAPU32.subarray(indexPtr, indexPtr + nindex);
+    let span = 0;
+    for (let l = 0; l < nlist; l++) {
+      const first = this.lists[4 * l], count = this.lists[4 * l + 1];
+      let lo = Infinity, hi = 0;
+      for (let i = first; i < first + count; i++) { lo = Math.min(lo, idx32[i]); hi = Math.max(hi, idx32[i]); }
+      if (count) span = Math.max(span, hi - lo);
+    }
+    const idx16 = span > 65535 ? new Uint32Array(nindex) : new Uint16Array(nindex);
+    this.indexType = span > 65535 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT;
     this.listBase = new Int32Array(nlist);
     for (let l = 0; l < nlist; l++) {
       const first = this.lists[4 * l], count = this.lists[4 * l + 1];
       if (!count) continue;
       let lo = Infinity, hi = 0;
       for (let i = first; i < first + count; i++) { lo = Math.min(lo, idx32[i]); hi = Math.max(hi, idx32[i]); }
-      if (hi - lo > 65535) throw new Error('display list with more than 65536 vertices');
       for (let i = first; i < first + count; i++) idx16[i] = idx32[i] - lo;
       this.listBase[l] = lo;
     }
     this.ebo = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.ebo);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx16, gl.STATIC_DRAW);
-    this.gpuGeometryBytes = this.nvert * VERT * 4 + nindex * 2;
+    this.gpuGeometryBytes = this.nvert * VERT * 4 + nindex * idx16.BYTES_PER_ELEMENT;
     M._b2_free_vertices();
     this.curBase = -1;
     gl.enableVertexAttribArray(0);
@@ -855,7 +863,7 @@ class B2Viewer {
         for (const [loc, size, off] of ATTRS) gl.vertexAttribPointer(loc, size, gl.FLOAT, false, VERT * 4, (base * VERT + off) * 4);
         this.curBase = base;
       }
-      gl.drawElementsInstanced(gl.TRIANGLES, L[4 * list + 1], gl.UNSIGNED_SHORT, 2 * L[4 * list], count);
+      gl.drawElementsInstanced(gl.TRIANGLES, L[4 * list + 1], this.indexType, (this.indexType === gl.UNSIGNED_INT ? 4 : 2) * L[4 * list], count);
       ndraw++;
     }
     }

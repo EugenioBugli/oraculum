@@ -21,6 +21,7 @@ class ControlLock:
         self.holder = None    # {"client", "name", "seen"}
         self.request = None   # {"client", "name", "seen"}: someone asked the holder
         self._denied = set()  # clients whose last request was denied (shown once)
+        self._released = {}   # client -> time it released the lock: no command takes the free lock back for STALE_S
 
     def _expire(self, now: float) -> None:
         if self.holder and now - self.holder["seen"] > STALE_S:
@@ -50,6 +51,7 @@ class ControlLock:
             now = self._clock()
             self._expire(now)
             self._denied.discard(client)
+            self._released.pop(client, None)  # an explicit Take always works
             if not self.holder or self.holder["client"] == client:
                 self.holder = {"client": client, "name": name, "seen": now}
                 if self.request and self.request["client"] == client:
@@ -75,20 +77,27 @@ class ControlLock:
 
     def release(self, client: str) -> None:
         with self._lock:
+            now = self._clock()
             if self.holder and self.holder["client"] == client:
                 self.holder = None
+                # a joystick command already on its way must not take the free lock again (the page's Release race)
+                self._released = {c: t for c, t in self._released.items() if now - t < STALE_S}
+                self._released[client] = now
             if self.request and self.request["client"] == client:
                 self.request = None
             self._expire(self._clock())
 
     def acquire_for_command(self, client: str, name: str) -> bool:
-        """A manual command: True if `client` holds the lock now (a free lock is taken; a held one is not asked for)."""
+        """A manual command: True if `client` holds the lock now (a free lock is taken; a held one is not asked for).
+        A client that released the lock less than STALE_S ago does not get the free lock back: it must Take it."""
         if not client:
             return False
         with self._lock:
             now = self._clock()
             self._expire(now)
             if not self.holder:
+                if now - self._released.get(client, -STALE_S) < STALE_S:
+                    return False
                 self.holder = {"client": client, "name": (name or "operator")[:40], "seen": now}
             if self.holder["client"] != client:
                 return False

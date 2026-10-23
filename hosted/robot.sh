@@ -9,4 +9,12 @@ export SPQR_MODEL_PATH=/workspace/models/
 export ORACULUM_HOST=127.0.0.1                    # the session's own gateway (DebugMessageSender)
 export LD_PRELOAD=/opt/session/libnort.so          # real-time calls succeed without effect (see nort.c)
 mkdir -p /var/log
-exec /usr/bin/supervisord -n -c /workspace/scripts/supervisord.conf
+# One host runs many robots, so give each its own log dir and supervisord config (the template hard-codes
+# /var/log/{booster-motion,simbridge,maximus}.log, which 10 robots would overwrite).
+LOGD=/var/log/${ROBOT_NAME:-robot}; mkdir -p "$LOGD"
+CONF=/tmp/supervisord-${ROBOT_NAME:-robot}.conf
+sed "s#/var/log/#$LOGD/#g" /workspace/scripts/supervisord.conf > "$CONF"
+export ORACULUM_SUPERVISORD_CONF="$CONF"
+# robot_netns.py isolates this robot in its own network namespace when ORACULUM_ISOLATE=1 (many robots on one
+# host); otherwise it just execs supervisord (the unchanged single-robot path).
+exec python3 /opt/session/robot_netns.py

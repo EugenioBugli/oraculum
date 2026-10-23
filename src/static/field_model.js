@@ -54,8 +54,36 @@ export function rawRgb(color) {
 // Display colour of a robot's team on the dark pages: unknown -> grey; dark colours lifted by adding, not
 // multiplying, so black becomes grey (140, 140, 140) and #822433 stays about (140, 46, 61).
 // One name for a robot on every page: team number and player number, "T19 R3" (both teams have players 1-5).
-// The 3D and 2D badges stay "R3" in the team colour.
-export const robotName = a => `T${a?.team || '?'} R${a?.id ?? '?'}`;
+// agents (optional, the robots on screen): when another robot has the same team and number on another address, the
+// last part of the IP is added, "T19 R3 ·.2" (the whole IP if that part is the same too), so no two robots read alike.
+// Twins are looked up among the robots seen in the last 60 s (the fleet table's offline window), not only the robots
+// in `agents`: a twin that went stale or silent keeps both suffixes, so the live robot never takes the bare name.
+const knownRobots = new Map();  // "ip|team|id" -> {a, t}
+export function robotName(a, agents) {
+    const name = `T${a?.team || '?'} R${a?.id ?? '?'}`;
+    if (!Array.isArray(agents)) return name;  // also .map(robotName): the 2nd argument is then an index
+    const now = Date.now();
+    for (const b of [a, ...agents]) if (b) knownRobots.set(`${b.ip || '127.0.0.1'}|${b.team}|${b.id}`, { a: b, t: now });
+    for (const [k, v] of knownRobots) if (now - v.t > 60000) knownRobots.delete(k);
+    const ip = a?.ip || '127.0.0.1', twins = [...knownRobots.values()].map(v => v.a)
+        .filter(b => b.team === a?.team && b.id === a?.id && (b.ip || '127.0.0.1') !== ip);
+    if (!twins.length) return name;
+    const last = x => x.split('.').pop();
+    return `${name} ·${twins.some(b => last(b.ip || '127.0.0.1') === last(ip)) ? ip : '.' + last(ip)}`;
+}
+// Robots in a /state and how many of them have a stale link: the header says "all robot links stale" or "N link stale".
+export const linkCounts = state => ({ n: (state?.agents || []).length, stale: (state?.agents || []).filter(a => linkStale(state, a)).length });
+// The part robotName adds for a twin ("·.2" -> ".2"), or "": the 2D discs show it under the number.
+export const robotTag = (a, agents) => robotName(a, agents).split(' ·')[1] || '';
+// Parts of a robotName label: "T19 R3 ·.2" -> number "R3", twin tag ".2" ("" when the robot has no twin).
+const labelParts = label => ({ num: String(label || '').match(/\bR\d+\b/)?.[0] || '', tag: String(label || '').split(' ·')[1] || '' });
+// "T19 R3", or "T19 R3·.2" for a twin: the name in every button and in the MANUAL banner ("STOP T5 R4"), so two teams'
+// robot 4 never share a button text.
+export const shortName = (label, ip = '') => String(label || '').replace(' ·', '·') || ip;
+// The word that unlocks DAMP: "R3", or "R3.2" for the twin "T19 R3 ·.2", so each twin asks for its own word.
+export const dampWord = (label, ip = '') => { const { num, tag } = labelParts(label); return num ? num + (tag ? (tag.startsWith('.') ? tag : `.${tag}`) : '') : ip; };
+// The gateway heard nothing from this robot's address for 1 s or more: its data on screen is old (cards say "LINK N s old").
+export const linkStale = (state, a) => (state?.fleet?.link?.[a?.ip]?.age ?? 0) >= 1;
 
 // Words for the one-letter role and state of the telemetry (the robots send full role names; the fake sender letters).
 const ROLE_WORDS = { G: 'Goalkeeper', D: 'Defender', M: 'Midfielder', A: 'Attacker' };
@@ -71,7 +99,7 @@ export function versionMark(agent, head) {
     return v.split(/[+ ]/)[0] === head ? '✓' : '✗';
 }
 
-// "7/7 online · 2 fallen · 0 penalised · 1 low battery · 1 wrong version" for the main page. `seen` (Map: robot key ->
+// "7/7 live · 2 fallen · 0 penalised · 1 low battery · 1 wrong version" for the main page. `seen` (Map: robot key ->
 // {agent, t}) is kept by the page: a robot silent for less than 60 s counts as offline, as in the fleet table.
 export function teamSummary(state, seen, now = Date.now()) {
     const agents = state?.agents || [], key = a => `${a.ip}|${a.id}`;
@@ -79,8 +107,10 @@ export function teamSummary(state, seen, now = Date.now()) {
     for (const [k, v] of seen) if (now - v.t > 60000) seen.delete(k);
     const gc = state?.gamecontroller, head = state?.fleet?.head;
     const n = f => agents.filter(f).length;
-    return [`${agents.length}/${seen.size} online`, `${n(a => a.fallen)} fallen`, `${n(a => penaltyOf(a, gc) || a.state === 'P')} penalised`,
-            `${n(a => a.battery >= 0 && a.battery < 20)} low battery`, `${n(a => versionMark(a, head) === '✗')} wrong version`].join(' · ');
+    const stale = a => linkStale(state, a);  // a robot with old data is not counted as live
+    return [`${n(a => !stale(a))}/${seen.size} live`, `${n(a => a.fallen)} fallen`, `${n(a => penaltyOf(a, gc) || a.state === 'P')} penalised`,
+            `${n(a => a.battery >= 0 && a.battery < 20)} low battery`, `${n(a => versionMark(a, head) === '✗')} wrong version`]
+        .concat(n(stale) ? [`${n(stale)} ${n(stale) === 1 ? 'link' : 'links'} stale`] : []).join(' · ');
 }
 
 // GameController pill for every page. No packet for 2 s → "No GameController" and no fake "00:00 0 - 0";
@@ -93,13 +123,75 @@ export function gcSummary(gc) {
     const detail = [gc.first_half === false ? '2nd half' : '1st half', mmss(gc.secsRemaining || 0)];
     if (gc.set_play_name) detail.push(`${gc.set_play_name}${gc.secondary_time ? ` ${gc.secondary_time} s` : ''}`);
     if (gc.phase && gc.phase !== 'NORMAL') detail.push(gc.phase.replaceAll('_', ' '));
+    if (!['PLAYING', 'FINISHED'].includes(gc.state) && (gc.teams || []).includes(gc.kickingTeam)) detail.push(`kick-off T${gc.kickingTeam}`);
+    // clock and rest: the same parts with the clock first, for headers that cut the end ("9:35" + "1st half · …")
     return { online: true, state: gc.state, detail: detail.join(' · '), score: `T${t0 ?? '?'} ${s0} – ${s1} T${t1 ?? '?'}`,
+             clock: detail[1], rest: [detail[0], ...detail.slice(2)].join(' · '),
              title: `GameController: last packet ${gc.age ?? '?'} s ago from ${gc.source || '?'}` };
 }
 // A robot's GameController penalty, e.g. "Leaving the field · 23 s", or "".
 export function penaltyOf(agent, gc) {
     const p = gc?.penalties?.[String(agent?.team)]?.[String(agent?.id)];
     return p ? `${p[0]} · ${p[1]} s` : '';
+}
+
+// Where the robot's own view of the game differs from the GameController's, or "". Short text for the cards and
+// rows ("GC: not penalised"); long = true gives the full sentence for a title attribute.
+// Only the penalty and the team number: the robots send "R" in INITIAL, READY, SET and PLAYING alike
+// (DebugMessageSender), so the game state itself cannot be compared.
+export function stateMismatch(agent, gc, long = false) {
+    if (!gc?.state || !agent) return '';
+    if (gc.teams?.length && !gc.teams.includes(agent.team)) return `T${agent.team ?? '?'} is not in this game`;
+    const pen = penaltyOf(agent, gc);
+    if (pen && agent.state !== 'P') return long ? 'The GC penalised this robot. The robot does not know it.' : 'robot: not penalised';
+    if (!pen && agent.state === 'P') return long ? 'The robot says it is penalised. The GC does not.' : 'GC: not penalised';
+    return '';
+}
+
+// Team message budget of our team. message_budget is the number of messages LEFT; 12,000 is the start value the
+// simulated referee uses (sim_gc.py), assumed, not sent in the packet. {known, text, title, used: 0..100 %}
+export const BUDGET_START = 12000;
+export function budgetSummary(gc) {
+    if (!gc?.state) return { known: false, text: 'unknown: no GameController', title: 'No GameController packet in the last 2 s', used: 0 };
+    const left = gc.message_budget?.[gc.own_team_index];
+    if (!(gc.own_team_index >= 0) || typeof left !== 'number') {
+        return { known: false, text: 'unknown: our team is not in this game', title: `own_team in config.yaml is not one of the GC teams (${(gc.teams || []).map(t => 'T' + t).join(', ')})`, used: 0 };
+    }
+    return { known: true, text: `${left.toLocaleString()} messages left`, used: Math.min(100, Math.max(0, (BUDGET_START - left) / BUDGET_START * 100)),
+             title: `Team messages our team can still send in this game (assumed start: ${BUDGET_START.toLocaleString()})` };
+}
+
+// Texts of one robot: two teams can both have a robot 3, so the IP counts too (texts of an older gateway have no IP).
+export const robotTexts = (texts, id, ip) => (texts || []).filter(t => t.agent_id === id && (!t.ip || t.ip === (ip || '127.0.0.1')));
+// The same robot: the player number AND the IP.
+export const isRobot = (a, id, ip) => !!a && a.id === id && (a.ip || '127.0.0.1') === (ip || '127.0.0.1');
+
+// Legend of the team colours that the robots send, one entry per team: "●● T5 · ● T19 blue" (a team can send two colours).
+export function teamLegend(agents) {
+    const teams = new Map(), primary = teamPrimary(agents);  // team number -> Map(colour -> agent), primary colour first
+    for (const a of agents || []) if (!teams.has(a.team)) teams.set(a.team, new Map([[String(primary.get(a.team)).toLowerCase(), a]]));
+    for (const a of agents || []) {
+        if (!teams.has(a.team)) teams.set(a.team, new Map());
+        teams.get(a.team).set(String(a.color).toLowerCase(), a);
+    }
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+    const dot = a => `<span style="display: inline-block; width: 0.7em; height: 0.7em; border-radius: 50%; background: rgb(${teamRgb(a)}); vertical-align: -0.05em;"></span>`;
+    return [...teams].sort((x, y) => (x[0] || 0) - (y[0] || 0)).map(([team, cols]) => {
+        const names = [...cols.keys()].filter(c => TEAM_RGB[c]).join('/');  // GameController colour names; hex colours have none
+        return `<span style="white-space: nowrap;">${[...cols.values()].map(dot).join('')} T${esc(team ?? '?')}${names ? ' ' + esc(names) : ''}</span>`;
+    }).join(' · ');
+}
+
+// The primary colour of each team (Map team -> colour): the first colour, in player order, that is not white, black
+// or grey; a team with only such colours keeps its first. drawRobot2D rings every robot of the team with it.
+const neutral = c => { const v = rawRgb(c); return !v || Math.max(...v) - Math.min(...v) < 40; };
+export function teamPrimary(agents) {
+    const out = new Map();
+    for (const a of [...agents || []].sort((x, y) => (x.id ?? 0) - (y.id ?? 0))) {
+        const cur = out.get(a.team);
+        if (cur === undefined || (neutral(cur) && !neutral(a.color))) out.set(a.team, a.color);
+    }
+    return out;
 }
 
 export function teamRgb(agent) {
@@ -170,27 +262,33 @@ export function drawDrawings2D(ctx, drawings, map, size, hidden, px = 1) {  // p
     ctx.setLineDash([]);
 }
 
-// One robot in a 2D arena: disc in its colour, heading tick from the rim, number readable on any fill.
+// One robot in a 2D arena: disc in its colour, a 3 px outer ring in its team's primary colour (teamPrimary: a white or
+// grey robot still shows its team), heading tick from the ring, number readable on any fill.
 // px = canvas pixels per CSS pixel, so the robot and its number keep their screen size. ring = selection colour or null.
-export function drawRobot2D(ctx, agent, x, y, px, ring) {
+// tag (optional): a short text under the disc, e.g. ".2" when two robots have the same team and number (robotName).
+export function drawRobot2D(ctx, agent, x, y, px, ring, teamColor, tag = '') {
     const r = 12 * px, a = Number.isFinite(agent.angle) ? agent.angle : 0;
     if (ring) {
         ctx.strokeStyle = ring;
         ctx.lineWidth = 4 * px;
         ctx.beginPath();
-        ctx.arc(x, y, r + 6 * px, 0, 2 * Math.PI);
+        ctx.arc(x, y, r + 8 * px, 0, 2 * Math.PI);
         ctx.stroke();
     }
     ctx.fillStyle = agent.color || '#822433';
     ctx.beginPath();
     ctx.arc(x, y, r, 0, 2 * Math.PI);
     ctx.fill();
+    ctx.strokeStyle = `rgb(${teamRgb({ color: teamColor || agent.color })})`;
+    ctx.lineWidth = 3 * px;
+    ctx.beginPath();
+    ctx.arc(x, y, r + 1.5 * px, 0, 2 * Math.PI);
+    ctx.stroke();
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 2 * px;
-    ctx.stroke();
-    ctx.beginPath();  // heading: from the rim outwards, so it never crosses the number
-    ctx.moveTo(x + r * Math.cos(a), y - r * Math.sin(a));
-    ctx.lineTo(x + (r + 8 * px) * Math.cos(a), y - (r + 8 * px) * Math.sin(a));
+    ctx.beginPath();  // heading: from the ring outwards, so it never crosses the number
+    ctx.moveTo(x + (r + 3 * px) * Math.cos(a), y - (r + 3 * px) * Math.sin(a));
+    ctx.lineTo(x + (r + 10 * px) * Math.cos(a), y - (r + 10 * px) * Math.sin(a));
     ctx.stroke();
     const c = rawRgb(agent.color);
     const lum = c ? (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255 : 0;
@@ -200,4 +298,22 @@ export function drawRobot2D(ctx, agent, x, y, px, ring) {
     ctx.textBaseline = 'middle';
     ctx.fillText(agent.id, x, y + px);
     ctx.textBaseline = 'alphabetic';
+    if (tag) drawRobotTag2D(ctx, tag, x, y, px);
+}
+// The twin tag (".2") under a disc at (x, y): bold 12 px white on a dark rounded box. A page draws all tags after all
+// discs, so no other disc covers one (drawRobot2D's tag argument draws it at once).
+export function drawRobotTag2D(ctx, tag, x, y, px) {
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.font = `bold ${Math.round(12 * px)}px sans-serif`;
+    const w = ctx.measureText(tag).width + 8 * px, h = 16 * px, top = y + 15 * px;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x - w / 2, top, w, h, 4 * px); else ctx.rect(x - w / 2, top, w, h);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(tag, x, top + h / 2 + px);
+    ctx.restore();
 }

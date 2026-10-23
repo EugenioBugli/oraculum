@@ -2,6 +2,7 @@
 
 Run this in a separate terminal while the gateway runs:
     python3 tools/udp_sender.py
+    FAKE_MODELS=t2,t1,k1 python3 tools/udp_sender.py   # robot models, repeated over the robots (default: all "t2")
 
 Each robot sends its own packet, as DebugMessageSender does on a real robot: the agent with its fleet data
 ("sys"), plus its own ball estimate and the obstacles it sees as the packet's top-level "ball" / "obstacles".
@@ -24,6 +25,8 @@ import sys
 import threading
 import time
 
+import yaml
+
 # Allow importing from src/ without installing the package
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -37,12 +40,15 @@ HOST = "127.0.0.1"
 PORT = 10006
 FPS  = 25
 
-# Field half-dimensions in metres: circus's fieldLarge (14 x 9 m), the field of the
-# "Circus (exact)" 3D view, so the fake robots stay on the circus field
-HW = 7.0   # half-length (14 m)
-HH = 4.5   # half-width  (9 m)
+# The field of config.yaml (fields/*.yaml, metres; fieldRCAP 22 x 14 m), as GET /field gives it to the pages
+_ROOT = pathlib.Path(__file__).resolve().parent.parent
+with open(_ROOT / "config.yaml") as _f, open(_ROOT / "fields" / yaml.safe_load(_f).get("field", "fieldAdultSize.yaml")) as _g:
+    FIELD = yaml.safe_load(_g)
+HW = FIELD["width"] / 2   # half-length
+HH = FIELD["height"] / 2  # half-width
 
-N_AGENTS = 7
+N_AGENTS = 7  # 4 + 3: matches are 4v4 at most
+MODELS = os.environ.get("FAKE_MODELS", "t2").split(",")  # robot i reports "robot": MODELS[i % len(MODELS)]
 TEAMS = {"#822433": 19, "#000000": 19, "#006778": 5, "#ffffff": 5}  # agent colour -> team number
 
 # Synthetic camera: 320 x 240, head 1.1 m high, pitched 0.5 rad down
@@ -51,16 +57,23 @@ CAM_HEIGHT, CAM_PITCH = 1.1, 0.5
 CAM_FPS = 4
 
 
-def _fake_joints(i: int) -> dict[str, float]:
-    """Head scan and arm swing, so the WASM view shows posed joints."""
+# MJCF joint names (circus resources/robots/Booster-<model>/instance.xml): head yaw, left/right shoulder pitch and roll
+JOINT_NAMES = {
+    "t2": ("aa_head_yaw_joint", "left_shoulder_pitch_joint", "right_shoulder_pitch_joint", "left_shoulder_roll_joint", "right_shoulder_roll_joint"),
+    "t1": ("AAHead_yaw", "Left_Shoulder_Pitch", "Right_Shoulder_Pitch", "Left_Shoulder_Roll", "Right_Shoulder_Roll"),
+    "k1": ("AAHead_yaw", "ALeft_Shoulder_Pitch", "ARight_Shoulder_Pitch", "Left_Shoulder_Roll", "Right_Shoulder_Roll"),
+}
+
+
+def _head_yaw(i: int) -> float:
+    return round(0.8 * math.sin(0.7 * (time.monotonic() + i)), 3)
+
+
+def _fake_joints(i: int, model: str = "t2") -> dict[str, float]:
+    """Head scan and arm swing, so the 3D views show posed joints."""
     t = time.monotonic() + i
-    return {
-        "AAHead_yaw": round(0.8 * math.sin(0.7 * t), 3),
-        "Left_Shoulder_Pitch": round(0.5 * math.sin(3.0 * t), 3),
-        "Right_Shoulder_Pitch": round(-0.5 * math.sin(3.0 * t), 3),
-        "Left_Shoulder_Roll": -1.3,
-        "Right_Shoulder_Roll": 1.3,
-    }
+    head, lp, rp, lr, rr = JOINT_NAMES.get(model, JOINT_NAMES["t2"])
+    return {head: _head_yaw(i), lp: round(0.5 * math.sin(3.0 * t), 3), rp: round(-0.5 * math.sin(3.0 * t), 3), lr: -1.3, rr: 1.3}
 
 
 def _fake_sys(i: int, t: float) -> dict:
@@ -91,8 +104,10 @@ def build_packets(agents: list[Agent], ball: Ball, t: float, rng: random.Random)
     """One packet per robot, as the real robots send them."""
     packets = []
     for i, a in enumerate(agents):
+        model = MODELS[i % len(MODELS)]
         agent = {"id": a.id, "x": round(a.x, 4), "y": round(a.y, 4), "angle": round(a.angle, 4), "role": a.role,
-                 "state": a.state, "color": a.color, "joints": _fake_joints(i), "team": TEAMS.get(a.color, 0),
+                 "state": a.state, "color": a.color, "joints": _fake_joints(i, model), "team": TEAMS.get(a.color, 0),
+                 "robot": model,
                  "battery": 18.0 if i == 6 else round(95 - (t / 60) % 50 - 3 * i, 1), "fallen": a.state == "X",
                  "sys": _fake_sys(i, t), "latch": LATCH["v"]}
         packet = {"agents": [agent]}
@@ -113,17 +128,19 @@ def build_packets(agents: list[Agent], ball: Ball, t: float, rng: random.Random)
 # ---------------------------------------------------------------------------
 
 def _field_lines() -> list[list[tuple[float, float]]]:
-    """Polylines of fieldAdultSize.yaml (14 x 9 m) in the field frame."""
-    L, W, ga_w, ga_h, pa_w, pa_h = HW, HH, 1.0, 4.0, 3.0, 6.5
+    """Polylines of the config.yaml field (FIELD) in the field frame."""
+    f = FIELD
+    L, W, ga_w, ga_h, pa_w, pa_h = HW, HH, f["goal_area_width"], f["goal_area_height"], f["penalty_area_width"], f["penalty_area_height"]
+    r = f["center_radius"]
 
     def rect(x0, x1, h):
         return [(x0, -h), (x1, -h), (x1, h), (x0, h), (x0, -h)]
 
     lines = [rect(-L, L, W), [(0, -W), (0, W)],
-             [(1.5 * math.cos(k * math.pi / 24), 1.5 * math.sin(k * math.pi / 24)) for k in range(49)]]
+             [(r * math.cos(k * math.pi / 24), r * math.sin(k * math.pi / 24)) for k in range(49)]]
     for s in (-1, 1):
         lines += [rect(s * L, s * (L - ga_w), ga_h / 2), rect(s * L, s * (L - pa_w), pa_h / 2)]
-        px = s * (L - 2.1)
+        px = s * (L - f["penalty_mark_distance"])
         lines += [[(px - 0.05, 0), (px + 0.05, 0)], [(px, -0.05), (px, 0.05)]]
     return lines
 
@@ -292,7 +309,7 @@ def main() -> None:
                     live = {i: target for i, (until, target) in wanted.items() if until > t0}
                 for i, a in enumerate(agents):
                     if a.id in live:
-                        sock.sendto(camera_frame(a, agents, ball, _fake_joints(i)["AAHead_yaw"]), live[a.id])
+                        sock.sendto(camera_frame(a, agents, ball, _head_yaw(i)), live[a.id])
 
             elapsed = time.monotonic() - t0
             time.sleep(max(0.0, dt - elapsed))

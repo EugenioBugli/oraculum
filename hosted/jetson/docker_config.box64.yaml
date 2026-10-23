@@ -1,0 +1,5 @@
+# circus --framework file for the Jetson, Box64 path (opt-in: BOOSTER_MOTION=box64): the x86 0.0.11 booster-motion
+# under Box64 in our arm64 robot image. Needs the patched x86 FastDDS (patch_fastrtps.py, in the image).
+image: oraculum-arm-robot
+volumes:
+  - ":/workspace"

@@ -54,3 +54,9 @@
   number: 70
   fieldPlayerColors: [red, blue, yellow, black, white, green, orange, purple, brown, gray]
   goalkeeperColors: [blue, yellow, black, white, green, orange, purple, brown, gray, red]
+# SPQR robots on the mappazzone branch send team number 134; `logo:` is a file in src/static/logos/ (default: <number>.png)
+- name: SPQR
+  number: 134
+  logo: 19.png
+  fieldPlayerColors: [red, blue, yellow, black, white, green, orange, purple, brown, gray]
+  goalkeeperColors: [blue, yellow, black, white, green, orange, purple, brown, gray, red]

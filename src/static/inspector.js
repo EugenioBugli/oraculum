@@ -2,7 +2,7 @@
 // battery, Wi-Fi, temperature, CPU, link, state, ball, obstacles, version) plus any debug texts it sends.
 // renderInspector(box, linksBox, state, id, ip): `box` gets the values (rebuilt only when they change), `linksBox`
 // the links, in their own element: a rebuild between mouse-down and mouse-up would swallow a click.
-import { penaltyOf, robotName, roleWord, stateWord } from '/static/field_model.js';
+import { penaltyOf, robotName, robotTexts, roleWord, stateMismatch, stateWord } from '/static/field_model.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const STYLE = `
@@ -36,12 +36,12 @@ export function renderInspector(box, linksBox, state, id, ip) {
         const ver = !s.version ? '—' : s.version === 'dev' ? 'dev build' : (head && hash !== head ? `✗ ${esc(s.version)} (checkout ${esc(head)})` : `✓ ${esc(s.version)}`);
         const card = (label, val) => `<div class="insp-card"><span class="insp-label">${label}</span><span class="insp-val">${val}</span></div>`;
         const latch = ({ damp: ' · <b class="insp-bad">DAMPED</b>', lie: ' · <b class="insp-bad">LYING</b>', stop: ' · <b class="insp-bad">STOPPED</b>' })[a.latch] || '';
-        const texts = (state.texts || []).filter(t => t.agent_id === a.id);
+        const texts = robotTexts(state.texts, a.id, a.ip), mismatch = stateMismatch(a, state.gamecontroller, true);  // room for the full sentence
         html = `
         <div style="display: flex; flex-direction: column; gap: 0.7rem;">
             <div style="font-size: 0.85rem; font-weight: bold; color: var(--accent-cyan, #22d3ee); display: flex; justify-content: space-between;
                         border-bottom: 1px solid var(--border-subtle, #2d3038); padding-bottom: 0.45rem;">
-                <span>${esc(robotName(a))}</span>
+                <span>${esc(robotName(a, state.agents))}</span>
                 <span style="font-family: var(--font-mono, monospace); font-size: 0.75rem; color: var(--text-secondary, #9fa4b2);">${esc(a.ip)}</span>
             </div>
             <div class="insp-grid">
@@ -53,6 +53,7 @@ export function renderInspector(box, linksBox, state, id, ip) {
             <div class="insp-more">
                 <div>State: ${esc(stateWord(a.state))}${a.fallen ? ' · <b class="insp-bad">⚠ FALLEN</b>' : ''}${latch} · Role: ${esc(roleWord(a.role))}</div>
                 ${penaltyOf(a, state.gamecontroller) ? `<div><b class="insp-bad">⛔ ${esc(penaltyOf(a, state.gamecontroller))}</b></div>` : ''}
+                ${mismatch ? `<div><b class="insp-bad">⚠ ${esc(mismatch)}</b></div>` : ''}
                 <div>Ball: ${a.ball ? `${a.ball.x.toFixed(2)}, ${a.ball.y.toFixed(2)} m` : 'not seen'} · Obstacles: ${(a.obstacles || []).length}</div>
                 <div>Version: ${ver}</div>
                 <div>Load: ${n(s.load, 1, '')}${s.rec ? ' · ● recording' : ''}</div>

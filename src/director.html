@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oraculum · TV director</title>
+<link rel="icon" href="data:,">
+<!--
+Director console of the public TV view (roadmap G.3). It sets the one TV program of the gateway with POST /tv and
+shows the TV page itself in a scaled iframe, so the preview is exactly what the TVs show. It polls GET /tv and plain
+/state (robot list) every second. It sends nothing to /camera, /control, /stop or /control_lock: the iframe asks for
+the camera images, as a TV does. POST /tv cannot move a robot.
+-->
+<style>
+:root {
+    --bg-dark: #121316; --bg-panel: #1e2025; --bg-card: #24272e; --bg-input: #2b2e37;
+    --border: #2d3038; --border-strong: #3b3f4a;
+    --text: #eceef2; --text-2: #9fa4b2; --muted: #9095a3;
+    --green: #10b981; --amber: #f59e0b; --red: #ef4444; --blue: #3b82f6; --indigo: #6366f1;
+    --font: 'Inter', system-ui, -apple-system, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg-dark); color: var(--text); font: 14px/1.4 var(--font); min-height: 100vh; overflow-x: hidden; }
+header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 16px;
+    background: var(--bg-panel); border-bottom: 1px solid var(--border); }
+.logo { font-weight: 800; letter-spacing: 1px; color: var(--text); text-decoration: none; }
+nav { display: flex; gap: 4px; flex-wrap: wrap; }
+nav a { color: var(--text-2); text-decoration: none; padding: 6px 10px; border-radius: 6px; }
+nav a[aria-current] { background: var(--bg-card); color: var(--text); }
+.spacer { flex: 1; }
+a.open { color: #93c5fd; display: inline-flex; align-items: center; min-height: 44px; }
+main { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; padding: 16px; max-width: 1600px; margin: 0 auto; }
+.preview { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: #000;
+    border: 1px solid var(--border); border-radius: 8px; }
+.preview iframe { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; border: 0; transform-origin: 0 0;
+    pointer-events: none; }  /* the TV hides the cursor and asks for full screen on a click: not here */
+.now { margin-top: 8px; color: var(--text-2); }
+.now b { color: var(--text); }
+.controls { display: grid; gap: 12px; align-content: start; min-width: 0; }
+fieldset { border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); padding: 10px 12px 12px; min-width: 0; }
+legend { padding: 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; color: var(--text-2); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+.hint { color: var(--muted); font-size: 13px; margin-top: 6px; }
+button, input { font: inherit; color: var(--text); background: var(--bg-input); border: 1px solid var(--border-strong);
+    border-radius: 8px; padding: 8px 14px; min-height: 44px; }
+button { cursor: pointer; font-weight: 600; }
+button:hover { border-color: var(--text-2); }
+button[aria-pressed="true"] { background: var(--indigo); border-color: var(--indigo); }
+button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.big { flex: 1; font-size: 18px; min-height: 56px; }
+.robots { display: flex; flex-wrap: wrap; gap: 8px; }
+.robots button { min-width: 108px; }
+.robots .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+.robots button.onair { box-shadow: 0 0 0 3px var(--red); }
+/* white on #b91c1c: 6.5:1, on any button fill */
+.robots button.onair::after { content: 'on TV'; margin-left: 8px; padding: 1px 6px; border-radius: 4px; background: #b91c1c;
+    color: #fff; font-size: 12px; font-weight: 700; }
+.secs { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
+.banner-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.banner-row input[type=text] { flex: 1 1 220px; min-width: 0; }
+.banner-row input[type=number] { width: 76px; }
+.toast { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); max-width: calc(100vw - 32px); z-index: 20;
+    padding: 10px 16px; border-radius: 8px; background: #3a1517; border: 1px solid var(--red); }
+[hidden] { display: none !important; }
+@media (max-width: 900px) {
+    main { grid-template-columns: 1fr; padding: 0 0 16px; gap: 12px; }
+    .preview { border-radius: 0; border-left: 0; border-right: 0; }
+    .now, .controls { padding: 0 12px; }
+    header { padding: 8px 12px; }
+}
+</style>
+</head>
+<body>
+<header>
+    <a class="logo" href="/index.html">ORACULUM</a>
+    <nav aria-label="Pages"><a href="/index.html">Field</a><a href="/dashboard.html">Dashboard</a><a href="/fleet.html">Fleet</a><a href="/director.html" aria-current="page">TV director</a></nav>
+    <span class="spacer"></span>
+    <a class="open" href="/tv.html" target="_blank" rel="noopener">Open the TV page</a>
+</header>
+<main>
+    <div>
+        <div class="preview" id="preview"><iframe id="tvFrame" src="/tv.html" title="Preview of the TV page" tabindex="-1"></iframe></div>
+        <p class="now" id="now">TV now: …</p>
+    </div>
+    <div class="controls">
+        <fieldset>
+            <legend>Mode</legend>
+            <div class="row">
+                <button class="big" data-mode="auto" aria-pressed="false">AUTO</button>
+                <button class="big" data-mode="manual" aria-pressed="false">MANUAL</button>
+            </div>
+            <p class="hint">AUTO: the TV picks the view from the game events. MANUAL: the TV shows your view.</p>
+        </fieldset>
+        <fieldset>
+            <legend>View</legend>
+            <div class="row">
+                <button data-view="field" aria-pressed="false">Field</button>
+                <button data-view="camera" aria-pressed="false">Camera</button>
+                <button data-view="split" aria-pressed="false">Split</button>
+            </div>
+            <p class="hint">Camera needs 1 robot. Split needs 1 or 2 robots.</p>
+        </fieldset>
+        <fieldset>
+            <legend>Robots</legend>
+            <div class="robots" id="robots"></div>
+            <p class="hint" id="robotsHint">No robot sends data now.</p>
+        </fieldset>
+        <fieldset>
+            <legend>Field engine</legend>
+            <div class="row">
+                <button data-engine="2d" aria-pressed="false">2D</button>
+                <button data-engine="3d" aria-pressed="false">3D</button>
+            </div>
+            <p class="hint">3D needs WebGL2 on the TV. Without it the TV shows 2D.</p>
+        </fieldset>
+        <fieldset>
+            <legend>Banner</legend>
+            <form class="banner-row" id="bannerForm" novalidate>
+                <input type="text" id="bannerText" maxlength="80" placeholder="Text on the TV" aria-label="Banner text">
+                <label class="secs"><input type="number" id="bannerSecs" min="3" max="120" value="10" aria-label="Seconds the banner shows">s</label>
+                <button type="submit">Show</button>
+                <button type="button" id="bannerClear">Clear</button>
+            </form>
+        </fieldset>
+    </div>
+</main>
+<div class="toast" id="toast" role="status" aria-live="assertive" hidden></div>
+<script type="module">
+import { operator } from '/static/control_bar.js';
+import { teamPrimary, teamRgb } from '/static/field_model.js';
+import { robotName } from '/static/tv_auto.js';
+
+const API = location.origin;
+const $ = id => document.getElementById(id);
+const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
+let tv = null, agents = [], names = {}, sel = [], seeded = false;  // sel: robots chosen here ("ip|id"), at most 2
+const keyOf = a => `${a.ip}|${a.id}`;
+const label = key => {
+    const a = agents.find(x => keyOf(x) === key);
+    return a ? robotName(a, agents, names) : `Robot #${key.split('|').pop()}`;  // the TV caption's text
+};
+
+let toastTimer = 0;
+function toast(text) {
+    setText($('toast'), text);
+    $('toast').hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { $('toast').hidden = true; }, 6000);
+}
+
+async function send(body) {
+    try {
+        const r = await fetch(`${API}/tv`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                             body: JSON.stringify({ ...body, by: operator.name }) });
+        const j = await r.json().catch(() => ({}));
+        if (r.status !== 200) { toast(j.error || `The TV did not change (HTTP ${r.status}).`); return; }
+        tv = { ...tv, ...j };
+        render();
+    } catch {
+        toast('Oraculum is not reachable.');
+    }
+}
+
+// ---- polls -----------------------------------------------------------------------------------------------
+async function pollTv() {
+    try {
+        const j = await (await fetch(`${API}/tv`, { signal: AbortSignal.timeout(2000) })).json();
+        names = j.team_names || {};
+        tv = j;
+    } catch { tv = null; }
+    render();
+}
+async function pollState() {
+    try {
+        const s = await (await fetch(`${API}/state`, { signal: AbortSignal.timeout(2000) })).json();
+        agents = (s.agents || []).slice().sort((a, b) => (a.team - b.team) || (a.id - b.id));
+    } catch { agents = []; }
+    renderRobots();
+}
+
+// ---- render ----------------------------------------------------------------------------------------------
+function render() {
+    for (const b of document.querySelectorAll('[data-mode]')) b.setAttribute('aria-pressed', String(tv?.mode === b.dataset.mode));
+    for (const b of document.querySelectorAll('[data-view]')) b.setAttribute('aria-pressed', String(tv?.mode === 'manual' && tv?.view === b.dataset.view));
+    for (const b of document.querySelectorAll('[data-engine]')) b.setAttribute('aria-pressed', String(tv?.engine === b.dataset.engine));
+    if (!tv) { setText($('now'), 'TV now: unknown. Oraculum does not answer.'); return; }
+    const parts = [tv.mode === 'manual' ? 'Manual' : 'AUTO'];
+    if (tv.mode === 'manual') parts.push(tv.view === 'field' ? 'field' : `${tv.view} ${tv.robots.map(label).join(' + ')}`);
+    else parts.push('picks the view from game events');
+    if (tv.engine === '3d') parts.push('3D field');
+    if (tv.banner && tv.banner_left > 0) parts.push(`banner ${Math.ceil(tv.banner_left)} s left`);
+    if (tv.by) parts.push(`set by ${tv.by} ${Math.round(tv.age)} s ago`);
+    setText($('now'), `TV now: ${parts.join('\u00a0·\u00a0')}`);  // no-break spaces: "·" never starts or ends a line
+    renderRobots();
+}
+
+function renderRobots() {
+    // A new tab starts with the robots that are on the TV now (once both polls have answered)
+    if (!seeded && tv && agents.length) { seeded = true; if (tv.mode === 'manual' && !sel.length) sel = (tv.robots || []).slice(); }
+    sel = sel.filter(k => agents.some(a => keyOf(a) === k));
+    if (camView() && sel.length > 1) sel = sel.slice(-1);  // the camera view shows 1 robot: only 1 looks chosen
+    const keys = agents.map(keyOf).join() + '/' + Object.keys(names).length;  // team names come with the first GET /tv
+    const box = $('robots');
+    if (box.dataset.keys !== keys) {
+        box.dataset.keys = keys;
+        const primary = teamPrimary(agents);  // the colour of the TV scoreboard bar
+        box.replaceChildren(...agents.map(a => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.dataset.key = keyOf(a);
+            const dot = Object.assign(document.createElement('span'), { className: 'dot' });
+            dot.style.background = `rgb(${teamRgb({ color: primary.get(a.team) ?? a.color })})`;
+            b.append(dot, document.createTextNode(robotName(a, agents, {})));  // "T19 R3", a twin "T19 R3 (.2)": the dot shows the team
+            b.onclick = () => pickRobot(keyOf(a));
+            return b;
+        }));
+    }
+    const onTv = tv?.mode === 'manual' ? tv.robots : [];
+    for (const b of box.children) {
+        b.setAttribute('aria-pressed', String(sel.includes(b.dataset.key)));  // chosen here for the next view
+        b.classList.toggle('onair', onTv.includes(b.dataset.key));  // on the TV now, set by any director
+        b.title = b.dataset.key.split('|')[0] + (onTv.includes(b.dataset.key) ? ' · on the TV now' : '');  // full IP: twins differ
+    }
+    $('robotsHint').hidden = agents.length > 0;
+}
+
+// ---- actions ---------------------------------------------------------------------------------------------
+const camView = () => tv?.mode === 'manual' && tv.view === 'camera';
+function pickRobot(key) {
+    if (camView()) sel = [key];  // camera view: a click replaces the robot
+    else sel = sel.includes(key) ? sel.filter(k => k !== key) : [...sel, key].slice(-2);
+    renderRobots();
+    // A manual camera or split view follows the choice at once
+    if (tv?.mode === 'manual' && tv.view === 'camera' && sel.includes(key)) send({ robots: [key] });
+    else if (tv?.mode === 'manual' && tv.view === 'split' && sel.length) send({ robots: sel });
+}
+for (const b of document.querySelectorAll('[data-mode]')) b.onclick = () => send({ mode: b.dataset.mode });
+for (const b of document.querySelectorAll('[data-engine]')) b.onclick = () => send({ engine: b.dataset.engine });
+for (const b of document.querySelectorAll('[data-view]')) b.onclick = () => {
+    const view = b.dataset.view;
+    if (view === 'field') return send({ view, robots: [] });
+    if (!sel.length) return toast(`Choose a robot first. The ${view} view needs ${view === 'camera' ? '1 robot' : '1 or 2 robots'}.`);
+    send({ view, robots: view === 'camera' ? sel.slice(-1) : sel });
+};
+$('bannerForm').onsubmit = (e) => {
+    e.preventDefault();
+    const text = $('bannerText').value.trim(), secs = Math.round(Number($('bannerSecs').value) || 10);
+    if (!text) return toast('Type the banner text first.');
+    const clamped = Math.min(120, Math.max(3, secs));
+    $('bannerSecs').value = clamped;  // the field shows what the TV uses: 200 becomes 120, 1 becomes 3
+    send({ banner: text, banner_s: clamped });
+};
+$('bannerClear').onclick = () => send({ banner: '' });
+
+// ---- preview: the 1920 x 1080 TV page scaled to the column -----------------------------------------------
+new ResizeObserver(([e]) => { $('tvFrame').style.transform = `scale(${e.contentRect.width / 1920})`; }).observe($('preview'));
+
+pollTv();
+pollState();
+setInterval(pollTv, 1000);
+setInterval(pollState, 1000);
+</script>
+</body>
+</html>

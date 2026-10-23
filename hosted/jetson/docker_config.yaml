@@ -1,0 +1,10 @@
+# circus --framework file for the Jetson, DEFAULT: native aarch64 booster-motion (T1 firmware 1.8.0.9, unpacked by
+# build_jetson.sh into ~/oraculum-sim-arm/booster-native and fw-1.8.0.9) with config_sim_circus.lua (supervisord.arm.conf).
+# Box64 path: BOOSTER_MOTION=box64 (docker_config.box64.yaml). GPU: GPU=1 (docker_config.gpu.yaml).
+image: oraculum-arm-robot
+volumes:
+  - ":/workspace"
+  - "/home/jetsonspqr/oraculum-sim-arm/booster-native:/opt/booster-native:ro"
+  - "/home/jetsonspqr/oraculum-sim-arm/fw-1.8.0.9/booster/lib:/opt/booster-native/fwlib:ro"
+  - "/home/jetsonspqr/oraculum-sim-arm/booster-native/configs:/opt/booster/Gait/configs:ro"
+  - "/home/jetsonspqr/oraculum-sim-arm/booster-native/robot_info.txt:/opt/booster/robot_info.txt:ro"

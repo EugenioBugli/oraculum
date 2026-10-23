@@ -2,7 +2,7 @@
 
 # Which field file to load (relative to the fields/ directory)
 # Options: fieldAdultSize.yaml | fieldRCAP.yaml | fieldSPL.yaml
-field: fieldAdultSize.yaml
+field: fieldRCAP.yaml   # RCAP match field, 22 x 14 m (spqrbooster2026 mappazzone src/app/config/fields/fieldRCAP.yaml)
 
 display:
   # Field surface color
