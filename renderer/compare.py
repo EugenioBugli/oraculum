@@ -4,6 +4,8 @@ Usage: python compare.py reference.png browser.png out_prefix
 Writes out_prefix_side_by_side.png (reference | browser | diff x4) and prints the metrics as JSON.
        python compare.py --scene-sha256 SCENE_PACKAGE_DIR
 Prints scene_sha256() of a scene package (package_scenes.sh output).
+       python compare.py --selftest
+Checks that a scene_yaml path change keeps the scene hash and a content change alters it.
 """
 import hashlib
 import json
@@ -40,16 +42,44 @@ def compare(ref_path, test_path, prefix):
 
 def scene_sha256(package_dir):
     """SHA-256 of the files B2Viewer loads (files.json of the package), in a fixed order: the same scene
-    gives the same hash wherever it was exported. Stored next to the MSAA references (refs_msaa/)."""
+    gives the same hash wherever it was exported. Stored next to the MSAA references (refs_msaa/).
+    scene_index.json is hashed without "scene_yaml" (the path of the yaml on the exporting machine, e.g.
+    /work/maximus/... or /maximus/...), so moving the exporter's mount does not change the hash."""
     files = json.load(open(os.path.join(package_dir, "files.json")))["files"]
     h = hashlib.sha256()
     for f in sorted(files):
-        h.update(f"{f}\0{hashlib.sha256(open(os.path.join(package_dir, f), 'rb').read()).hexdigest()}\n".encode())
+        data = open(os.path.join(package_dir, f), "rb").read()
+        if f == "scene_index.json":
+            index = json.loads(data)
+            index.pop("scene_yaml", None)
+            data = json.dumps(index, sort_keys=True, separators=(",", ":")).encode()
+        h.update(f"{f}\0{hashlib.sha256(data).hexdigest()}\n".encode())
     return h.hexdigest()
 
 
+def selftest():
+    """The scene hash ignores scene_yaml but sees a change in scene.xml or in any other scene_index.json field."""
+    import tempfile
+
+    def pkg(xml, yaml, qposadr):
+        d = tempfile.mkdtemp()
+        index = {"scene_yaml": yaml, "robots": [{"name": "r1", "freejoint": {"qposadr": qposadr}}]}
+        for name, text in [("files.json", json.dumps({"files": ["scene.xml", "scene_index.json"]})),
+                           ("scene.xml", xml), ("scene_index.json", json.dumps(index, indent=1))]:
+            open(os.path.join(d, name), "w").write(text)
+        return scene_sha256(d)
+
+    base = pkg("<mujoco/>", "/work/maximus/src/app/sim/5v5.yaml", 0)
+    assert pkg("<mujoco/>", "/maximus/src/app/sim/5v5.yaml", 0) == base, "scene_yaml path changed the hash"
+    assert pkg("<mujoco />", "/work/maximus/src/app/sim/5v5.yaml", 0) != base, "scene.xml change not seen"
+    assert pkg("<mujoco/>", "/work/maximus/src/app/sim/5v5.yaml", 7) != base, "scene_index.json change not seen"
+    print("selftest ok")
+
+
 if __name__ == "__main__":
-    if sys.argv[1] == "--scene-sha256":
+    if sys.argv[1] == "--selftest":
+        selftest()
+    elif sys.argv[1] == "--scene-sha256":
         print(scene_sha256(sys.argv[2]))
     else:
         print(json.dumps(compare(*sys.argv[1:4])))
