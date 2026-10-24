@@ -456,8 +456,10 @@ needs the T1 firmware: 3.9 GB download (about 5 min with 16 ranges) + about 50 s
 
 1. laptop -> jetson: `scp` of the scripts in `/DATA/RoboCup/oraculum/hosted/jetson/` (+ `vm/monitor_play.py`,
    `scenes/`, `booster-native/config_sim_circus.lua`) to `~/oraculum-sim-arm/`.
-2. server -> jetson (laptop not in the data path, `ssh -A` + `ProxyCommand` through the droplet): tar of the server's
-   `/workspace` without `build/` and `.pixi/` (464 MB, **28 s cold**) and `/opt/oraculum` (89 MB, **6 s**).
+2. laptop -> jetson (since 2026-10-24; see "End-to-end run with Release Maximus" below): `rsync` of the robot tree
+   `SRC` (default `/home/xps/work/spqr-merge`), `rsync` of simbridge ce708bfa, `git archive HEAD` of the gateway.
+   Before 2026-10-24: tar of the x86 server's `/workspace` (464 MB, 28 s cold) and `/opt/oraculum` (89 MB, 6 s); that
+   server (`49.12.252.138`) no longer has `/workspace`.
 3. jetson, `build_jetson.sh` (detached, log `~/oraculum-sim-arm/logs/build_jetson.log`):
    1. pixi 0.82.1 into `~/oraculum-sim-arm/pixi` (8 s); Box64 copied from `~/box64/build/box64` (a source build
       v0.3.6 is in the script, untested here);
@@ -485,6 +487,46 @@ needs the T1 firmware: 3.9 GB download (about 5 min with 16 ranges) + about 50 s
   A session to watch: `SCENE=... ~/oraculum-sim-arm/session.sh`, then
   `ssh -L 8080:localhost:8080 -L 6080:localhost:6080 jetson-spqr` and the token in `~/oraculum-sim-arm/run/token`.
   Stop everything: `~/oraculum-sim-arm/stop.sh` (in its own ssh call).
+
+### End-to-end run with Release Maximus (2026-10-24)
+
+- **Result: PASS.** `bash /DATA/RoboCup/oraculum/hosted/jetson/build_all.sh` ran end to end in **514 s** (laptop
+  clock). Robot tree `/home/xps/work/spqr-merge` @ bc462d43, plus the two logging patches. Release Maximus, native
+  booster-motion. Smoke test (1 robot, `scenes/1v0.yaml`, 30 s, sim_fast): **RTF 0.72**, **0 falls**. The Striker
+  walked 3.6 + 3.4 + 1.8 = **8.8 m** in the three 10 s intervals of PLAYING (`monitor.log`). The clip shows it
+  upright, then dribbling to the goal: `/DATA/RoboCup/oraculum_media_2v2/jetson_clips/BUILDALL_bc462d43_release_20261024_165225_{wall,realspeed}.mp4`.
+- Step times of the passing run (robot image rebuilt, Maximus and circus incremental): circus 127 s (fresh `pixi
+  install`), robot image 370 s, Maximus Release 56 s, display image 0 s. Cold Release Maximus (an earlier run of this
+  chain, with `build/arm-release` moved aside): 445 s, 105 steps. Robot base image after a simbridge change: 420 s.
+- Sources (the x86 server copy is gone):
+  - Robot tree: `SRC` (default `/home/xps/work/spqr-merge`). `rsync -a --exclude=.pixi --exclude=/build --exclude=.git`,
+    with no `--delete`, so the Jetson keeps simbridge, `models/` and the other files it has.
+  - simbridge ce708bfa: from `/DATA/RoboCup/spqrbooster2026/external/simbridge`, because the submodules in `SRC` are
+    empty. `build_jetson.sh` adds 625336d2.
+  - Gateway: `git archive HEAD` (`src config fields config.yaml`) of `/DATA/RoboCup/oraculum`. Uncommitted edits are
+    not copied.
+- `/DATA` is NTFS. There, git's two simbridge symlinks (`tools/booster_motion/lib/libfmt.so.8`,
+  `libSDL2-2.0.so.0`) are `IntxLNK` stub files. Copied as they are, simbridge stops with "libfmt.so.8: file too short",
+  and circus waits for ever (`waitRobotConnectionsSHM`). `build_all.sh` now makes them real links on the Jetson, with
+  the targets git stores.
+- `build_jetson.sh` step 2 runs `prepare_sim_config.sh` last. It applies sim_fast, `useRerun`, Rerun to `/dev/null`,
+  `rgb: false`, the arm supervisord file, the pixi compilers and the GPU-optional entrypoint. The robot tree does not
+  come with these settings any more.
+- Maximus build type: `BUILD_TYPE=Release` is the default (`build/arm-release`). `BUILD_TYPE=Debug bash build_all.sh`
+  builds `-O0` in `build/arm`. After the builds, `build_jetson.sh` creates `workspace/build/USE_RELEASE` for Release and
+  removes it for Debug, so `supervisord.arm.conf` starts the binary that was just built. The smoke-test run name is
+  `build_smoke_<native|box64>_<BUILD_TYPE>`.
+- circus: the checkout resets `pixi.lock`, so pixi solves again for aarch64 and downloads new packages. With the
+  default 50 parallel downloads, prefix.dev reset the connection twice ("Connection reset by peer"). The script now
+  uses `pixi install --concurrent-downloads 4`, and the install passed.
+- Failures: a plain command that fails prints "build_jetson FAILED" (an EXIT trap). `build_all.sh` exits non-zero on
+  FAILED, at once, while the other steps keep running on the Jetson. Wait until
+  `ssh jetson-spqr 'pgrep -f "[b]uild_jetson.sh"'` prints nothing before you run it again. Without the brackets,
+  pgrep matches its own ssh command line.
+- Disk: `dl/` (3.7 GB, the firmware `.run`) was deleted on 2026-10-24. The S3 URL still answers (same 3909080772
+  bytes). `build_jetson.sh` downloads it again only if `fw-1.8.0.9/` or `booster-native/` is missing. Keep
+  `fw-1.8.0.9/`. `~/ci-refs/` (146 MB) is kept: it is the MSAA pixel-test workspace of the renderer work, and it was
+  used on 2026-10-24.
 
 ## Left on the Jetson (2026-10-22 19:50)
 

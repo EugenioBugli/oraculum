@@ -4,8 +4,12 @@
 #   ~/oraculum-sim-arm/build_jetson.sh            # builds everything, then a 30 s 1-robot smoke test
 #   Native booster-motion (the default) needs the T1 firmware: 3.9 GB download + unpack on the first build.
 #   NATIVE=0 ...  skips it (then only the Box64 path works: BOOSTER_MOTION=box64)
+#   BUILD_TYPE=Debug ...  Maximus -O0 in build/arm; default Release in build/arm-release. build/USE_RELEASE follows it.
 # Steps run in parallel where they can; each logs to logs/build_<step>.log with its wall time.
 set -euo pipefail
+# build_all.sh waits for "FAILED" or "real-time factor": a plain command failing under set -e must print one too
+trap '[ $? = 0 ] || echo "build_jetson FAILED"' EXIT
+export BUILD_TYPE=${BUILD_TYPE:-Release}   # read by build_maximus.sh
 W=$HOME/oraculum-sim-arm
 cd "$W"
 mkdir -p logs ctx ctx-display cache
@@ -37,11 +41,9 @@ fi
  if patch -p1 -R --dry-run -s -f < "$W/maximus_sim_fw18.patch" >/dev/null 2>&1; then echo "maximus: sim_fw18 already in"
  else patch -p1 -N -s < "$W/maximus_sim_fw18.patch" && echo "maximus: sim_fw18 applied"; fi)
 
-# 2. robot framework edits for arm64 (pixi compilers, supervisord with Box64 + native Maximus, optional GPU, timing log)
-(cd workspace && bash "$W/patch_maximus.sh" && bash "$W/patch_entrypoint.sh" && bash "$W/patch_detector_timing.sh" \
-    && bash "$W/patch_fall_logging.sh")
-[ -f workspace/scripts/supervisord.conf.x86 ] || cp workspace/scripts/supervisord.conf workspace/scripts/supervisord.conf.x86
-cp supervisord.arm.conf workspace/scripts/supervisord.conf
+# 2. robot framework edits for arm64 and hosted simulation (timing log, fall log; then prepare_sim_config.sh: pixi
+#    compilers, optional GPU, arm supervisord, sim_fast, oraculum link on). prepare_sim_config.sh changes directory: last.
+(cd workspace && bash "$W/patch_detector_timing.sh" && bash "$W/patch_fall_logging.sh" && bash "$W/prepare_sim_config.sh")
 
 # 3. build context of the robot image: Box64, the data-sharing-free x86 libfastrtps, Dockerfile
 cp box64 Dockerfile.robot ctx/
@@ -52,10 +54,11 @@ cp Dockerfile.display ctx-display/Dockerfile
 printf '.pixi\nbuild\nmodels\n' > workspace/.dockerignore
 
 # 4. the long builds in parallel: circus (~2 min), robot image (~6 min), Maximus (~6.5 min), display image (~1 min)
-circus() {
+circus() {   # the checkout resets pixi.lock, so pixi re-solves for aarch64 and downloads new packages; prefix.dev
+            # reset the default 50 parallel downloads from the lab network (2026-10-24, twice): 4 at a time
     [ -d circus/.git ] || git clone -q https://github.com/SPQRTeam/circus.git circus
     git -C circus fetch -q origin && git -C circus checkout -q -f --detach "$CIRCUS_REF"
-    (cd circus && bash "$W/patch_circus.sh" && bash "$W/patch_circus_ballpos.sh" && pixi install && rm -rf build \
+    (cd circus && bash "$W/patch_circus.sh" && bash "$W/patch_circus_ballpos.sh" && pixi install --concurrent-downloads 4 && rm -rf build \
         && JOBS=10 pixi run compile)
 }
 robot_image() {   # the x86 Dockerfile unchanged (FROM ros:humble resolves to arm64), then our layer
@@ -70,6 +73,9 @@ step maximus bash build_maximus.sh & pids+=($!)
 step display_image docker build --network host -t oraculum-arm-display ctx-display & pids+=($!)
 fail=0; for p in "${pids[@]}"; do wait "$p" || fail=1; done
 [ $fail = 0 ] || { echo "a build failed" >&2; exit 1; }
+# supervisord.arm.conf starts build/arm-release when build/USE_RELEASE exists, else build/arm
+if [ "$BUILD_TYPE" = Release ]; then touch workspace/build/USE_RELEASE; else rm -f workspace/build/USE_RELEASE; fi
+echo "maximus: $BUILD_TYPE"
 
 # 5. GPU libraries for the robot containers (docker_config.gpu.yaml): cuDNN 9.3 + TensorRT 10.3 from the host
 mkdir -p gpulibs && cp -au /usr/lib/aarch64-linux-gnu/{libcudnn*,libnvinfer*,libnvonnxparser*}.so* gpulibs/
@@ -98,5 +104,5 @@ fi
 # 7. smoke test: 1 robot, 30 simulated seconds, sim_fast, default booster-motion (native unless NATIVE=0), with a clip
 chmod +x ./*.sh
 BM=native; [ "${NATIVE:-1}" = 0 ] && BM=box64
-BOOSTER_MOTION=$BM RUN_NAME=build_smoke_$BM SCENE=$W/scenes/1v0.yaml SIM_S=30 ./measure_rtf.sh > logs/build_smoke.log 2>&1 || true
+BOOSTER_MOTION=$BM RUN_NAME=build_smoke_${BM}_$BUILD_TYPE SCENE=$W/scenes/1v0.yaml SIM_S=30 ./measure_rtf.sh > logs/build_smoke.log 2>&1 || true
 grep "real-time factor" logs/build_smoke.log || { echo "smoke test FAILED, see $W/logs/build_smoke.log"; exit 1; }
