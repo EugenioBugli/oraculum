@@ -1176,8 +1176,8 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/OrbitControls.js';
         import { createCircusView, leaderLines, placeLabels, showNote } from '/static/circus_view.js';
-        import { FIELD, beliefDrawings, gotoDrawings, latchWord, drawDrawings2D, drawRobot2D, drawRobotTag2D, fieldLines, gcSummary, loadField, isRobot, penaltyOf, robotName, robotTag, shortName, linkStale, linkCounts, robotTexts, roleState, stateMismatch, teamLegend, teamPrimary, teamRgb, teamSummary, versionMark, budgetSummary } from '/static/field_model.js';
-        import { mountControlBar, mountOverlays, robotActions, toast, stateUrl, withOperator } from '/static/control_bar.js';
+        import { FIELD, beliefDrawings, gotoDrawings, latchWord, drawDrawings2D, drawRobot2D, drawRobotTag2D, fieldLines, gcSummary, loadField, isRobot, penaltyOf, robotName, robotTag, shortName, linkStale, linkCounts, robotTexts, readOnly, receptionLine, roleState, sourceTag, stateMismatch, teamLegend, teamPrimary, teamRgb, teamSummary, versionMark, budgetSummary } from '/static/field_model.js';
+        import { mountControlBar, mountOverlays, readOnlyLock, robotActions, toast, stateUrl, withOperator } from '/static/control_bar.js';
         import { mountRobotPanel } from '/static/robot_panel.js';
         import { renderInspector } from '/static/inspector.js';
         await loadField(location.origin);  // the field of the gateway's config.yaml, before the scenes are built
@@ -2265,13 +2265,13 @@
                 html += `
                     <div class="robot-item ${isSelected}" title="IP ${agent.ip || '127.0.0.1'}" onclick="selectRobot(${agent.id}, '${agent.ip || '127.0.0.1'}')">
                         <div class="robot-meta">
-                            <span class="robot-id" style="color: var(--text-primary)"><span class="team-swatch" style="background: rgb(${teamRgb(agent)})"></span>${robotName(agent, state.agents)}</span>
+                            <span class="robot-id" style="color: var(--text-primary)"><span class="team-swatch" style="background: rgb(${teamRgb(agent)})"></span>${robotName(agent, state.agents)}${sourceTag(agent) ? `<span class="src-tag${readOnly(agent) ? ' ro' : ''}" title="Sources of this robot: ${(agent.sources || []).join(', ')}">${sourceTag(agent)}${readOnly(agent) ? ' · read-only' : ''}</span>` : ''}</span>
                             <span class="robot-role">${roleState(agent)}${penaltyOf(agent, state.gamecontroller) ? `<b style="color: var(--accent-amber, #f59e0b);"> · ⛔ ${penaltyOf(agent, state.gamecontroller)}</b>` : ''}${agent.latch ? `<b style="color: var(--accent-red, #ef4444);"> · ${latchWord(agent.latch)}</b>` : ''}${stateMismatch(agent, state.gamecontroller) ? `<b style="color: var(--accent-amber, #f59e0b);" title="${stateMismatch(agent, state.gamecontroller, true)}"> · ⚠ ${stateMismatch(agent, state.gamecontroller)}</b>` : ''}</span>
                         </div>
                         <div class="robot-stat">
                             <div>${agent.fallen ? '<b style="color: var(--accent-red, #ef4444);">⚠ fallen</b> · ' : ''}BATT <span class="battery-badge ${batt === null ? 'unknown' : agent.battery < 20 ? 'low' : ''}">${batt === null ? 'n/a' : (agent.battery < 20 ? '⚠ ' : '') + batt + '%'}</span>${versionMark(agent, state.fleet?.head) ? ` · <span title="robot code against this gateway's checkout">code ${versionMark(agent, state.fleet?.head)}</span>` : ''}${(() => { const age = state.fleet?.link?.[agent.ip]?.age ?? 0; return age < 1 ? '' : ` · <b style="color: var(--accent-amber, #f59e0b); white-space: nowrap;">LINK ${age.toFixed(0)} s old</b>`; })()}</div>
                         </div>
-                        <div class="card-actions"><span class="robot-act" data-act="${agent.ip || '127.0.0.1'}" data-label="${robotName(agent, state.agents)}"></span><a class="robot-camera" href="/robot.html?robot=${encodeURIComponent((agent.ip || '127.0.0.1') + '|' + agent.id)}" onclick="event.stopPropagation()">Robot ›</a></div>
+                        <div class="card-actions"><span class="robot-act" data-act="${agent.ip || '127.0.0.1'}" data-label="${robotName(agent, state.agents)}" data-ro="${readOnly(agent) ? 1 : 0}"></span><a class="robot-camera" href="/robot.html?robot=${encodeURIComponent((agent.ip || '127.0.0.1') + '|' + agent.id)}" onclick="event.stopPropagation()">Robot ›</a></div>
                     </div>
                 `;
             });
@@ -2282,6 +2282,7 @@
                     const key = `${el.dataset.act}|${el.dataset.label}`;
                     if (!cardActions.has(key)) cardActions.set(key, robotActions(el.dataset.act, () => API_URL, { label: el.dataset.label }));
                     el.append(cardActions.get(key));
+                    readOnlyLock(cardActions.get(key), el.dataset.ro === "1");  // a robot on another branch takes no command
                 });
             }
 
@@ -2338,7 +2339,7 @@
             // Team message budget of our team, from the GameController (field_model.js budgetSummary): no robot needed
             const b = budgetSummary(state.gamecontroller);
             budgetUsage.textContent = b.text;
-            budgetUsage.title = b.title;
+            budgetUsage.title = b.title + receptionLine(state.reception);
             budgetProgressBar.style.width = `${b.used}%`;
             budgetProgressBar.style.background = b.used > 90 ? "var(--accent-red)" : (b.used > 70 ? "var(--accent-orange)" : "linear-gradient(90deg, var(--accent-green), var(--accent-orange))");
 
@@ -2457,7 +2458,10 @@
             else if (releasedRobot) text = `Released ${robotLabel(releasedRobot)}: it returns to its own control 0.5 s after the last command.`
                 + (selected ? ` Turn MANUAL on to drive ${robotLabel(selected)}.` : "");
             else text = selected ? `MANUAL off. Turn it on to drive ${robotLabel(selected)}.` : "Select a robot first.";
-            box.disabled = !isManualMode && !selected;
+            // a read-only robot (no oraculum telemetry: another branch or team) takes no command: no MANUAL for it
+            const ro = !isManualMode && selected && readOnly((lastState?.agents || []).find(x => x.id === selected.id && (x.ip || "127.0.0.1") === selected.ip));
+            if (ro) text = `${robotLabel(selected)} is read-only (no oraculum telemetry): MANUAL cannot drive it.`;
+            box.disabled = !isManualMode && (!selected || ro);
             document.getElementById("manualTarget").textContent = text;
             document.getElementById("manualToggleText").textContent = isManualMode ? "MANUAL: ON" : "MANUAL: OFF";
             document.getElementById("manualBannerText").textContent = !manualRobot ? ""

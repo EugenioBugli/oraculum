@@ -129,8 +129,8 @@ body.stale-data main, body.stale-data #robotAct { opacity: 0.45; filter: graysca
     <section id="danger" style="grid-column: 1 / -1;" aria-label="Danger"></section>
 </main>
 <script type="module">
-import { FIELD as field, gcSummary, loadField, fieldLines, linkStale, penaltyOf, robotName, roleWord, stateMismatch, stateWord, teamRgb } from '/static/field_model.js';
-import { dangerDamp, mountControlBar, mountOverlays, robotActions, stateUrl } from '/static/control_bar.js';
+import { FIELD as field, READONLY_TIP, gcSummary, loadField, fieldLines, linkStale, penaltyOf, readOnly, robotName, roleWord, sourceTag, sourceTitle, stateMismatch, stateWord, teamRgb } from '/static/field_model.js';
+import { dangerDamp, mountControlBar, mountOverlays, readOnlyLock, robotActions, stateUrl } from '/static/control_bar.js';
 const API = location.origin;
 const $ = id => document.getElementById(id);
 const ctl = mountControlBar($('controlBar'), API);  // STOP ALL + control lock
@@ -303,6 +303,7 @@ function renderFacts(downS = null) {
         ['Ball', a.ball ? `${a.ball.x.toFixed(2)}, ${a.ball.y.toFixed(2)} m` : 'not seen'], ['Obstacles', (a.obstacles || []).length],
         ['Version', ver], ['CPU · temp', `${v(s.cpu, 0, '%')} · ${v(s.temp, 0, '°C')}`],
         ['Link', link],
+        ['Sources', `<span title="${esc(sourceTitle(a))}">${esc(sourceTag(a) || '—')}</span>${readOnly(a) ? ` <span class="warn" title="${esc(READONLY_TIP)}">read-only</span>` : ''}`],
     ].map(([k, x]) => `<div><b>${k}</b>${x}</div>`).join('');
 }
 
@@ -385,6 +386,7 @@ function syncActions() {
     const akey = `${robotKey}|${name}`;  // a new label (a twin appeared) builds new buttons with the new name
     if (ip && name && !choosing() && !actions.has(akey)) actions.set(akey, [robotActions(ip, API, { lie: true, label: name, named: true }), dangerDamp(ip, API, name)]);
     const mine = !choosing() && name && actions.get(akey);
+    if (mine) mine.forEach(b => readOnlyLock(b, readOnly(current())));  // a robot on another branch takes no command
     if (mine ? box.firstChild === mine[0] : !box.firstChild) return;
     // a LIE DOWN or DAMP hold started on the robot shown before must not fire: blur cancels it (holdButton)
     for (const b of document.querySelectorAll('#robotAct [data-holding], #danger [data-holding]')) b.dispatchEvent(new Event('blur'));

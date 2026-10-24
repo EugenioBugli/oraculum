@@ -653,3 +653,16 @@ because `/goto` refuses targets off the field.
 - Clips (copied to `/DATA/RoboCup/oraculum_media_2v2/jetson_clips/`): `GOTO4_20261023_184753_{wall,realspeed}.mp4`
   (the table), `GOTO3_20261023_182924_{wall,realspeed}.mp4`, `GOTO2_20261023_180932_{wall,realspeed}.mp4`, `GOTO1_20261023_180455_wall.mp4` (stopped after step D:
   the test's `/positions` query was malformed). Test logs: `~/oraculum-sim-arm/logs/goto{1,2,3,4}_test.log`.
+
+## Reception capture: robot bytes of team messages and GC return (2026-10-23 ~20:52)
+
+- Purpose: golden files for `src/reception.py` (robots on any branch). Run `RUN_NAME=RECEPTION SCENE=scenes/1v1.yaml
+  SIM_S=40 ./measure_rtf.sh` (teams 1 and 2, one T1 each, sim_fast, native, Release Maximus @ bc462d43): RTF 0.43, 0 falls.
+- Capture: `~/oraculum-sim-arm/capture/capture_rx.py out 260 1 2` on the host, receive-only (UDP 10001, 10002 with
+  SO_REUSEADDR + SO_REUSEPORT; 3939 plain). Team broadcasts of the robots (172.21.T.12) reach the host bridge; the GC
+  return goes to the referee address the robots learned. 147 + 148 team messages (254 bytes, all decoded as "rcap"),
+  922 + 917 GC return packets. Team-message and GC-return data of the same robot (295 pairs ≤ 0.06 s apart) agree: x,y within 2.5 cm, theta
+  within 0.042 rad, robot-relative ball within 3.7 cm.
+- Golden files (6) in `/DATA/RoboCup/oraculum/tools/golden/`; the capture log stays in `~/oraculum-sim-arm/capture/out/`.
+- Clip: `/DATA/RoboCup/oraculum_media_2v2/jetson_clips/RECEPTION_20261023_205223_{wall,realspeed}.mp4`.
+- Left running: nothing (no `CIRCUS_` containers, ports 3939/10001/10002/8080 free after the run).

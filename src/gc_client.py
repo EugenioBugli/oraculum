@@ -256,6 +256,18 @@ def pack_gc_return(
         ball[0], ball[1],
     )
 
+def parse_gc_return(data: bytes) -> Optional[dict]:
+    """A RoboCupGameControlReturnData datagram (32 bytes, version 4) as {player, team, fallen, pose (x mm, y mm, theta
+    rad, the robot's own team frame), ball_age (s, -1 never seen), ball (x mm, y mm, robot-relative)}, or None."""
+    if len(data) != _GC_RETURN_STRUCT.size:
+        return None
+    header, version, player, team, fallen, x, y, theta, ball_age, bx, by = _GC_RETURN_STRUCT.unpack(data)
+    if header != _GC_RETURN_HEADER or version != _GC_RETURN_VER or not 1 <= player <= 20 or not team:
+        return None
+    if not all(v == v and abs(v) < 1e6 for v in (x, y, theta, ball_age, bx, by)):  # NaN or garbage
+        return None
+    return {"player": player, "team": team, "fallen": fallen, "pose": (x, y, theta), "ball_age": ball_age, "ball": (bx, by)}
+
 # ---------------------------------------------------------------------------
 # Background receiver
 # ---------------------------------------------------------------------------
@@ -375,6 +387,11 @@ if __name__ == "__main__":
     assert parse_gc_packet(_packet(20)[:-1]) is None              # truncated
     assert parse_gc_packet(b"RGme\x15" + _packet(20)[5:]) is None   # unknown version 21
     assert parse_gc_packet(b"XXXX" + _packet(20)[4:]) is None       # wrong header
+
+    ret = parse_gc_return(pack_gc_return(3, 19, True, (1500.0, -200.0, 0.5), 0.25, (800.0, 0.0)))
+    assert ret == {"player": 3, "team": 19, "fallen": 1, "pose": (1500.0, -200.0, 0.5), "ball_age": 0.25, "ball": (800.0, 0.0)}, ret
+    assert parse_gc_return(pack_gc_return(0, 19)) is None and parse_gc_return(pack_gc_return(3, 19)[:-1]) is None
+    assert parse_gc_return(pack_gc_return(3, 19, pose=(float("nan"), 0.0, 0.0))) is None
 
     # latest() must give the same packet to every caller (HTTP threads) until it is stale.
     rx = GCReceiver(host="127.0.0.1", port=0)

@@ -55,7 +55,7 @@ s = cs.ControlServer()
 assert s.match and s.sim_gc is None, "no simulated referee in match mode"
 assert s.gc_receiver._addr[1] == s.config["game_controller"]["port"], "the GameController port, listen-only"
 assert s.control_ip == ""
-for part in (s.udp_receiver, s.gc_receiver, s.events):
+for part in (s.udp_receiver, s.gc_receiver, s.events, s.reception):
     part.start = lambda: None
 s.camera_hub.start = lambda: None
 with socket.socket() as probe:

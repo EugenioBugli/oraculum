@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../src/static/field_model.js', import.meta.url), 'utf8');
-const { budgetSummary, stateMismatch, gcSummary, teamLegend, teamPrimary, teamSummary, robotTexts, isRobot, robotName, robotTag, linkStale, shortName, dampWord, gotoDrawings } = await import('data:text/javascript,' + encodeURIComponent(src));
+const { budgetSummary, stateMismatch, gcSummary, teamLegend, teamPrimary, teamSummary, robotTexts, isRobot, robotName, robotTag, linkStale, shortName, dampWord, gotoDrawings, readOnly, sourceTag, receptionLine } = await import('data:text/javascript,' + encodeURIComponent(src));
 
 const gc = { state: 'SET', teams: [5, 19], own_team_index: 1, message_budget: [12000, 9000], kickingTeam: 19,
              penalties: { 19: { 3: ['Pushing', 20] } } };
@@ -47,6 +47,12 @@ assert.equal(shortName('T5 R12'), 'T5 R12');
 assert.equal(shortName('', '10.0.0.9'), '10.0.0.9');
 assert.equal(dampWord('', '10.0.0.9'), '10.0.0.9');
 assert.ok(linkStale({ fleet: { link: { '1.1.1.1': { age: 1 } } } }, { ip: '1.1.1.1' }) && !linkStale({}, { ip: '1.1.1.1' }));
+// read-only robots (team message / GC return only): their own source ages, 2.5 s
+const ro = age => ({ ip: '1.1.1.1', readonly: true, sources: ['team', 'gc'], source_age: { team: age, gc: 9 } });
+assert.ok(!linkStale({ fleet: { link: { '1.1.1.1': { age: 5 } } } }, ro(1.2)) && linkStale({}, ro(2.5)) && readOnly(ro(1)) && !readOnly({}));
+assert.equal(receptionLine({ teams: { 19: { packets: 3, formats: { rcap: 2 }, unknown: 1 }, 5: { packets: 0 } } }),
+    '\nTeam messages heard since the gateway started: T19 3 (rcap 2, 1 unknown format)'); assert.equal(receptionLine(undefined), '');
+assert.equal(sourceTag(ro(1)), 'TM+GC'); assert.equal(sourceTag({ sources: ['debug', 'team'] }), 'DBG+TM'); assert.equal(sourceTag({}), '');
 const texts = [{ agent_id: 3, ip: '10.0.0.1', path: 'a' }, { agent_id: 3, ip: '10.0.0.2', path: 'b' }, { agent_id: 3, path: 'c' }];
 assert.equal(robotTexts(texts, 3, '10.0.0.1').map(t => t.path).join(), 'a,c');
 assert.ok(isRobot({ id: 0 }, 0, '127.0.0.1') && !isRobot({ id: 3, ip: '10.0.0.2' }, 3, '10.0.0.1'));

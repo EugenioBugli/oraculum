@@ -83,7 +83,24 @@ export const shortName = (label, ip = '') => String(label || '').replace(' ·', 
 // The word that unlocks DAMP: "R3", or "R3.2" for the twin "T19 R3 ·.2", so each twin asks for its own word.
 export const dampWord = (label, ip = '') => { const { num, tag } = labelParts(label); return num ? num + (tag ? (tag.startsWith('.') ? tag : `.${tag}`) : '') : ip; };
 // The gateway heard nothing from this robot's address for 1 s or more: its data on screen is old (cards say "LINK N s old").
-export const linkStale = (state, a) => (state?.fleet?.link?.[a?.ip]?.age ?? 0) >= 1;
+export const linkStale = (state, a) => readOnly(a) ? Math.min(...Object.values(a.source_age || { x: 0 })) >= READONLY_STALE_S
+    : (state?.fleet?.link?.[a?.ip]?.age ?? 0) >= 1;
+// A robot the gateway hears only by team message or GameController return (src/reception.py: a robot on another branch,
+// or another team's): it takes no command. The pages disable its command buttons, with READONLY_TIP as tooltip.
+export const readOnly = a => !!a?.readonly;
+// The team messages the gateway heard per team (/state reception, src/reception.py), for the message budget tooltip:
+// "\nTeam messages heard: T19 120 (rcap 118, 2 unknown) · T5 40 (40 unknown)"; "" with no data.
+export const receptionLine = r => {
+    const teams = Object.entries(r?.teams || {}).filter(([, t]) => t.packets);
+    return teams.length ? '\nTeam messages heard since the gateway started: ' + teams.map(([n, t]) => `T${n} ${t.packets} (` +
+        [...Object.entries(t.formats || {}).map(([f, c]) => `${f} ${c}`), t.unknown ? `${t.unknown} unknown format` : ''].filter(Boolean).join(', ') + ')').join(' · ') : '';
+};
+export const READONLY_TIP = 'Read-only: this robot sends no oraculum telemetry (another branch or team), only team messages ' +
+    'or GameController return packets. It takes no command.';
+const READONLY_STALE_S = 2.5;  // team messages come every 0.6-1.2 s (1 s while play is stopped): 1 s would flicker
+// Its sources, short: "DBG" (debug telemetry, UDP 10006), "TM" (team message), "GC" (GameController return)
+export const sourceTag = a => (a?.sources || []).map(s => ({ debug: 'DBG', team: 'TM', gc: 'GC' })[s] || s).join('+');
+export const sourceTitle = a => (a?.sources || []).map(s => `${{ debug: 'debug telemetry', team: `team message${a.team_format ? ` (${a.team_format} format)` : ''}`, gc: 'GameController return' }[s] || s} ${(a.source_age || {})[s] ?? '?'} s`).join(', ');
 
 // Words for the one-letter role and state of the telemetry (the robots send full role names; the fake sender letters).
 const ROLE_WORDS = { G: 'Goalkeeper', D: 'Defender', M: 'Midfielder', A: 'Attacker' };

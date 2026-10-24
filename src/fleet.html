@@ -201,8 +201,8 @@ a.rname { color: #c7d2fe; text-decoration: underline dotted rgba(199, 210, 254, 
     </section>
 </main>
 <script type="module">
-import { budgetSummary, gcSummary, linkCounts, linkStale, penaltyOf, robotName, roleState, stateMismatch, teamLegend, teamPrimary, teamRgb, versionMark } from '/static/field_model.js';
-import { mountControlBar, mountOverlays, robotActions, stateUrl, toast } from '/static/control_bar.js';
+import { budgetSummary, gcSummary, linkCounts, linkStale, penaltyOf, readOnly, receptionLine, robotName, roleState, sourceTag, sourceTitle, stateMismatch, teamLegend, teamPrimary, teamRgb, versionMark } from '/static/field_model.js';
+import { mountControlBar, mountOverlays, readOnlyLock, robotActions, stateUrl, toast } from '/static/control_bar.js';
 const API = location.origin;
 const $ = id => document.getElementById(id);
 const GROUPS = { All: null, Game: ['PHASE', 'SETPLAY', 'GOAL', 'PENALTY', 'GC', 'REFEREE'], Robots: ['ONLINE', 'OFFLINE', 'FALL', 'ROLE', 'BATTERY'],
@@ -308,8 +308,8 @@ function renderFleet() {
         const vm = versionMark(a, head) === '✗' ? `<button class="vmark phone-only" data-ver="${esc(String(s.version).split(/[+ ]/)[0])} · gateway checkout ${esc(head)}" aria-label="Wrong robot code: show the commits">✗ code</button>` : '';
         const vc = versionCell(s, head).replace(/ title="[^"]*"/g, ''), flash = robotKey(a) === flashKey && now < flashUntil ? ' flash' : '';
         return `<tr data-key="${esc(robotKey(a))}"${a.offlineFor || stale ? ` class="offline${stale ? ' stale' : ''}${flash}" title="${a.offlineFor ? 'No data from this robot' : 'Stale link: no packet for 1 s or more'}: last values shown"` : ''}>
-            <td><span class="dot" style="background:${colorOf(a)}"></span><a class="rname" href="/robot.html?robot=${encodeURIComponent(robotKey(a))}" title="${esc(a.ip)}: open the robot page"><b>${esc(robotName(a, live))}</b></a>${vm} <span class="muted mono">${esc(a.ip)}</span><div class="phone-only rs" title="${rs.replace(/<[^>]+>/g, '')}">${rsPhone}</div></td>
-            <td data-act="${esc(a.ip)}" data-label="${esc(robotName(a, live))}"></td>
+            <td><span class="dot" style="background:${colorOf(a)}"></span><a class="rname" href="/robot.html?robot=${encodeURIComponent(robotKey(a))}" title="${esc(a.ip)}: open the robot page"><b>${esc(robotName(a, live))}</b></a>${sourceTag(a) ? `<span class="src-tag${readOnly(a) ? ' ro' : ''}" title="${esc(sourceTitle(a))}">${sourceTag(a)}${readOnly(a) ? ' · read-only' : ''}</span>` : ''}${vm} <span class="muted mono">${esc(a.ip)}</span><div class="phone-only rs" title="${rs.replace(/<[^>]+>/g, '')}">${rsPhone}</div></td>
+            <td data-act="${esc(a.ip)}" data-label="${esc(robotName(a, live))}" data-ro="${readOnly(a) ? 1 : 0}"></td>
             <td class="num mono link ${ageCls}" title="${num(l.kbps)} kbit/s received">${warn(ageCls)}${linkText}</td>
             <td class="wide rs${a.state === 'P' ? ' warn' : ''}">${rs}</td>
             <td class="mono wide ver"><div class="vtxt" title="${vc.replace(/<[^>]+>/g, '')}">${vc}</div></td>
@@ -321,7 +321,7 @@ function renderFleet() {
             <td class="wide mid">${s.rec ? '<span class="dot rec-dot"></span>on' : `<span class="muted">${s.rec === false ? 'off' : '—'}</span>`}</td>
             <td class="wide rp"><a href="/robot.html?robot=${encodeURIComponent(robotKey(a))}" style="color:#93c5fd">Robot ›</a></td></tr>`;
     }).join('');
-    ftb.querySelectorAll('td[data-act]').forEach(td => td.append(actionsFor(td.dataset.act, td.dataset.label)));
+    ftb.querySelectorAll('td[data-act]').forEach(td => { const box = actionsFor(td.dataset.act, td.dataset.label); td.append(box); readOnlyLock(box, td.dataset.ro === '1'); });
     if (focusBtn && focusBtn.isConnected) focusBtn.focus({ preventScroll: true });  // the moved button keeps the keyboard focus
     if (focusHref) ftb.querySelector(`a[href="${CSS.escape(focusHref)}"]`)?.focus();  // the 1 s rebuild must not drop focus
     const sel = $('markRobot'), cur = sel.value, names = [...new Set(live.map(a => robotName(a, live)))];
@@ -338,7 +338,7 @@ function renderHeader() {
     $('gc').title = g.title;
     const b = budgetSummary(gc);
     $('budget').textContent = `Messages: ${gc.state ? b.text : 'unknown'}`;  // the GC pill already says "No GameController"
-    $('budget').title = b.title;
+    $('budget').title = b.title + receptionLine(state?.reception);
     $('budget').className = b.known && b.used > 90 ? 'pill bad' : 'pill';
     const rec = state?.rec || {};
     if (wasRecording && !rec.on) pollRecordings();  // a recording just ended: list it

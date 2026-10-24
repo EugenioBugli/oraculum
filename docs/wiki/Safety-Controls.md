@@ -37,6 +37,10 @@ the game. MANUAL lets one operator drive one robot.
 | **Sit down** | T2 only. The robot code logs it and ignores it: booster_robotics_sdk 1.7.0 has no sit call. | Resume. | Robot command panel, only for a T2; `oraculum_cli.py sit --ip IP` or `--all` (every T2). Other models: HTTP 409. |
 | **Go to** | The robot walks to a position with its own localization, then stands. Latch `goto`; the target shows on the field. Cancel stops the walk (latch `getup`). | Cancel, Resume, STOP, or the remote's Prep combo. | Robot command panel (a list of READY and side-line positions); `oraculum_cli.py goto --ip IP --pos ready_2`. |
 
+**STOP ALL does not reach a read-only robot.** A robot that the gateway sees only through its team messages or its
+GameController return packets (a robot on another branch, tag `TM` or `GC` · read-only) gets no datagram from oraculum:
+not STOP ALL, not STOP, not MANUAL. Stop it with its own remote controller or with the GameController.
+
 Rules for DAMP:
 
 - DAMP goes to one robot only, never to "all". The gateway refuses it without `confirm` equal to the robot's IP.

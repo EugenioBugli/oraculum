@@ -168,6 +168,8 @@ If the laptop has a firewall, let in:
 | UDP 10006 | robots | telemetry and debug drawings |
 | UDP 10009 | robots | camera frames |
 | UDP 3838 | GameController | referee state |
+| UDP 10000 + team | robots | team messages (broadcast; robots on any branch, read-only) |
+| UDP 3939 | robots | GameController return packets (only when the robots send them to this laptop) |
 | TCP 8080 | phones, other laptops | the pages and the HTTP API |
 
 The laptop sends to the robots on UDP 10007 (commands) and UDP 10008 (camera requests). These are outgoing.
@@ -175,6 +177,18 @@ With the gateway match switch on, the laptop sends nothing.
 On Ubuntu, `sudo ufw status` shows the firewall state. Status: not tested with a real robot.
 
 The full port list is in [Architecture and Ports](Architecture-and-Ports).
+
+### Robots on other branches show up read-only
+
+A robot that runs a branch without oraculum telemetry (`main`, `mappazzone`, `RCAP2026-DEV`, ...) still shows on every
+page: the gateway decodes its team messages (UDP 10000 + team) and, when it sends them here, its GameController return
+packets (UDP 3939). Such a robot shows its pose, role, fall state, ball estimate and obstacles, with a tag `TM` or `GC`
+and the word **read-only**. Its STOP, Resume, LIE DOWN, panel and DAMP buttons are disabled: it takes no command from
+oraculum, and **STOP ALL does not reach it**. Use its remote controller or the GameController. The gateway sends
+nothing to it.
+Robots of other teams in a format the gateway does not know are only counted (`/state` `reception`).
+Status: tested with fake senders in the browser and with robot bytes from the Jetson simulation (`rcap` format).
+Not tested with a real robot or with `main` robot bytes.
 
 ## 9. Field checklist
 

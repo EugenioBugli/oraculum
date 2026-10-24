@@ -18,7 +18,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 import control_server as cs  # noqa: E402
 
 s = cs.ControlServer()
-for part in (s.udp_receiver, s.gc_receiver, s.events, s.camera_hub):
+for part in (s.udp_receiver, s.gc_receiver, s.events, s.camera_hub, s.reception):
     part.start = lambda: None  # HTTP only
 with socket.socket() as probe:
     probe.bind(("127.0.0.1", 0))

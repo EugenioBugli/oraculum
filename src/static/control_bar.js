@@ -12,7 +12,7 @@
 // STOP, LIE DOWN and DAMP need no lock and pass the GameController rule (POST /stop). The gateway answers "sent": the robot
 // does not confirm yet, so no button claims the robot stopped.
 
-import { dampWord, shortName } from "./field_model.js";
+import { READONLY_TIP, dampWord, shortName } from "./field_model.js";
 
 const read = (store, key, make) => {
     try { let v = store.getItem(key); if (!v) { v = make(); store.setItem(key, v); } return v; } catch { return make(); }
@@ -43,6 +43,10 @@ const STYLE = `
 @media (max-width: 700px) { .ctl-bypass { display: inline-block; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
     .ctl-bypass .ctl-on { display: none; } .ctl-bypass { max-width: none; } .ctl-bypass .ctl-nm { max-width: 16ch; } }  /* phones: "Bypass: Dana", the header stays two rows */
 .ctl-bypass[hidden] { display: none; }
+/* the sources of a robot (field_model.js sourceTag): "DBG", "TM", "GC"; amber when read-only */
+.src-tag { font: 600 10px ui-monospace, monospace; padding: 0 4px; margin-left: 4px; border: 1px solid #4b5060; border-radius: 4px; color: #9fa4b2; white-space: nowrap; vertical-align: middle; cursor: help; }
+.src-tag.ro { border-color: #f59e0b; color: #fbbf24; }
+.ctl-act button:disabled { opacity: .45; cursor: not-allowed; }  /* a read-only robot's buttons (readOnlyLock) must look off */
 .ctl-match { padding: 2px 8px; border-radius: 6px; border: 2px solid #f59e0b; color: #fbbf24; white-space: nowrap; cursor: help; }
 .ctl-match[hidden] { display: none; }
 @media (max-width: 700px), (max-height: 500px) { .ctl-match-l { display: none; } }  /* phones: "MATCH", the header stays on screen */
@@ -440,6 +444,17 @@ export function robotActions(ip, api, { lie = false, getup = false, sit = false,
     if (lie) box.append(holdButton("Hold: LIE DOWN", `Hold 2 s: ${label || ip} lies down on its back (controlled) until Resume`, 2000,
                                    () => sendStop(api, ip, "lie", extra()), "", who()));
     return box;
+}
+
+// A read-only robot (field_model.js readOnly: heard only by team message or GameController return) takes no command:
+// readOnlyLock(box, true) disables every button and field in that robot's box with READONLY_TIP; false restores them
+// (a DAMP button stays locked until its word is typed again).
+export function readOnlyLock(box, on) {
+    style();
+    for (const b of box.querySelectorAll("button, input")) {
+        if (on && !b.dataset.roTitle) { b.dataset.roTitle = b.title || " "; b.disabled = true; b.title = READONLY_TIP; }
+        else if (!on && b.dataset.roTitle) { b.title = b.dataset.roTitle.trim(); delete b.dataset.roTitle; b.disabled = b.classList.contains("damp"); }
+    }
 }
 
 // DAMP for one robot: closed by default; typing the robot's word (dampWord in field_model.js) enables a 3 s press-and-hold.

@@ -10,6 +10,7 @@ import time
 from email.utils import formatdate
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from types import SimpleNamespace
 from urllib.parse import parse_qs, unquote, urlparse
 
 import yaml
@@ -21,9 +22,10 @@ from camera_hub import CameraHub
 from config import load_teams
 from control_lock import ControlLock
 from gc_client import PENALTY_NAMES, SET_PLAY_NAMES, GCReceiver
+from reception import Reception
 from session import EventLog, Recorder
 from sim_gc import SimGameController
-from socket_client import UDPReceiver, mirror_pose
+from socket_client import UDPReceiver, mirror_pose, team_ball
 from tv_program import TVProgram
 
 _STATIC_TYPES = {
@@ -90,6 +92,19 @@ class ControlServer:
         gc_targets = [(ip, 3838) for ip in gc_ips] if gc_ips else (("127.0.0.1", 3838),)
         self.sim_gc = SimGameController(self.gc_receiver, teams=sim_teams, targets=gc_targets) if len(sim_teams) == 2 else None
 
+        # Robots on ANY branch (src/reception.py), RECEIVE-ONLY in every mode: team messages (UDP 10000 + team, SPQRMessage)
+        # and GameController return packets (UDP 3939), merged per robot into /state with the debug telemetry above.
+        rcfg = self.config.get("reception") or {}
+        self.debug_on = rcfg.get("debug", True)
+
+        def gc_teams():
+            gc = self.gc_receiver.latest()
+            return [t.team_number for t in gc.teams] if gc else []
+        own_ports = {self.tcm_port, 10007, 10008, self.config.get("camera", {}).get("port", 10009), self.gc_port, self.http_port}
+        self.reception = Reception(own_team=self.own_team, teams=rcfg.get("teams") or [],
+                                   team_messages=rcfg.get("team_messages", True), gc_return=rcfg.get("gc_return", True),
+                                   mirror_color=mirror_color, teams_fn=gc_teams, skip_ports=own_ports)
+
         # Session recording + event log (src/session.py), robot camera relay (src/camera_hub.py)
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.recorder = Recorder(os.path.join(root, "recordings"))
@@ -152,6 +167,10 @@ class ControlServer:
         in match mode, else "". The simulated referee does not exist in match mode."""
         return self.MATCH_ERROR if self.match else ""
 
+    def read_only_ip(self, ip: str) -> bool:
+        """True for an address heard only by team messages or GC return (src/reception.py), never by debug telemetry."""
+        return ip in self.reception.link_stats() and ip not in self.udp_receiver.link_stats()
+
     def play_rule(self, cmd: dict) -> str:
         """The MANUAL rule of POST /control for GET UP, SIT and GO TO: in READY, SET or PLAYING a command needs
         testingOverride (or bypassRules); returns the refusal text, "" when allowed (an override is logged)."""
@@ -203,8 +222,10 @@ class ControlServer:
 
     def start(self):
         # Start background network receivers
-        self.udp_receiver.start()
+        if self.debug_on:
+            self.udp_receiver.start()
         self.gc_receiver.start()
+        self.reception.start()
         self.events.start()
         self.camera_hub.start()
         if self.sim_gc:
@@ -372,7 +393,16 @@ class ControlServer:
                             "external_gc_online": server_instance.gc_receiver.external_gc_online
                         }
 
-                    state_dict["fleet"] = {"head": server_instance.git_head(), "link": server_instance.udp_receiver.link_stats()}
+                    # Robots on any branch (src/reception.py): team messages and GC return packets merged per robot;
+                    # a robot without debug telemetry is read-only. Command routes keep reading udp_receiver alone.
+                    link = server_instance.udp_receiver.link_stats()
+                    colours = {t.team_number: c for t, c in zip(gc_data.teams, state_dict["gamecontroller"]["colors"]) if c} if gc_data else {}
+                    state_dict["agents"] = server_instance.reception.merge(state_dict.get("agents") or [], link, colours)
+                    if state_dict.get("ball") is None:  # the team ball from the read-only robots' estimates
+                        b = team_ball([SimpleNamespace(**a) for a in state_dict["agents"] if a.get("readonly")])
+                        state_dict["ball"] = {"x": b.x, "y": b.y} if b else None
+                    state_dict["reception"] = server_instance.reception.status()
+                    state_dict["fleet"] = {"head": server_instance.git_head(), "link": {**server_instance.reception.link_stats(), **link}}
                     state_dict["rec"] = server_instance.recorder.status()
                     state_dict["lock"] = server_instance.control_lock.view(client)
                     state_dict["boot"] = server_instance.boot
@@ -664,6 +694,11 @@ class ControlServer:
                                              "reason": server_instance.blocked(), "match": True})
                             return
 
+                        if not server_instance.control_ip and server_instance.read_only_ip(target_ip):
+                            self._json(409, {"status": "read-only", "error": f"{target_ip} sends no oraculum telemetry, only team "
+                                             "messages or GameController return packets (another branch or team): no command."})
+                            return
+
                         # Engineer mode: a manual command needs the control lock (a free lock is taken here)
                         lock = server_instance.control_lock
                         before = lock.holder_name()
@@ -866,8 +901,10 @@ class ControlServer:
     def stop(self):
         if self.http_server:
             self.http_server.shutdown()
-        self.udp_receiver.stop()
+        if self.debug_on:
+            self.udp_receiver.stop()
         self.gc_receiver.stop()
+        self.reception.stop()
         self.events.stop()
         self.camera_hub.stop()
         if self.sim_gc:

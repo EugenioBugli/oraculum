@@ -55,6 +55,17 @@ game_controller:
   port: 3838
   own_team: 19       # set to your team number to track own team index
 
+# Robots on ANY branch (src/reception.py). RECEIVE-ONLY: these sources send nothing, also with match: true.
+# All sources run at once and merge per robot (sender IP, team, player); priority debug > team > gc.
+# A robot heard only by team message or GC return is read-only (no commands). No key needed: these are the defaults.
+reception:
+  debug: true           # UDP socket.port (10006): DebugMessageSender JSON, our oraculum branches only (richest)
+  team_messages: true   # UDP 10000 + team: SPQRMessage broadcast, formats of main and of mappazzone/RCAP2026-DEV;
+                        # ports of own_team, both teams of the GameController packet and `teams` below
+  gc_return: true       # UDP 3939: GameController return packets of robots that send them to this host. On a host that
+                        # also runs the GameController, start the GameController first (or set false): only one gets 3939
+  teams: []             # more team numbers to listen to (e.g. [5, 8]); packets in an unknown format are only counted
+
 agents:
   count: 7      # number of animated agents
   speed: 1.5    # base speed in m/s

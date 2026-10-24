@@ -13,7 +13,8 @@ robot (Maximus) ──UDP 10006 (JSON telemetry + drawings)───► oraculum
 oraculum gateway ──UDP 10007 (JSON joystick, STOP, ...)───► robot (LowControlBridge)    [not in match mode]
 oraculum gateway ──UDP 10008 (camera request)─────────────► robot (DebugCameraSender)  [not in match mode]
 robot ──UDP 10009 (camera frames, 3 s per request)────────► oraculum gateway
-robots ◄──UDP 10000+team (binary team messages)──────────► robots
+robots ◄──UDP 10000+team (binary team messages)──────────► robots, oraculum gateway (listen only)
+robot ──UDP 3939 (GameController return, 32 bytes)───────► GameController; oraculum gateway when it is the robots' GC host
 browser, phone, CLI ◄──HTTP 8080 (/state, /control, ...)──► oraculum gateway
 ```
 
@@ -30,13 +31,32 @@ exist. The pages use plain HTTP polling.
 | 10008 | UDP | gateway → robot | Camera request (practice only; never to a robot with `sys.link` "telemetry", never with the match switch) | Robot: `DebugCameraSender`; gateway: `src/camera_hub.py` |
 | 10009 | UDP | robot → gateway | Camera frames, 4 per second for 3 s after each request | `config.yaml` `camera.port` (default 10009) |
 | 3838 | UDP | GameController → all | Referee state (versions 19 and 20 of the packet) | `config.yaml` `game_controller.port` |
-| 10000 + team | UDP | robot ↔ robot | Team messages (not read by oraculum) | Robot code |
+| 10000 + team | UDP | robot ↔ robot, broadcast | Team messages (SPQRMessage). The gateway listens (never sends): own team, both teams of the GameController packet, `reception.teams` | Robot: `TeamMessageSender`; gateway: `src/reception.py` |
+| 3939 | UDP | robot → GameController | GameController return packets. The gateway receives them only when the robots take this host for the GameController (simulated referee, or `gameController.address` in the robot's `settings.yaml`). It binds 3939 once at start, without reuse flags; if the GameController runs on the same host, start the GameController first (or set `reception.gc_return: false`) | Robot: `GameControllerReturnMessageSender`; gateway: `src/reception.py` |
 
 ## The gateway
 
 - `UDPReceiver` (`src/socket_client.py`) merges the packets of all robots. A robot is keyed by its IP and its player
   number, so two teams can both have a robot 3. A robot disappears 3.5 s after its last packet.
 - `GCReceiver` (`src/gc_client.py`) parses the GameController packet. `own_team` in `config.yaml` selects our team.
+- `Reception` (`src/reception.py`) receives robots on **any branch**, at the same time as the telemetry, and sends
+  nothing (also without the match switch):
+  - team messages on UDP 10000 + team. Two formats are detected per packet: `rcap` (branches `mappazzone` and
+    `RCAP2026-DEV`) and `main` (the older `main`). A packet must parse to its last byte in one format, else it is only
+    counted (other teams, unknown branches). Ports 10006-10009 (teams 6-9) are the gateway's own: not listened to.
+  - GameController return packets on UDP 3939.
+  - `GET /state` merges them per robot (sender IP, team, player) with the telemetry. Per field the newest source that
+    is fresh (3.5 s) and has the highest priority wins: telemetry > team message > GameController return. Each agent
+    has `sources` (`["debug", "team", "gc"]`), `source_age` and `readonly`. `/state` `reception` counts the packets per
+    team (decoded, unknown format) for the message budget.
+  - A robot with no telemetry is **read-only**: `readonly: true`, `sys.link: "none"`. Every command route reads only the
+    telemetry receiver, so such a robot is never a target (STOP ALL included); `/control` to its address answers 409.
+    The pages show a tag `DBG`, `TM`, `GC` (e.g. `TM · read-only`) and disable its buttons.
+  - Frames: team messages and return packets are in the robot's own team frame. The team colour comes from the
+    GameController (else from a telemetry robot of the same team); `frames.mirror_team_color` is mirrored as the
+    telemetry. With no colour known: `color: ""`, `frame: "team"`, not mirrored.
+  - Checks: `python3 tools/test_reception.py` (in-process; also the robot bytes in `tools/golden/`),
+    `python3 tools/reception_check.py <outdir>` (browser).
 - `EventLog` and `Recorder` (`src/session.py`) detect events and write recordings.
 - `CameraHub` (`src/camera_hub.py`) asks a robot for camera frames (at most once per second, only robots that send
   telemetry) and keeps the newest frame.
@@ -98,7 +118,7 @@ The telemetry schema is the set of dataclasses in the SCHEMA section of `src/soc
 
 | File | Holds |
 |---|---|
-| `config.yaml` | Field file (`fieldRCAP.yaml`, 22 × 14 m), ports, `own_team`, team colour to mirror, drawing paths to hide, `match` (the match switch, default `false`). |
+| `config.yaml` | Field file (`fieldRCAP.yaml`, 22 × 14 m), ports, `own_team`, team colour to mirror, drawing paths to hide, `match` (the match switch, default `false`), `reception` (switches `debug`, `team_messages`, `gc_return`, all on by default; extra `teams`). |
 | `config/positions.yaml` | The positions of `GET /positions` and `POST /goto {pos}`, in the team frame (own goal at -x). |
 | `config/teams.yaml` | Team numbers → names and colours (the TV shows "SPQR" for 19). |
 | `fields/*.yaml` | Field dimensions. |

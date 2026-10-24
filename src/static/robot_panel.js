@@ -2,14 +2,15 @@
 // miniature and its role, state and latch. Middle: the page's own joystick (its markup and code stay in the page).
 // Bottom: STOP, Resume, Get up, Sit down (T2 only), LIE DOWN (2 s hold), Go to a position (GET /positions, POST /goto) and Drop =
 // DAMP (dangerDamp: typed word + 3 s hold). The joystick and the commands show only once a robot is selected.
-// A match-mode robot (sys.link "telemetry") takes no command: the new buttons are disabled and their tooltip says why.
+// A match-mode robot (sys.link "telemetry") and a read-only robot (no oraculum telemetry: another branch or team, seen by
+// team message or GameController return) take no command: the buttons are disabled and their tooltip says why.
 // The commands are built once per robot, so a running 2 s hold survives the 10 Hz polls.
 // Miniature: one small Three.js renderer for the selected robot, posed from its telemetry joints by the MuJoCo models of
 // mujoco_robots.js (one load per page, shared with the wasm engine); drawn once per /state, only while visible.
 // Without WebGL2 or the model files it is the 2D disc of the field view.
 import * as THREE from "three";
 import { dangerDamp, robotActions, sendGoto } from "./control_bar.js";
-import { drawRobot2D, latchWord, roleState, robotName, shortName, teamRgb } from "./field_model.js";
+import { READONLY_TIP, drawRobot2D, latchWord, readOnly, roleState, robotName, shortName, teamRgb } from "./field_model.js";
 
 const STYLE = `
 .rp-off { display: none !important; }
@@ -98,28 +99,29 @@ export function mountRobotPanel(root, api, { extra = () => ({}) } = {}) {
             const agents = state?.agents || [];
             const agent = agents.find(a => a.id === id && (a.ip || "127.0.0.1") === ip);
             const label = agent ? robotName(agent, agents) : `R${id}`;
-            const k = `${ip}|${id}|${label}|${isT2(agent)}`;  // a model that shows up later rebuilds (Sit down)
+            const k = `${ip}|${id}|${label}|${isT2(agent)}|${readOnly(agent)}`;  // a model that shows up later rebuilds (Sit down)
             if (k !== key) { key = k; cmds = build(agent || { id }, ip, label); }
             name.textContent = shortName(label, ip);
             name.title = `${label} · ${ip}${agent?.robot ? ` · ${agent.robot.toUpperCase()}` : ""}`;
             name.style.borderColor = agent ? `rgb(${teamRgb(agent)})` : "transparent";
-            const match = agent?.sys?.link === "telemetry";
+            const ro = readOnly(agent), match = ro || agent?.sys?.link === "telemetry", tip = ro ? READONLY_TIP : MATCH;
             line1.textContent = agent ? roleState(agent) : "not in /state now";
             const goto = agent?.goto, p = goto && positions.find(q => Math.hypot(q.x - goto.x, q.y - goto.y) < 0.05);
             line2.replaceChildren(...[
                 agent?.latch && el("span", { className: "rp-latch", textContent: latchWord(agent.latch) }),
                 goto && el("span", { textContent: `→ ${p ? p.label : `(${goto.x.toFixed(1)}, ${goto.y.toFixed(1)})`}` }),
                 agent?.fallen && el("span", { className: "rp-latch", textContent: "fallen" }),
-                match && el("span", { className: "rp-warn", textContent: "match mode", title: MATCH }),
+                match && el("span", { className: "rp-warn", textContent: ro ? "read-only" : "match mode", title: tip }),
             ].filter(Boolean).flatMap((e, i) => i ? [" · ", e] : [e]));
             for (const b of cmds.gated) {
                 const noPos = b === cmds.go && !positions.length;
                 b.disabled = match || noPos;
-                b.title = match ? MATCH : noPos ? whyNone.get(ip) || "The gateway sends no positions (GET /positions)" : b.dataset.title;
+                b.title = match ? tip : noPos ? whyNone.get(ip) || "The gateway sends no positions (GET /positions)" : b.dataset.title;
             }
             cmds.dampInput.disabled = match;
-            cmds.dampInput.title = match ? MATCH : "";
+            cmds.dampInput.title = match ? tip : "";
             if (match) cmds.dampBtn.disabled = true;
+            if (ro) cmdsHost.querySelectorAll("button, input, select").forEach(b => { b.disabled = true; b.title = tip; });  // STOP, Resume too
             if (agent) mini.show(agent);
         },
     };

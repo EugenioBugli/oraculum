@@ -3,6 +3,12 @@
 Run this in a separate terminal while the gateway runs:
     python3 tools/udp_sender.py
     FAKE_MODELS=t2,t1,k1 python3 tools/udp_sender.py   # robot models, repeated over the robots (default: all "t2")
+    python3 tools/udp_sender.py --hybrid --team-only 1 --gc-only 1   # robots of other branches (src/reception.py):
+        --hybrid       the team-19 debug robots also send team messages (SPQRMessage) to UDP 10019: tag DBG+TM
+        --team-only N  N robots of team 19 (players 9, 10, ...) that send ONLY team messages, from 127.0.0.2: read-only, TM
+        --team-format  rcap (mappazzone / RCAP2026-DEV, default) or main
+        --gc-only N    N robots of team 5 (players 9, 10, ...) that send ONLY GameController return packets to UDP 3939,
+                       from 127.0.0.3: read-only, GC
 
 Each robot sends its own packet, as DebugMessageSender does on a real robot: the agent with its fleet data
 ("sys"), plus its own ball estimate and the obstacles it sees as the packet's top-level "ball" / "obstacles".
@@ -13,6 +19,7 @@ with the camera model of the frame header, so the page's projected field lines m
 The host/port must match the [socket] section in config.yaml.
 """
 
+import argparse
 import io
 import json
 import math
@@ -32,6 +39,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.agents import AGENT_ROLES, AGENT_STATES, Agent, Ball, create_agents
 from src.camera_hub import REQUEST_PORT, pack_frame
+from src.gc_client import pack_gc_return
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+from reception import encode_team_message  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Configuration — keep in sync with config.yaml [socket] section
@@ -272,7 +283,39 @@ def camera_requests(wanted: dict, lock: threading.Lock) -> None:
             continue
 
 
+def other_branch_robots(args, t: float, agents, ball, socks) -> None:
+    """Team messages and GameController return packets, as robots of other branches send them (team frame, 19 red =
+    field frame). --hybrid: the team-19 debug robots; --team-only / --gc-only: extra robots from their own address."""
+    def local_ball(x, y, th):  # the ball in the robot's frame
+        dx, dy = ball.x - x, ball.y - y
+        return (math.cos(th) * dx + math.sin(th) * dy, -math.sin(th) * dx + math.cos(th) * dy)
+    fmt = args.team_format
+    if args.hybrid:
+        for a in agents:
+            if TEAMS.get(a.color) == 19:
+                socks["debug"].sendto(encode_team_message(fmt, a.id, a.x, a.y, a.angle, ball_local=local_ball(a.x, a.y, a.angle)), (HOST, 10019))
+    for k in range(args.team_only):  # a circle in our half
+        x, y, th = -5 + 2 * math.cos(t / 4 + k), 3 * math.sin(t / 4 + k), t / 4 + k + math.pi / 2
+        socks["team"].sendto(encode_team_message(fmt, 9 + k, x, y, th, role=0, ball_local=local_ball(x, y, th),
+                                                 obstacles=[(1.5, 0.3, 7 if fmt == "rcap" else 2)]), (HOST, 10019))
+    for k in range(args.gc_only):  # team 5 in its own frame (it attacks +x there)
+        x, y, th = 4 * math.cos(t / 5 + k), -4 + math.sin(t / 5 + k), t / 5 + k
+        bx, by = local_ball(-x, -y, th + math.pi)  # the ball is in the field frame: team 5's frame is mirrored if blue
+        socks["gc"].sendto(pack_gc_return(9 + k, 5, False, (x * 1000, y * 1000, th), 0.5, (bx * 1000, by * 1000)), (HOST, 3939))
+
+
 def main() -> None:
+    ap = argparse.ArgumentParser(description="Fake robots for the oraculum gateway")
+    ap.add_argument("--hybrid", action="store_true", help="team-19 debug robots also send team messages")
+    ap.add_argument("--team-only", type=int, default=0, help="robots that send only team messages (from 127.0.0.2)")
+    ap.add_argument("--team-format", choices=("rcap", "main"), default="rcap")
+    ap.add_argument("--gc-only", type=int, default=0, help="robots that send only GameController return (from 127.0.0.3)")
+    args = ap.parse_args()
+    socks = {"debug": socket.socket(socket.AF_INET, socket.SOCK_DGRAM)}
+    for name, ip in (("team", "127.0.0.2"), ("gc", "127.0.0.3")):  # another sender address, as another robot
+        socks[name] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        socks[name].bind((ip, 0))
+    next_other = 0.0
     rng = random.Random()
     agents = create_agents(N_AGENTS, HW, HH, speed=1.5, seed=rng.randint(0, 9999))
     ball   = Ball(x=0.0, y=0.0, vx=2.5, vy=1.8, radius=0.11, color="white")
@@ -302,6 +345,9 @@ def main() -> None:
 
             for packet in build_packets(agents, ball, t0 - t_start, rng):
                 sock.sendto(json.dumps(packet).encode(), (HOST, PORT))
+            if t0 >= next_other and (args.hybrid or args.team_only or args.gc_only):
+                next_other = t0 + 0.6  # team messages: one per 0.6 s (settings.yaml timeBetweenTwoSendsMs)
+                other_branch_robots(args, t0 - t_start, agents, ball, socks)
 
             if t0 >= next_frame:
                 next_frame = t0 + 1.0 / CAM_FPS
