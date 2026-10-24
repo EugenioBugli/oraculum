@@ -171,6 +171,16 @@ class ControlServer:
         """True for an address heard only by team messages or GC return (src/reception.py), never by debug telemetry."""
         return ip in self.reception.link_stats() and ip not in self.udp_receiver.link_stats()
 
+    def command_lock(self, client: str, name: str) -> bool:
+        """lock.acquire_for_command for every command route (/control, /stop resume|getup|sit, /goto): a free lock taken
+        by a command is logged as a CONTROL event, like a Take on POST /control_lock."""
+        before = self.control_lock.holder_name()
+        granted = self.control_lock.acquire_for_command(client, name)
+        after = self.control_lock.holder_name()
+        if after != before:
+            self.events.add("CONTROL", "manual", f"control: {after or 'free'} (was {before or 'free'})")
+        return granted
+
     def play_rule(self, cmd: dict) -> str:
         """The MANUAL rule of POST /control for GET UP, SIT and GO TO: in READY, SET or PLAYING a command needs
         testingOverride (or bypassRules); returns the refusal text, "" when allowed (an override is logged)."""
@@ -598,7 +608,7 @@ class ControlServer:
                                                       f"Prep pose), then {kind.capitalize()}.", "damped": sorted(damped)})
                             return
                         targets = [ip for ip in targets if ip not in damped]
-                        if not lock.acquire_for_command(client, name):
+                        if not server_instance.command_lock(client, name):
                             h = lock.holder_name()  # free but refused: this client released control just now
                             self._json(423, {"error": f"{h} has control. Ask for it first." if h else "You released control. Press Take in the header first.", "holder": h})
                             return
@@ -701,10 +711,7 @@ class ControlServer:
 
                         # Engineer mode: a manual command needs the control lock (a free lock is taken here)
                         lock = server_instance.control_lock
-                        before = lock.holder_name()
-                        granted = lock.acquire_for_command(str(cmd.get("client", "")), str(cmd.get("operator", ""))[:40])
-                        if granted and not before:  # a free lock taken by the first command: log it like a Take
-                            server_instance.events.add("CONTROL", "manual", f"control: {lock.holder_name()} (was free)")
+                        granted = server_instance.command_lock(str(cmd.get("client", "")), str(cmd.get("operator", ""))[:40])
                         if not granted:
                             holder = lock.holder_name()
                             self._json(423, {"status": "locked", "holder": holder,
@@ -861,7 +868,7 @@ class ControlServer:
                     self._json(409, {"error": "This robot is damped: lift it, press its own STOP (it stands in the Prep "
                                               "pose), then GO TO."})
                     return
-                if not srv.control_lock.acquire_for_command(client, name):
+                if not srv.command_lock(client, name):
                     h = srv.control_lock.holder_name()
                     self._json(423, {"error": f"{h} has control. Ask for it first." if h else "You released control. Press Take in the header first.", "holder": h})
                     return

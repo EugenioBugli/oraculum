@@ -28,7 +28,7 @@ exist. The pages use plain HTTP polling.
 | 8080 | TCP (HTTP) | clients → gateway | Pages and API | Fixed in `src/control_server.py` |
 | 10006 | UDP | robot → gateway | Telemetry and debug drawings: 10/s in practice, 1/s in match | `config.yaml` `socket.port`; robot: `DebugMessageSender` |
 | 10007 | UDP | gateway → robot | Joystick, safety commands, Get up, Sit down, Go to (practice only; never with the gateway match switch) | Robot: `LowControlBridge` |
-| 10008 | UDP | gateway → robot | Camera request (practice only; never to a robot with `sys.link` "telemetry", never with the match switch) | Robot: `DebugCameraSender`; gateway: `src/camera_hub.py` |
+| 10008 | UDP | gateway → robot | Camera request (practice only; never to a read-only robot, never to a robot with `sys.link` "telemetry", never with the match switch) | Robot: `DebugCameraSender`; gateway: `src/camera_hub.py` |
 | 10009 | UDP | robot → gateway | Camera frames, 4 per second for 3 s after each request | `config.yaml` `camera.port` (default 10009) |
 | 3838 | UDP | GameController → all | Referee state (versions 19 and 20 of the packet) | `config.yaml` `game_controller.port` |
 | 10000 + team | UDP | robot ↔ robot, broadcast | Team messages (SPQRMessage). The gateway listens (never sends): own team, both teams of the GameController packet, `reception.teams` | Robot: `TeamMessageSender`; gateway: `src/reception.py` |
@@ -58,8 +58,9 @@ exist. The pages use plain HTTP polling.
   - Checks: `python3 tools/test_reception.py` (in-process; also the robot bytes in `tools/golden/`),
     `python3 tools/reception_check.py <outdir>` (browser).
 - `EventLog` and `Recorder` (`src/session.py`) detect events and write recordings.
-- `CameraHub` (`src/camera_hub.py`) asks a robot for camera frames (at most once per second, only robots that send
-  telemetry) and keeps the newest frame.
+- `CameraHub` (`src/camera_hub.py`) asks a robot for camera frames (at most once per second) and keeps the newest
+  frame. It asks only robots that send debug telemetry on UDP 10006. It never asks a read-only robot, a robot with
+  `sys.link` "telemetry", or any robot when the match switch is on.
 - `ControlLock` (`src/control_lock.py`) decides which operator may drive (see [Safety Controls](Safety-Controls)).
 - `TVProgram` (`src/tv_program.py`) holds the program of the TV screens.
 - `SimGameController` (`src/sim_gc.py`) is the simulated referee. It runs only with `ORACULUM_SIM_GC`, never with the
@@ -90,7 +91,7 @@ All routes need the access token when `ORACULUM_ACCESS_TOKEN` is set (`?token=` 
 | `POST /events` | `{"add": {"text": "...", "robot": "T19 R3"}}` adds a mark; `{"delete": <id>}` deletes an event. |
 | `POST /record` | `{"on": true, "by": "<name>"}` starts; `{"on": false, "name": "<recording name>"}` stops that recording. |
 | `GET /recordings` | The list of recordings. `GET /recordings/<name>.jsonl` downloads one. |
-| `GET /camera?robot=<ip>\|<id>` | The newest camera frame (JSON, JPEG in base64), or `{"status": "waiting"}`. Each call also asks the robot for 3 s of frames, except a robot with `sys.link` "telemetry" and except in match mode. |
+| `GET /camera?robot=<ip>\|<id>` | The newest camera frame (JSON, JPEG in base64), or `{"status": "waiting"}`. Each call also asks the robot (UDP 10008, at most once per second) to send 3 s of frames to UDP 10009. The gateway does not ask a read-only robot (no debug telemetry), a robot with `sys.link` "telemetry", or any robot when the match switch is on. For these robots the robot page tells why it has no camera image. |
 | `POST /control` | A manual command `{ip, vx, vy, vtheta, isManual: true, client, operator, ...}`. Needs the control lock (else 423). Refused in READY, SET and PLAYING (403) unless `testingOverride` is true. 409 in match mode. |
 | `POST /stop` | `{robot: "<ip>" or "all", kind: "stop" \| "lie" \| "damp" \| "resume" \| "getup" \| "sit", client, name, confirm, testingOverride}`. `getup` and `sit` need the control lock (423) and get 403 in READY, SET and PLAYING without `testingOverride`. `sit` only for a robot that reports `robot` "t2" (else 409); "all" = every T2. 409 for match-mode and damped robots, and for every kind in match mode. |
 | `GET /positions` | `{frame: "team", positions: [{id, label, x, y, theta, player}]}` from `config/positions.yaml` (READY positions `ready_N`, side line `sideline_N`, `sideline_penalized`; values of the framework's `formationRCAP.yaml`). `?robot=<ip>`: the same list in the shared field frame of that robot's team (`frame: "field"`); 409 for an unknown IP. |

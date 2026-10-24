@@ -125,7 +125,9 @@ Purpose: look through the eyes of one robot.
 - `?robot=3`, `?robot=10.0.19.103` or `?robot=10.0.19.103|3` select the robot. With no match, or with two matches
   (two teams can both have a robot 3), the page shows a list of the online robots.
 - **Camera**: the newest camera image, with the detections and the field lines drawn from the robot's pose and camera
-  model. The page asks the robot for images only while it is open (practice mode only).
+  model. While the page is open, it calls `GET /camera` and the gateway asks the robot for images (UDP 10008).
+  The gateway does not ask a read-only robot (no debug telemetry), a robot in match mode (`sys.link` "telemetry"), or
+  any robot when the match switch is on. For these robots the page tells why it has no camera image.
 - **What this robot believes**: its ball estimate, the obstacles it sees, and the area its camera sees.
 - **Data**: role, state, battery and the other telemetry values.
 - **Controls**: STOP, Resume and a 2 s press-and-hold LIE DOWN.

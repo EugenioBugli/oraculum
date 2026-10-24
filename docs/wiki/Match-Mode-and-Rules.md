@@ -87,7 +87,9 @@ sending. Use both in an official match.
   browser with fake robots, 2026-10-23).
 
 Independent of the switch: the gateway never sends a camera request to a robot that reports `sys.link = "telemetry"`
-(a robot in `oraculum: "match"`). Such a robot streams no camera, and a request would only add traffic.
+(a robot in `oraculum: "match"`). Such a robot streams no camera, and a request would only add traffic. The gateway
+also never asks a read-only robot (no debug telemetry). For these robots the robot page tells why it has no camera
+image.
 
 ## Network placement in an official match
 

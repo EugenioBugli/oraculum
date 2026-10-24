@@ -104,7 +104,7 @@ body.stale-data main, body.stale-data #robotAct { opacity: 0.45; filter: graysca
         <div class="cam" id="camBox">
             <img id="camImg" alt="Robot camera image">
             <svg id="overlay" aria-hidden="true"></svg>
-            <div class="wait" id="camWait">Asking the robot for its camera…</div>
+            <div class="wait" id="camWait">Waiting for data from the gateway…</div>
         </div>
         <div class="status" id="camStatus">—</div>
         <div class="legend"><span><span class="sw" style="border:2px solid #facc15"></span>ball</span>
@@ -393,6 +393,10 @@ function syncActions() {
     box.replaceChildren(...(mine ? [mine[0]] : [])); $('danger').replaceChildren(...(mine ? [mine[1]] : []));  // no robot or no name yet: no buttons
 }
 
+// Why the gateway never asks this robot for its camera (src/control_server.py GET /camera), or '' when it asks
+const noCameraWhy = a => readOnly(a) ? 'No camera: this robot sends no debug telemetry, only team messages or GameController return packets. The gateway does not ask it for images.'
+    : a?.sys?.link === 'telemetry' ? 'No camera: this robot is in match mode (oraculum: match). It sends telemetry only, and the gateway does not ask it for images.'
+    : state?.match ? 'No camera: the gateway is in match mode. It asks no robot for images (HSL rules: no remote control in an official match).' : '';
 async function pollCamera() {
     if (Date.now() - lastGood > 3000) return;  // no camera requests while the gateway is down
     if (choosing()) {  // no robot chosen: no /camera request, the camera says so as the map does
@@ -437,8 +441,8 @@ async function pollCamera() {
         wait.hidden = false; st.classList.remove('stale'); st.textContent = 'no image yet';
         // One child element: the flex box would make each text run and <b> a separate column.
         wait.innerHTML = '<span>' + (!current() ? 'No camera image: this robot sends no data now.'
-            : (now - askedAt < 3000) ? 'Asking the robot for its camera…'
-            : 'No camera image. The robot sends images only with <b>useRerun: true</b> and a running <b>DebugCamera</b> node; the gateway asks it on UDP 10008.') + '</span>';
+            : noCameraWhy(current()) || ((now - askedAt < 3000) ? 'Asking the robot for its camera…'
+            : 'No camera image. The robot sends images only with <b>useRerun: true</b> and a running <b>DebugCamera</b> node; the gateway asks it on UDP 10008.')) + '</span>';
     }
 }
 

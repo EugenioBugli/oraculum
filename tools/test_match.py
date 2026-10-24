@@ -116,6 +116,12 @@ try:
     assert call(f"/camera?robot={tel.ip}|4")[0] == 200 and udp == [], "no camera request to a match robot"
     assert call(f"/camera?robot={ctl.ip}|2")[0] == 200 and [t for _, t in udp] == [(ctl.ip, 10008)], udp
     assert call("/state")[1]["match"] is False
+    # a command that takes the free lock (here Resume) logs CONTROL, like a Take on /control_lock
+    ev = []
+    s.events.add = lambda *a, **k: ev.append(a)
+    call("/control_lock", {"action": "release", **A})
+    assert call("/stop", {"robot": ctl.ip, "kind": "resume", "client": "tab-b", "name": "B"})[0] == 200
+    assert ("CONTROL", "manual", "control: B (was free)") in ev, ev
     print("match switch: ok")
 finally:
     s.http_server.shutdown()

@@ -135,11 +135,18 @@ export const MATCH_TIP = "Match mode: the gateway sends nothing to the robots (H
     "robots act autonomously, no remote control of any kind). Use the referee or the robot's own buttons.";
 const COMMANDS = ".ctl-stop, .ctl-act button, .ctl-act select, .ctl-danger input, .ctl-danger button, .ctl-ovl .btns button, " +
     "#checkManualMode, #checkTestingOverride, .joystick-panel-grid input";
+// The MANUAL hints of index and dashboard (#manualTarget, .rp-empty): the pages rewrite them on each poll, the observer
+// puts these texts back.
+const MATCH_HINTS = [["#manualTarget", "Match mode: remote driving is off. In an official match the robots act autonomously (HSL rules)."],
+    [".rp-empty", "Select a robot in the list to see it. Match mode: no remote driving and no commands. In an official match the robots act autonomously (HSL rules)."]];
 let matchOn = false, matchObserver = null;
 const disableCommands = () => {
     for (const e of document.querySelectorAll(COMMANDS)) {
         if (!e.disabled) e.disabled = true;
         if (e.title !== MATCH_TIP) e.title = MATCH_TIP;
+    }
+    for (const [sel, text] of MATCH_HINTS) {
+        for (const e of document.querySelectorAll(sel)) if (e.textContent !== text) e.textContent = text;
     }
 };
 // ponytail: a page that re-enables a button on its next poll (or builds a new row) is caught by the observer; switching

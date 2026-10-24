@@ -39,7 +39,8 @@ the game. MANUAL lets one operator drive one robot.
 
 **STOP ALL does not reach a read-only robot.** A robot that the gateway sees only through its team messages or its
 GameController return packets (a robot on another branch, tag `TM` or `GC` · read-only) gets no datagram from oraculum:
-not STOP ALL, not STOP, not MANUAL. Stop it with its own remote controller or with the GameController.
+not STOP ALL, not STOP, not MANUAL, not a camera request. Stop it with its own remote controller or with the
+GameController.
 
 Rules for DAMP:
 
