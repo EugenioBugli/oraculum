@@ -12,6 +12,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from artifact_stage import stage  # noqa: E402
+from wired_deploy_plan import list_artifacts, plan  # noqa: E402
 
 
 class ArtifactStageTest(unittest.TestCase):
@@ -46,10 +47,18 @@ class ArtifactStageTest(unittest.TestCase):
             self.assertEqual(staged_config["oraculum"], "match")
             self.assertFalse(staged_config["useRerun"])
             self.assertEqual(stage(repo, target, "match", output), result)
+            self.assertEqual(list_artifacts(output), [result["id"]])
+            review = plan(output, result["id"], target)
+            self.assertTrue(review["offline_verified"])
+            self.assertFalse(review["activation_available"])
+            with self.assertRaisesRegex(ValueError, "invalid artifact ID"):
+                plan(output, "../../elsewhere", target)
             saved.chmod(0o700)
             (saved / "maximus_main").write_bytes(b"corrupt")
             with self.assertRaisesRegex(ValueError, "does not match"):
                 stage(repo, target, "match", output)
+            with self.assertRaisesRegex(ValueError, "does not match"):
+                plan(output, result["id"], target)
             config_path.write_text(config_path.read_text() + "# changed\n")
             with self.assertRaisesRegex(ValueError, "uncommitted"):
                 stage(repo, target, "match", output)

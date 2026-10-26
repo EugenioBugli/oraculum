@@ -20,4 +20,6 @@ python3 tools/stage_artifact.py --target robot6 --profile practice
 
 The staged binary, `deploy.yaml`, `version.txt`, and manifest live in ignored `artifacts/<commit>-<binary-hash>-<config-hash>/`, with restrictive permissions. Repeating the command verifies the existing copy; a mismatch fails. The staging tool refuses secret-looking fields in `deploy.yaml`. It is intentionally a CLI step until an authenticated host-operation API is designed. On 2026-10-26 the actual checkout correctly refuses staging: it is dirty, has no AArch64 binary, and the laptop has no address on the wired robot subnet.
 
+After staging, **Wired deployment review** lists the local artifacts and rechecks their hashes, target identity, model, profile, and gateway address before showing the proposed activation and rollback sequence. It has no deploy or service-action button. Fresh robot identity, SSH credentials, physical support, and the authenticated activation adapter remain prerequisites.
+
 Hardware acceptance remains open because the robot is disconnected. The next implementation stage is a bounded build job and a wired-only deploy adapter with backup, verification, and rollback. The existing deploy script requires Wi-Fi and must not serve as the wired adapter.

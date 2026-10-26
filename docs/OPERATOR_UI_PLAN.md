@@ -2,7 +2,7 @@
 
 Updated 2026-10-25. This plan covers routine practice and test operations from one Oraculum interface. The robot is currently disconnected; no deployment or motion command is part of this plan's implementation.
 
-Implementation update 2026-10-26: the first read-only Operations page, configured Ethernet inventory, bounded SSH diagnostics, local artifact preview, and a CLI-only content-addressed staging tool are implemented. See [Operations](OPERATIONS.md). Build jobs, UI staging, deployment, rollback, service changes, and motion consolidation remain open.
+Implementation update 2026-10-26: the first read-only Operations page, configured Ethernet inventory, bounded SSH diagnostics, local artifact preview, CLI-only content-addressed staging, and a verified deployment review are implemented. Field/Dashboard now have bounded hold-to-turn controls. See [Operations](OPERATIONS.md). Build jobs, UI staging, activation, rollback, service changes, and full command consolidation remain open.
 
 ## Entry and workflow
 

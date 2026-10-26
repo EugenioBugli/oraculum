@@ -50,6 +50,12 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#111b25;padding:12px;
     <div class="grid"><div class="fact"><b>Source commit</b><span id="sourceCommit">Not checked</span></div><div class="fact"><b>Binary architecture</b><span id="binaryArch">Not checked</span></div><div class="fact"><b>Binary SHA-256</b><span id="binaryHash">Not checked</span></div></div>
     <pre id="artifactChanges">No config preview.</pre>
   </section>
+  <section aria-labelledby="deployTitle">
+    <h2 id="deployTitle">Wired deployment review</h2>
+    <p>Select a locally staged artifact to verify its identity and review the activation and rollback steps. This view cannot deploy or restart the robot.</p>
+    <div class="row"><label>Staged artifact<select id="artifactList"></select></label><button id="reviewDeploy" type="button" disabled>Review deploy plan</button></div>
+    <p id="deployStatus" role="status">No staged artifact selected.</p><pre id="deployPlan">No plan loaded.</pre>
+  </section>
   <section aria-labelledby="telemetryTitle"><h2 id="telemetryTitle">Live telemetry <span id="telemetryTime" class="warn"></span></h2>
     <p class="note">These facts come from gateway packets. An open SSH port alone does not mean robot software or telemetry is running.</p>
     <div class="scroll"><table><thead><tr><th>Robot</th><th>Address</th><th>Source</th><th>Packet age</th><th>State</th><th>Version</th></tr></thead><tbody id="robots"></tbody></table></div>
@@ -77,7 +83,7 @@ let inventory=null, generation=0;
 const displayTime=t=>t?new Date(t*1000).toLocaleString():'Never';
 const set=(id,value)=>{$(id).textContent=String(value ?? 'Unknown')};
 const clearProbe=()=>{generation++;set('sshPort','Not checked');set('sshStatus','Not checked');set('service','Unknown');set('version','Unknown');set('joysticks','Unknown');set('probeTime','Never');set('logs','No probe results.');};
-const clearArtifact=()=>{set('artifactStatus','Choose a configured robot to inspect an artifact.');set('sourceCommit','Not checked');set('binaryArch','Not checked');set('binaryHash','Not checked');set('artifactChanges','No config preview.');};
+const clearArtifact=()=>{set('artifactStatus','Choose a configured robot to inspect an artifact.');set('sourceCommit','Not checked');set('binaryArch','Not checked');set('binaryHash','Not checked');set('artifactChanges','No config preview.');set('deployStatus','No staged artifact selected.');set('deployPlan','No plan loaded.');};
 function selectTarget(){
   clearProbe();clearArtifact();
   set('commandStatus','Waiting for fresh telemetry for this target.');
@@ -87,6 +93,7 @@ function selectTarget(){
   set('subnet',item?item.gateway_address?`${item.gateway_address} is in ${item.subnet}`:`No gateway IPv4 address in ${item.subnet}`:'Unknown');
   $('probe').disabled=!item || !inventory?.probe_enabled;
   $('previewArtifact').disabled=!item || !inventory?.artifact_enabled;
+  $('reviewDeploy').disabled=!item || !$('artifactList').value || !inventory?.artifact_enabled;
 }
 async function loadInventory(){
   try{
@@ -95,8 +102,25 @@ async function loadInventory(){
     $('target').replaceChildren(...inventory.targets.map(t=>new Option(t.name,t.id)));
     set('interfaces',inventory.interfaces.length?inventory.interfaces.map(i=>`${i.name} ${i.address}`).join(' · '):'No IPv4 interface reported');
     set('probePolicy',inventory.probe_enabled?'Probe is manual, bounded, and read-only. SSH uses existing trusted host keys and key authentication.':'SSH diagnostics require ORACULUM_ACCESS_TOKEN and practice mode. Live telemetry remains visible.');
+    if(inventory.artifact_enabled){
+      const response=await fetch('/ops/artifacts');
+      if(response.ok){const data=await response.json();$('artifactList').replaceChildren(...data.artifacts.map(id=>new Option(id,id)));}
+    }
     selectTarget();
   }catch(error){set('probePolicy','Inventory unavailable: '+error.message);$('probe').disabled=true;}
+}
+async function reviewDeploy(){
+  const target=$('target').value, artifact=$('artifactList').value;
+  if(!artifact)return;
+  $('reviewDeploy').disabled=true;set('deployStatus','Verifying staged files…');
+  try{
+    const response=await fetch('/ops/deploy-plan?target='+encodeURIComponent(target)+'&artifact='+encodeURIComponent(artifact));
+    const data=await response.json();if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);
+    if(target!==$('target').value || artifact!==$('artifactList').value)return;
+    set('deployStatus','Local artifact verified. Activation remains unavailable until the listed checks are implemented and passed.');
+    set('deployPlan',data.phases.map((phase,index)=>`${index+1}. ${phase}`).join('\n')+'\n\nStill required:\n'+data.pending.map(x=>'• '+x).join('\n'));
+  }catch(error){set('deployStatus','Deploy review failed: '+error.message);set('deployPlan','No valid plan loaded.')}
+  finally{$('reviewDeploy').disabled=!inventory?.artifact_enabled || !$('artifactList').value;}
 }
 async function previewArtifact(){
   const target=$('target').value, profile=$('profile').value;
@@ -151,7 +175,7 @@ async function pollTelemetry(){
   try{const response=await fetch('/state');if(!response.ok)throw new Error(`HTTP ${response.status}`);renderTelemetry(await response.json())}
   catch(error){$('robots').replaceChildren();$('emptyRobots').hidden=false;set('telemetryTime','· gateway unavailable: '+error.message)}
 }
-$('target').addEventListener('change',selectTarget);$('probe').addEventListener('click',probe);$('previewArtifact').addEventListener('click',previewArtifact);
+$('target').addEventListener('change',selectTarget);$('artifactList').addEventListener('change',clearArtifact);$('probe').addEventListener('click',probe);$('previewArtifact').addEventListener('click',previewArtifact);$('reviewDeploy').addEventListener('click',reviewDeploy);
 await loadInventory();await pollTelemetry();setInterval(pollTelemetry,3000);
 </script>
 </body>

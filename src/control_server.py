@@ -24,6 +24,7 @@ from config import load_teams
 from control_lock import ControlLock
 from gc_client import PENALTY_NAMES, SET_PLAY_NAMES, GCReceiver
 from operations import OperationsInspector
+from wired_deploy_plan import list_artifacts, plan as wired_deploy_plan
 from reception import Reception
 from session import EventLog, Recorder
 from sim_gc import SimGameController
@@ -145,6 +146,7 @@ class ControlServer:
         # Hosted sessions: with ORACULUM_ACCESS_TOKEN set, every request needs the token (?token= once, then a cookie).
         self.access_token = os.environ.get("ORACULUM_ACCESS_TOKEN", "")
         self.operations = OperationsInspector(self.config)
+        self.artifact_root = os.path.join(root, "artifacts")
         # Hosted session: every joystick datagram goes to this address, whatever the body says (no UDP to the internet).
         self.control_ip = "" if self.match else os.environ.get("ORACULUM_CONTROL_IP", "")
         self.control_lock = ControlLock()  # engineer mode: one operator drives at a time (src/control_lock.py)
@@ -322,6 +324,30 @@ class ControlServer:
                         return
                     try:
                         self._json(200, artifact_preview(server_instance.fleet_repo, target, profile))
+                    except ValueError as exc:
+                        self._json(400, {"error": str(exc)})
+                    return
+                if parsed_path.path == "/ops/artifacts":
+                    if not server_instance.access_token:
+                        self._json(403, {"error": "Artifact inventory requires ORACULUM_ACCESS_TOKEN."})
+                        return
+                    self._json(200, {"artifacts": list_artifacts(server_instance.artifact_root)})
+                    return
+                if parsed_path.path == "/ops/deploy-plan":
+                    if not server_instance.access_token:
+                        self._json(403, {"error": "Deploy review requires ORACULUM_ACCESS_TOKEN."})
+                        return
+                    identifier = query.get("target", [""])[0]
+                    artifact = query.get("artifact", [""])[0]
+                    target = next((item for item in server_instance.operations.inventory()["targets"]
+                                   if item["id"] == identifier), None)
+                    if target is None:
+                        self._json(404, {"error": "unknown configured target"})
+                        return
+                    try:
+                        self._json(200, wired_deploy_plan(server_instance.artifact_root, artifact, target))
+                    except FileNotFoundError:
+                        self._json(404, {"error": "artifact not found"})
                     except ValueError as exc:
                         self._json(400, {"error": str(exc)})
                     return
