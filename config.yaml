@@ -47,6 +47,7 @@ operations:
       subnet: 192.168.10.0/24
       user: booster
       service: maximus
+      model: t1           # observed in the 2026-10-25 robot 6 inspection; recheck before deployment
 
 frames:
   # Robots send (x, y, angle) in their own team's frame (own goal at -x). Packets from the team with this

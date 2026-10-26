@@ -41,6 +41,7 @@ class ArtifactStageTest(unittest.TestCase):
             self.assertTrue(saved.is_dir())
             self.assertEqual(result["binary_sha256"], hashlib.sha256((saved / "maximus_main").read_bytes()).hexdigest())
             self.assertEqual(result["config_sha256"], hashlib.sha256((saved / "deploy.yaml").read_bytes()).hexdigest())
+            self.assertEqual(result["version_sha256"], hashlib.sha256((saved / "version.txt").read_bytes()).hexdigest())
             staged_config = yaml.safe_load((saved / "deploy.yaml").read_text())
             self.assertEqual(staged_config["oraculum"], "match")
             self.assertFalse(staged_config["useRerun"])

@@ -2,7 +2,7 @@
 
 Open **Operations** from the Session menu on Field or Dashboard, or from Fleet. The page currently provides read-only diagnostics and an artifact preview. It does not deploy software, change services, command movement, or configure networking.
 
-Targets are allowlisted in `config.yaml` under `operations.targets`. The initial target is robot 6 at its factory wired address `192.168.10.102/24`, SSH user `booster`, service `maximus`. Only one robot should be attached to that factory-address Ethernet segment at a time. If the target model has not been verified and entered as `model: t1`, `t2`, or `k1`, the artifact preview remains blocked.
+Targets are allowlisted in `config.yaml` under `operations.targets`. The initial target is robot 6 at its factory wired address `192.168.10.102/24`, SSH user `booster`, service `maximus`, model T1 as observed on 2026-10-25. Recheck identity and model before any deployment. Only one robot should be attached to that factory-address Ethernet segment at a time. Other targets need a confirmed `model: t1`, `t2`, or `k1` before staging.
 
 The page always shows the gateway's IPv4 interfaces, whether one is on the configured robot subnet, and current robot telemetry with packet ages. **Run read-only SSH probe** checks TCP 22, then uses SSH batch mode with strict host-key checking and a five-second timeout. It reads service active state, installed version, `/dev/input/js*`, and the latest 30 service log lines. A disconnected robot, unknown host key, or absent SSH key produces an explicit failure; no password prompt or remote write is attempted.
 
@@ -16,6 +16,6 @@ Once those checks pass, a local terminal can pin the existing build without cont
 python3 tools/stage_artifact.py --target robot6 --profile practice
 ```
 
-The staged files live in ignored `artifacts/<commit>-<binary-hash>-<config-hash>/`, with restrictive permissions. Repeating the command verifies the existing copy; a mismatch fails. The staging tool refuses secret-looking fields in `deploy.yaml`. It is intentionally a CLI step until an authenticated host-operation API is designed. On 2026-10-26 the actual checkout correctly refuses staging: it is dirty, has no AArch64 binary, the laptop has no address on the wired robot subnet, and the robot model has not been verified in Operations config.
+The staged binary, `deploy.yaml`, `version.txt`, and manifest live in ignored `artifacts/<commit>-<binary-hash>-<config-hash>/`, with restrictive permissions. Repeating the command verifies the existing copy; a mismatch fails. The staging tool refuses secret-looking fields in `deploy.yaml`. It is intentionally a CLI step until an authenticated host-operation API is designed. On 2026-10-26 the actual checkout correctly refuses staging: it is dirty, has no AArch64 binary, and the laptop has no address on the wired robot subnet.
 
 Hardware acceptance remains open because the robot is disconnected. The next implementation stage is a bounded build job and a wired-only deploy adapter with backup, verification, and rollback. The existing deploy script requires Wi-Fi and must not serve as the wired adapter.

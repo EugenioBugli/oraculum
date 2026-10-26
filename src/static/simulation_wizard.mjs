@@ -1,6 +1,6 @@
 import {
     FIELD_PRESETS, MODELS, ROLES, circusSceneYaml, defaultScenario,
-    fieldYaml, loadScenario, normalizeScenario, saveMode, saveScenario,
+    fieldYaml, loadScenario, normalizeScenario, saveMode, saveScenario, simulationConfigYaml,
 } from './simulation_config.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -287,7 +287,10 @@ $('downloadScene').addEventListener('click', () => {
     if (accept()) download('oraculum-circus-scene.yaml', circusSceneYaml(scenario), 'text/yaml');
 });
 $('downloadField').addEventListener('click', () => {
-    if (accept()) download('oraculum-field.yaml', fieldYaml(scenario), 'text/yaml');
+    if (accept()) download('oraculum_custom.yaml', fieldYaml(scenario), 'text/yaml');
+});
+$('downloadSimConfig').addEventListener('click', () => {
+    if (accept()) download('oraculum_custom-simulation.yaml', simulationConfigYaml(scenario), 'text/yaml');
 });
 $('preview').addEventListener('click', (event) => {
     if (step !== 3) return;

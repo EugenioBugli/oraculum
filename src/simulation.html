@@ -119,8 +119,9 @@ button:disabled { opacity:.45; cursor:not-allowed; }
       <button type="button" id="downloadJson">Download JSON</button>
       <button type="button" id="downloadScene">Export Circus scene</button>
       <button type="button" id="downloadField">Export field YAML</button>
+      <button type="button" id="downloadSimConfig">Export simulation config</button>
     </div>
-    <p class="export-note">The Circus scene includes ghost players only and uses the simulator's default field. To run with custom dimensions, wire the exported field YAML into a simulator configuration first. Exports do not launch a hosted session or contact the robot.</p>
+    <p class="export-note">The Circus scene includes ghost players only. Install the exported field as <code>resources/config/fields/oraculum_custom.yaml</code> and the simulation config as <code>resources/config/simulation_configs/oraculum_custom.yaml</code> in an isolated Circus instance. Circus currently starts its ball at field centre; the wizard's ball position is a display preview. Exports do not launch a hosted session or contact the robot.</p>
   </section>
 
   <div class="actions">

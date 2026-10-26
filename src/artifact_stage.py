@@ -54,6 +54,8 @@ def stage(repo, target, profile, output_root):
         config["useGameController"] = True
     encoded_config = yaml.safe_dump(config, sort_keys=False).encode()
     config_hash = hashlib.sha256(encoded_config).hexdigest()
+    encoded_version = (status["commit"][:8] + "\n").encode()
+    version_hash = hashlib.sha256(encoded_version).hexdigest()
     identity = status["commit"][:12] + "-" + status["binary"]["sha256"][:12] + "-" + config_hash[:12]
     output = Path(output_root).resolve()
     output.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -67,13 +69,16 @@ def stage(repo, target, profile, output_root):
         data = json.loads(manifest.read_text())
         if (data.get("binary_sha256") != status["binary"]["sha256"]
                 or data.get("config_sha256") != config_hash
+                or data.get("version_sha256") != version_hash
                 or data.get("source_commit") != status["commit"]
                 or data.get("target") != target["id"]
                 or data.get("profile") != profile
                 or not (destination / "maximus_main").is_file()
                 or not (destination / "deploy.yaml").is_file()
+                or not (destination / "version.txt").is_file()
                 or _hash(destination / "maximus_main") != status["binary"]["sha256"]
-                or _hash(destination / "deploy.yaml") != config_hash):
+                or _hash(destination / "deploy.yaml") != config_hash
+                or _hash(destination / "version.txt") != version_hash):
             raise ValueError("Existing artifact does not match its identity")
         return data
     temporary = Path(tempfile.mkdtemp(prefix=".stage-", dir=output))
@@ -89,12 +94,19 @@ def stage(repo, target, profile, output_root):
             stream.flush()
             os.fsync(stream.fileno())
         staged_config.chmod(0o600)
+        version = temporary / "version.txt"
+        with version.open("xb") as stream:
+            stream.write(encoded_version)
+            stream.flush()
+            os.fsync(stream.fileno())
+        version.chmod(0o600)
         if _git(str(repo), "rev-parse", "HEAD") != status["commit"] or _git(str(repo), "status", "--porcelain"):
             raise ValueError("Source checkout changed during staging")
         data = {"id": identity, "source_commit": status["commit"], "target": target["id"],
                 "target_ip": target["ip"], "model": target["model"], "profile": profile,
                 "oraculum_host": target["gateway_address"],
                 "binary_sha256": copied_hash, "config_sha256": config_hash,
+                "version_sha256": version_hash,
                 "binary_size": binary.stat().st_size}
         manifest = temporary / "manifest.json"
         with manifest.open("x") as stream:
