@@ -55,6 +55,20 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#111b25;padding:12px;
     <div class="scroll"><table><thead><tr><th>Robot</th><th>Address</th><th>Source</th><th>Packet age</th><th>State</th><th>Version</th></tr></thead><tbody id="robots"></tbody></table></div>
     <p id="emptyRobots" hidden>No robot telemetry is available. The robot may be disconnected, the framework may not be sending, or this gateway may not be its target.</p>
   </section>
+  <section aria-labelledby="commandsTitle">
+    <h2 id="commandsTitle">Command map</h2>
+    <p id="commandStatus">No live robot selected.</p>
+    <p><a id="robotControls" href="/fleet.html">Open Fleet controls</a> · <a href="/index.html">Open Field manual control</a></p>
+    <div class="scroll"><table><thead><tr><th>Operation</th><th>Current path</th><th>Condition</th></tr></thead><tbody>
+      <tr><td>STOP / Resume</td><td>Robot page or Fleet</td><td>Recent debug telemetry; Resume needs the control lock</td></tr>
+      <tr><td>Lie down / DAMP</td><td>Robot page</td><td>Lie is controlled; DAMP can make the robot fall and needs physical support</td></tr>
+      <tr><td>Get up / Go to</td><td>Robot page</td><td>Practice mode, lock, and referee rule</td></tr>
+      <tr><td>Manual walk / turn</td><td>Field / CLI</td><td>Hold-to-drive; CLI turn supports bounded duration</td></tr>
+      <tr><td>Sit</td><td>Unavailable</td><td>Installed T2 SDK has no working sit action</td></tr>
+      <tr><td>Service start / stop / restart</td><td>Planned Operations action</td><td>Requires a supported robot and authenticated mutation workflow</td></tr>
+      <tr><td>Wired deploy / rollback</td><td>Planned Operations action</td><td>Artifact preview and local staging exist; robot activation is not available here</td></tr>
+    </tbody></table></div>
+  </section>
   <section aria-labelledby="logsTitle"><h2 id="logsTitle">Recent service logs</h2><p>Last 30 lines from the selected robot after an authorized SSH probe. Older results are cleared when the target changes.</p><pre id="logs">No probe results.</pre></section>
 </main>
 <script type="module">
@@ -66,6 +80,8 @@ const clearProbe=()=>{generation++;set('sshPort','Not checked');set('sshStatus',
 const clearArtifact=()=>{set('artifactStatus','Choose a configured robot to inspect an artifact.');set('sourceCommit','Not checked');set('binaryArch','Not checked');set('binaryHash','Not checked');set('artifactChanges','No config preview.');};
 function selectTarget(){
   clearProbe();clearArtifact();
+  set('commandStatus','Waiting for fresh telemetry for this target.');
+  $('robotControls').href='/fleet.html';$('robotControls').textContent='Open Fleet controls';
   const item=inventory?.targets.find(t=>t.id===$('target').value);
   set('targetAddress',item?`${item.user}@${item.ip} · ${item.service}`:'No configured target');
   set('subnet',item?item.gateway_address?`${item.gateway_address} is in ${item.subnet}`:`No gateway IPv4 address in ${item.subnet}`:'Unknown');
@@ -124,6 +140,11 @@ function renderTelemetry(state){
     body.append(row);
   }
   $('emptyRobots').hidden=agents.length>0;
+  const chosen=inventory?.targets.find(t=>t.id===$('target').value);
+  const live=chosen&&agents.find(a=>a.ip===chosen.ip && !a.readonly && (state.fleet?.link?.[a.ip]?.age??Infinity)<5);
+  set('commandStatus',state.match?'Gateway is in match mode: it sends no robot commands.':live?`T${live.team} R${live.id} sends fresh debug telemetry; review its reported state before any command.`:'No fresh command-capable telemetry for the selected target.');
+  $('robotControls').href=live?'/robot.html?robot='+encodeURIComponent(`${live.ip}|${live.id}`):'/fleet.html';
+  $('robotControls').textContent=live?'Open selected robot controls':'Open Fleet controls';
   set('telemetryTime','· checked '+new Date().toLocaleTimeString());
 }
 async function pollTelemetry(){
