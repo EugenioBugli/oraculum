@@ -431,14 +431,14 @@ class ControlServer:
                     self.send_header("Content-Length", str(len(response)))
                     self.end_headers()
                     self.wfile.write(response)
-                elif parsed_path.path in ("/", "/index.html", "/wasm_test.html", "/dashboard", "/dashboard.html", "/ar_dashboard.html",
+                elif parsed_path.path in ("/", "/index.html", "/wasm_test.html", "/dashboard", "/dashboard.html", "/ar_dashboard.html", "/simulation", "/simulation.html",
                                           "/fleet", "/fleet.html", "/robot", "/robot.html",
                                           "/tv.html", "/director", "/director.html"):
                     try:
                         filename = os.path.basename(parsed_path.path)
                         if not filename or filename == "/":
                             filename = "index.html"
-                        elif filename in ("dashboard", "fleet", "robot", "director"):
+                        elif filename in ("dashboard", "fleet", "robot", "director", "simulation"):
                             filename += ".html"
                             
                         dashboard_path = os.path.join(

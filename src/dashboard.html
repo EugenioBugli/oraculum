@@ -796,6 +796,7 @@
                 ORACULUM
             </div>
             <nav aria-label="Pages" style="display: flex; gap: 4px;"><a class="page-link" href="/index.html">Field</a><a class="page-link" href="/dashboard.html" aria-current="page" style="color: var(--text-primary);">Dashboard</a><a class="page-link" href="/fleet.html">Fleet</a></nav>
+            <span id="sourceSwitch"></span>
         </div>
 
         <div class="bar-section">
@@ -1089,9 +1090,11 @@
         import { createCircusView, leaderLines, placeLabels, showNote } from '/static/circus_view.js';
         import { FIELD, beliefDrawings, gotoDrawings, latchWord, drawDrawings2D, drawRobot2D, drawRobotTag2D, fieldLines, gcSummary, loadField, penaltyOf, robotName, robotTag, shortName, linkStale, linkCounts, readOnly, receptionLine, roleState, sourceTag, teamRgb, budgetSummary, isRobot, stateMismatch, teamLegend, teamPrimary, teamSummary, versionMark } from '/static/field_model.js';
         import { mountControlBar, mountOverlays, readOnlyLock, robotActions, toast, sendStop, stateUrl, withOperator } from '/static/control_bar.js';
+        import { mountSourceSwitch } from '/static/hybrid_overlay.mjs';
         import { mountRobotPanel } from '/static/robot_panel.js';
         import { renderInspector as renderInspectorPanel } from '/static/inspector.js';
         await loadField(location.origin);  // the field of the gateway's config.yaml, before the scenes are built
+        const sourceSwitch = mountSourceSwitch(document.getElementById('sourceSwitch'), FIELD);
 
         // Global state variables
         let API_URL = window.location.origin;
@@ -1700,6 +1703,7 @@
                     fieldAnchor.add(ballMesh);
                 }
                 ballMesh.position.set(state.ball.x, BALL_RADIUS, -state.ball.y);  // field (x, y) -> scene (x, ., -y)
+                ballMesh.material.color.setHex(state.ball.simulated ? 0x22d3ee : 0xf97316);
                 ballMesh.visible = true;
             } else if (ballMesh) {
                 ballMesh.visible = false;
@@ -1949,7 +1953,7 @@
 
             if (state.ball) {
                 const pt = toCanvasCoords(state.ball.x, state.ball.y);
-                ctx.fillStyle = "#f97316";
+                ctx.fillStyle = state.ball.simulated ? "#22d3ee" : "#f97316";
                 ctx.beginPath();
                 ctx.arc(pt.x, pt.y, 9, 0, 2 * Math.PI);
                 ctx.fill();
@@ -1963,8 +1967,16 @@
                 const primary = teamPrimary(state.agents);  // each disc gets a ring in its team's primary colour
                 state.agents.forEach(agent => {
                     const pt = toCanvasCoords(agent.x, agent.y);
-                    ctx.globalAlpha = linkStale(state, agent) ? 0.4 : 1;  // old data: greyed, as the card says "LINK N s old"
+                    ctx.globalAlpha = agent.simulated ? 0.6 : linkStale(state, agent) ? 0.4 : 1;  // ghosts are translucent
                     drawRobot2D(ctx, agent, pt.x, pt.y, px, isRobot(agent, selectedRobotId, selectedRobotIp) ? "rgba(99, 102, 241, 0.8)" : null, primary.get(agent.team));
+                    if (agent.simulated) {
+                        ctx.globalAlpha = 1;
+                        ctx.setLineDash([5 * px, 4 * px]);
+                        ctx.strokeStyle = "#67e8f9";
+                        ctx.lineWidth = 2 * px;
+                        ctx.beginPath(); ctx.arc(pt.x, pt.y, 21 * px, 0, 2 * Math.PI); ctx.stroke();
+                        ctx.setLineDash([]);
+                    }
                 });
                 ctx.globalAlpha = 1;
                 for (const agent of state.agents) {  // twin tags (".1", ".2") last: no other disc covers them
@@ -2020,11 +2032,12 @@
             let nextDelay = 100;
             try {
                 const res = await fetch(stateUrl(API_URL), { signal: AbortSignal.timeout(10000) });  // only against a hung request
-                const state = await res.json();
-                ctl.update(state);
+                const liveState = await res.json();
+                ctl.update(liveState);
                 syncBypassRow();
-                ov.update(state);
+                ov.update(liveState);
                 showManualTarget();  // the MANUAL text follows the lock state
+                const state = sourceSwitch.compose(liveState);
                 // Each robot's own ball estimate and seen obstacles: drawings "beliefs/ball", "beliefs/obstacles"
                 state.drawings = (state.drawings || []).concat(beliefDrawings((state.agents || []).filter(a => !linkStale(state, a))), gotoDrawings(state.agents));  // + go-to targets (robot panel)  // old beliefs of a silent robot are not drawn
                 lastPolledState = state;
@@ -2102,7 +2115,7 @@
                         <div class="robot-stat">
                             <span>BATT ${typeof agent.battery === 'number' && agent.battery >= 0 ? (agent.battery < 20 ? '<b style="color: var(--accent-red);">⚠ ' + Math.round(agent.battery) + '%</b>' : Math.round(agent.battery) + '%') : 'n/a'}${agent.fallen ? ' · <b style="color: var(--accent-red);">⚠ fallen</b>' : ''}${versionMark(agent, state.fleet?.head) ? ` · <span title="robot code against this gateway's checkout">code ${versionMark(agent, state.fleet?.head)}</span>` : ''}${(() => { const age = state.fleet?.link?.[agent.ip]?.age ?? 0; return age < 1 ? '' : ` · <b style="color: var(--accent-amber, #f59e0b); white-space: nowrap;">LINK ${age.toFixed(0)} s old</b>`; })()}</span>
                             <span class="card-actions"><span data-act="${agent.ip || '127.0.0.1'}" data-label="${robotName(agent, state.agents)}" data-ro="${readOnly(agent) ? 1 : 0}"></span>
-                            <a href="/robot.html?robot=${encodeURIComponent((agent.ip || '127.0.0.1') + '|' + agent.id)}" onclick="event.stopPropagation()" style="color: #93c5fd; text-decoration: none;">Robot ›</a></span>
+                            ${agent.simulated ? '' : '<a href="/robot.html?robot=' + encodeURIComponent((agent.ip || '127.0.0.1') + '|' + agent.id) + '" onclick="event.stopPropagation()" style="color: #93c5fd; text-decoration: none;">Robot ›</a>'}</span>
                         </div>
                     </div>
                 `;
