@@ -145,7 +145,7 @@ class ControlServer:
 
         # Hosted sessions: with ORACULUM_ACCESS_TOKEN set, every request needs the token (?token= once, then a cookie).
         self.access_token = os.environ.get("ORACULUM_ACCESS_TOKEN", "")
-        self.operations = OperationsInspector(self.config)
+        self.operations = OperationsInspector(self.config, root=root)
         self.artifact_root = os.path.join(root, "artifacts")
         # Hosted session: every joystick datagram goes to this address, whatever the body says (no UDP to the internet).
         self.control_ip = "" if self.match else os.environ.get("ORACULUM_CONTROL_IP", "")
@@ -297,7 +297,10 @@ class ControlServer:
                 parsed_path = urlparse(self.path)
                 query = parse_qs(parsed_path.query)
                 if parsed_path.path == "/ops/targets":
-                    self._json(200, {**server_instance.operations.inventory(),
+                    inventory = server_instance.operations.inventory()
+                    inventory["targets"] = [{k: v for k, v in target.items() if k != "repo"}
+                                            for target in inventory["targets"]]
+                    self._json(200, {**inventory,
                                      "probe_enabled": bool(server_instance.access_token) and not server_instance.match,
                                      "artifact_enabled": bool(server_instance.access_token)})
                     return
@@ -323,7 +326,7 @@ class ControlServer:
                         self._json(404, {"error": "unknown configured target"})
                         return
                     try:
-                        self._json(200, artifact_preview(server_instance.fleet_repo, target, profile))
+                        self._json(200, artifact_preview(target["repo"], target, profile))
                     except ValueError as exc:
                         self._json(400, {"error": str(exc)})
                     return

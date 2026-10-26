@@ -35,6 +35,9 @@ class ArtifactStageTest(unittest.TestCase):
             env = {**os.environ, "GIT_AUTHOR_NAME": "Test", "GIT_AUTHOR_EMAIL": "test@example.invalid",
                    "GIT_COMMITTER_NAME": "Test", "GIT_COMMITTER_EMAIL": "test@example.invalid"}
             subprocess.run(["git", "-C", str(repo), "commit", "-qm", "fixture"], env=env, check=True)
+            cache = repo / ".pixi-cache"
+            cache.mkdir()
+            (cache / "download.bin").write_bytes(b"cache output")
             target = {"id": "robot6", "ip": "192.168.10.102", "model": "t1", "gateway_address": "192.168.10.236"}
             output = Path(root) / "artifacts"
             result = stage(repo, target, "match", output)

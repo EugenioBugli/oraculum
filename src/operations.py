@@ -7,6 +7,7 @@ import socket
 import struct
 import subprocess
 import time
+from pathlib import Path
 
 
 _ID = re.compile(r"^[a-zA-Z0-9_-]{1,32}$")
@@ -30,19 +31,25 @@ def local_interfaces():
 
 
 class OperationsInspector:
-    def __init__(self, config):
+    def __init__(self, config, root=None):
+        root = Path(root or Path(__file__).resolve().parents[1]).resolve()
+        workspace = root.parent
         self.targets = {}
         for item in (config.get("operations") or {}).get("targets", []):
             try:
                 identifier = str(item["id"])
                 address = ipaddress.ip_address(str(item["ip"]))
                 subnet = ipaddress.ip_network(str(item.get("subnet", str(address) + "/24")), strict=False)
+                host = ipaddress.ip_address(str(item["oraculum_host"])) if item.get("oraculum_host") else None
+                repo = (root / str(item.get("repo", (config.get("fleet") or {}).get("repo", "../spqrbooster2026")))).resolve()
                 user = str(item.get("user", "booster"))
                 service = str(item.get("service", "maximus"))
                 model = str(item.get("model", ""))
                 if not (_ID.fullmatch(identifier) and address.version == 4 and address.is_private
                         and not address.is_loopback and not address.is_link_local
                         and subnet.version == 4 and address in subnet and subnet.prefixlen >= 8
+                        and (host is None or (host.version == 4 and host in subnet and host != address))
+                        and (repo == workspace or workspace in repo.parents)
                         and _USER.fullmatch(user) and _SERVICE.fullmatch(service)
                         and model in ("", "t1", "t2", "k1")):
                     raise ValueError("invalid target")
@@ -51,7 +58,8 @@ class OperationsInspector:
                 self.targets[identifier] = {
                     "id": identifier, "name": str(item.get("name", identifier))[:48],
                     "ip": str(address), "subnet": str(subnet), "user": user, "service": service,
-                    "model": model,
+                    "model": model, "repo": str(repo),
+                    "oraculum_host": str(host) if host else None,
                 }
             except (KeyError, TypeError, ValueError) as exc:
                 raise ValueError("Invalid operations target in config.yaml") from exc
@@ -62,7 +70,9 @@ class OperationsInspector:
         for item in self.targets.values():
             subnet = ipaddress.ip_network(item["subnet"])
             gateway = next((i["address"] for i in interfaces if ipaddress.ip_address(i["address"]) in subnet), None)
-            targets.append({**item, "gateway_address": gateway})
+            configured = item["oraculum_host"] or gateway
+            targets.append({**item, "gateway_address": configured, "gateway_interface": gateway,
+                            "gateway_connected": bool(gateway and gateway == configured)})
         return {"targets": targets, "interfaces": interfaces,
                 "observed_at": round(time.time(), 3)}
 

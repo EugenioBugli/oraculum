@@ -90,7 +90,7 @@ function selectTarget(){
   $('robotControls').href='/fleet.html';$('robotControls').textContent='Open Fleet controls';
   const item=inventory?.targets.find(t=>t.id===$('target').value);
   set('targetAddress',item?`${item.user}@${item.ip} · ${item.service}`:'No configured target');
-  set('subnet',item?item.gateway_address?`${item.gateway_address} is in ${item.subnet}`:`No gateway IPv4 address in ${item.subnet}`:'Unknown');
+  set('subnet',item?item.gateway_connected?`${item.gateway_address} active in ${item.subnet}`:item.gateway_interface?`Expected ${item.gateway_address}; interface has ${item.gateway_interface}`:`Expected ${item.gateway_address||'an address'} in ${item.subnet}; interface disconnected`:'Unknown');
   $('probe').disabled=!item || !inventory?.probe_enabled;
   $('previewArtifact').disabled=!item || !inventory?.artifact_enabled;
   $('reviewDeploy').disabled=!item || !$('artifactList').value || !inventory?.artifact_enabled;

@@ -21,11 +21,11 @@ def main():
     args = parser.parse_args()
     with (ROOT / "config.yaml").open() as stream:
         config = yaml.safe_load(stream)
-    target = next((item for item in OperationsInspector(config).inventory()["targets"]
+    target = next((item for item in OperationsInspector(config, root=ROOT).inventory()["targets"]
                    if item["id"] == args.target), None)
     if target is None:
         parser.error("unknown configured target")
-    repo = (ROOT / config.get("fleet", {}).get("repo", "../spqrbooster2026")).resolve()
+    repo = Path(target["repo"])
     try:
         data = stage(repo, target, args.profile, ROOT / "artifacts")
     except ValueError as exc:

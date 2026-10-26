@@ -9,7 +9,7 @@ from pathlib import Path
 
 import yaml
 
-from artifact_preview import _git, _hash, preview
+from artifact_preview import _git, _hash, _source_dirty, preview
 
 
 _SENSITIVE = ("password", "passwd", "psk", "secret", "token", "privatekey")
@@ -100,7 +100,7 @@ def stage(repo, target, profile, output_root):
             stream.flush()
             os.fsync(stream.fileno())
         version.chmod(0o600)
-        if _git(str(repo), "rev-parse", "HEAD") != status["commit"] or _git(str(repo), "status", "--porcelain"):
+        if _git(str(repo), "rev-parse", "HEAD") != status["commit"] or _source_dirty(str(repo)):
             raise ValueError("Source checkout changed during staging")
         data = {"id": identity, "source_commit": status["commit"], "target": target["id"],
                 "target_ip": target["ip"], "model": target["model"], "profile": profile,

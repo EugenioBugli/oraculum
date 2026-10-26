@@ -65,8 +65,11 @@ def plan(root, artifact_id, target):
         raise ValueError("staged binary is not AArch64")
     if artifact_id != commit[:12] + "-" + data["binary_sha256"][:12] + "-" + data["config_sha256"][:12]:
         raise ValueError("artifact identity does not match its hashes")
+    pending = ["fresh robot identity and service-path checks", "SSH credentials and trusted host key",
+               "physical support at activation", "authenticated deploy and rollback adapter"]
+    if not target.get("gateway_connected"):
+        pending.append("gateway laptop address active on the robot Ethernet subnet")
     return {"artifact": artifact_id, "target": target["id"], "target_ip": target["ip"],
             "profile": data["profile"], "source_commit": commit,
             "phases": list(PHASES), "offline_verified": True, "activation_available": False,
-            "pending": ["fresh robot identity and service-path checks", "SSH credentials and trusted host key",
-                        "physical support at activation", "authenticated deploy and rollback adapter"]}
+            "pending": pending}

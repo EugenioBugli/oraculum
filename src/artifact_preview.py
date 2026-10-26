@@ -26,6 +26,12 @@ def _hash(path):
     return h.hexdigest()
 
 
+def _source_dirty(repo):
+    # Pixi's local package cache is an output, not source input. Keep every other untracked file visible.
+    lines = _git(repo, "status", "--porcelain", "--untracked-files=normal").splitlines()
+    return any(line[3:] != ".pixi-cache/" for line in lines)
+
+
 def _architecture(path):
     with open(path, "rb") as stream:
         header = stream.read(20)
@@ -46,7 +52,7 @@ def preview(repo, target, profile):
     binary = os.path.join(repo, "build", "aarch64", "src", "app", "maximus_main")
     config_path = os.path.join(repo, "src", "app", "config", "deploy.yaml")
     commit = _git(repo, "rev-parse", "HEAD")
-    dirty = bool(_git(repo, "status", "--porcelain"))
+    dirty = _source_dirty(repo)
     blockers = []
     if not commit:
         blockers.append("Robot checkout has no readable Git commit.")

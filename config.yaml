@@ -45,6 +45,8 @@ operations:
       name: Robot 6 (wired)
       ip: 192.168.10.102
       subnet: 192.168.10.0/24
+      oraculum_host: 192.168.10.236   # intended fixed laptop IP; check interface before activation
+      repo: ../robot6-oraculum-build  # isolated bc462d43 robot 6 test checkout
       user: booster
       service: maximus
       model: t1           # observed in the 2026-10-25 robot 6 inspection; recheck before deployment
