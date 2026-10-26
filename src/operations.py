@@ -45,13 +45,17 @@ class OperationsInspector:
                 user = str(item.get("user", "booster"))
                 service = str(item.get("service", "maximus"))
                 model = str(item.get("model", ""))
+                number = item.get("number")
+                dual_board = item.get("dual_board")
                 if not (_ID.fullmatch(identifier) and address.version == 4 and address.is_private
                         and not address.is_loopback and not address.is_link_local
                         and subnet.version == 4 and address in subnet and subnet.prefixlen >= 8
                         and (host is None or (host.version == 4 and host in subnet and host != address))
                         and (repo == workspace or workspace in repo.parents)
                         and _USER.fullmatch(user) and _SERVICE.fullmatch(service)
-                        and model in ("", "t1", "t2", "k1")):
+                        and model in ("", "t1", "t2", "k1")
+                        and (number is None or (type(number) is int and 1 <= number <= 99))
+                        and (dual_board is None or type(dual_board) is bool)):
                     raise ValueError("invalid target")
                 if identifier in self.targets:
                     raise ValueError("duplicate target")
@@ -60,6 +64,7 @@ class OperationsInspector:
                     "ip": str(address), "subnet": str(subnet), "user": user, "service": service,
                     "model": model, "repo": str(repo),
                     "oraculum_host": str(host) if host else None,
+                    "number": number, "dual_board": dual_board,
                 }
             except (KeyError, TypeError, ValueError) as exc:
                 raise ValueError("Invalid operations target in config.yaml") from exc

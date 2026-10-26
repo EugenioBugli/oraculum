@@ -30,6 +30,10 @@ class ArtifactStageTest(unittest.TestCase):
             config_path = repo / "src/app/config/deploy.yaml"
             config_path.parent.mkdir(parents=True)
             config_path.write_text("robot: t1\noraculum: off\noraculumHost: ''\nuseRerun: true\n")
+            (config_path.parent / "settings.yaml").write_text("scenario: sim_fast\n")
+            nested = config_path.parent / "fields"
+            nested.mkdir()
+            (nested / "field.yaml").write_text("length: 9\n")
             subprocess.run(["git", "init", "-q", str(repo)], check=True)
             subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
             env = {**os.environ, "GIT_AUTHOR_NAME": "Test", "GIT_AUTHOR_EMAIL": "test@example.invalid",
@@ -38,7 +42,8 @@ class ArtifactStageTest(unittest.TestCase):
             cache = repo / ".pixi-cache"
             cache.mkdir()
             (cache / "download.bin").write_bytes(b"cache output")
-            target = {"id": "robot6", "ip": "192.168.10.102", "model": "t1", "gateway_address": "192.168.10.236"}
+            target = {"id": "robot6", "ip": "192.168.10.102", "model": "t1", "gateway_address": "192.168.10.236",
+                      "number": 6, "dual_board": False}
             output = Path(root) / "artifacts"
             result = stage(repo, target, "match", output)
             saved = output / result["id"]
@@ -49,6 +54,10 @@ class ArtifactStageTest(unittest.TestCase):
             staged_config = yaml.safe_load((saved / "deploy.yaml").read_text())
             self.assertEqual(staged_config["oraculum"], "match")
             self.assertFalse(staged_config["useRerun"])
+            self.assertEqual(staged_config["number"], 6)
+            self.assertFalse(staged_config["dualBoard"])
+            self.assertEqual(yaml.safe_load((saved / "config/settings.yaml").read_text())["scenario"], "real")
+            self.assertTrue((saved / "config/fields/field.yaml").is_file())
             self.assertEqual(stage(repo, target, "match", output), result)
             self.assertEqual(list_artifacts(output), [result["id"]])
             review = plan(output, result["id"], target)
@@ -57,6 +66,11 @@ class ArtifactStageTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "invalid artifact ID"):
                 plan(output, "../../elsewhere", target)
             saved.chmod(0o700)
+            nested_config = saved / "config/fields/field.yaml"
+            nested_config.write_text("length: 42\n")
+            with self.assertRaisesRegex(ValueError, "config file does not match"):
+                plan(output, result["id"], target)
+            nested_config.write_text("length: 9\n")
             (saved / "maximus_main").write_bytes(b"corrupt")
             with self.assertRaisesRegex(ValueError, "does not match"):
                 stage(repo, target, "match", output)

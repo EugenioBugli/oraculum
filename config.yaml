@@ -50,6 +50,8 @@ operations:
       user: booster
       service: maximus
       model: t1           # observed in the 2026-10-25 robot 6 inspection; recheck before deployment
+      number: 6           # jersey/player number in the deployed framework config
+      dual_board: false   # observed single-board robot 6; recheck before deployment
 
 frames:
   # Robots send (x, y, angle) in their own team's frame (own goal at -x). Packets from the team with this
