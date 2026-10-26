@@ -2,6 +2,8 @@
 
 Updated 2026-10-25. This plan covers routine practice and test operations from one Oraculum interface. The robot is currently disconnected; no deployment or motion command is part of this plan's implementation.
 
+Implementation update 2026-10-26: the first read-only Operations page, configured Ethernet inventory, bounded SSH diagnostics, and local artifact preview are implemented. See [Operations](OPERATIONS.md). Build/staging jobs, deployment, rollback, service changes, and motion consolidation remain open.
+
 ## Entry and workflow
 
 Put **Operations** in the session menu beside **Real session**, **Simulated session**, **Real + ghosts**, and **Settings**. Keep the field and fleet views for monitoring and in-session controls; the Operations workspace handles connection, software, services, diagnostics, and logs. A simulated session opens the scenario wizard. The first hybrid slice is a browser display overlay: simulated ball and players never enter robot control.

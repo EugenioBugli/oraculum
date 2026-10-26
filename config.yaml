@@ -37,6 +37,17 @@ display:
 # Env ORACULUM_MATCH=1 (or 0) overrides this key. Network placement: docs/wiki/Match-Mode-and-Rules.md.
 match: false
 
+# Read-only Operations inventory. Probes use fixed SSH commands and require ORACULUM_ACCESS_TOKEN.
+# Each robot has the same factory wired address, so connect only one at a time on Ethernet.
+operations:
+  targets:
+    - id: robot6
+      name: Robot 6 (wired)
+      ip: 192.168.10.102
+      subnet: 192.168.10.0/24
+      user: booster
+      service: maximus
+
 frames:
   # Robots send (x, y, angle) in their own team's frame (own goal at -x). Packets from the team with this
   # colour (as DebugMessageSender sends it, lowercase) are point-mirrored into the shared field frame, where

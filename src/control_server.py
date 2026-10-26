@@ -19,9 +19,11 @@ import yaml
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from camera_hub import CameraHub
+from artifact_preview import preview as artifact_preview
 from config import load_teams
 from control_lock import ControlLock
 from gc_client import PENALTY_NAMES, SET_PLAY_NAMES, GCReceiver
+from operations import OperationsInspector
 from reception import Reception
 from session import EventLog, Recorder
 from sim_gc import SimGameController
@@ -142,6 +144,7 @@ class ControlServer:
 
         # Hosted sessions: with ORACULUM_ACCESS_TOKEN set, every request needs the token (?token= once, then a cookie).
         self.access_token = os.environ.get("ORACULUM_ACCESS_TOKEN", "")
+        self.operations = OperationsInspector(self.config)
         # Hosted session: every joystick datagram goes to this address, whatever the body says (no UDP to the internet).
         self.control_ip = "" if self.match else os.environ.get("ORACULUM_CONTROL_IP", "")
         self.control_lock = ControlLock()  # engineer mode: one operator drives at a time (src/control_lock.py)
@@ -291,6 +294,37 @@ class ControlServer:
                     return
                 parsed_path = urlparse(self.path)
                 query = parse_qs(parsed_path.query)
+                if parsed_path.path == "/ops/targets":
+                    self._json(200, {**server_instance.operations.inventory(),
+                                     "probe_enabled": bool(server_instance.access_token) and not server_instance.match,
+                                     "artifact_enabled": bool(server_instance.access_token)})
+                    return
+                if parsed_path.path == "/ops/probe":
+                    if not server_instance.access_token or server_instance.match:
+                        self._json(403, {"error": "SSH diagnostics require an access token and practice mode."})
+                        return
+                    identifier = query.get("target", [""])[0]
+                    try:
+                        self._json(200, server_instance.operations.probe(identifier))
+                    except KeyError:
+                        self._json(404, {"error": "unknown configured target"})
+                    return
+                if parsed_path.path == "/ops/artifact":
+                    if not server_instance.access_token:
+                        self._json(403, {"error": "Artifact preview requires ORACULUM_ACCESS_TOKEN."})
+                        return
+                    identifier = query.get("target", [""])[0]
+                    profile = query.get("profile", [""])[0]
+                    target = next((item for item in server_instance.operations.inventory()["targets"]
+                                   if item["id"] == identifier), None)
+                    if target is None:
+                        self._json(404, {"error": "unknown configured target"})
+                        return
+                    try:
+                        self._json(200, artifact_preview(server_instance.fleet_repo, target, profile))
+                    except ValueError as exc:
+                        self._json(400, {"error": str(exc)})
+                    return
                 if parsed_path.path == "/field":
                     self._json(200, server_instance.field)
                     return
@@ -431,14 +465,14 @@ class ControlServer:
                     self.send_header("Content-Length", str(len(response)))
                     self.end_headers()
                     self.wfile.write(response)
-                elif parsed_path.path in ("/", "/index.html", "/wasm_test.html", "/dashboard", "/dashboard.html", "/ar_dashboard.html", "/simulation", "/simulation.html",
+                elif parsed_path.path in ("/", "/index.html", "/wasm_test.html", "/dashboard", "/dashboard.html", "/ar_dashboard.html", "/simulation", "/simulation.html", "/operations", "/operations.html",
                                           "/fleet", "/fleet.html", "/robot", "/robot.html",
                                           "/tv.html", "/director", "/director.html"):
                     try:
                         filename = os.path.basename(parsed_path.path)
                         if not filename or filename == "/":
                             filename = "index.html"
-                        elif filename in ("dashboard", "fleet", "robot", "director", "simulation"):
+                        elif filename in ("dashboard", "fleet", "robot", "director", "simulation", "operations"):
                             filename += ".html"
                             
                         dashboard_path = os.path.join(

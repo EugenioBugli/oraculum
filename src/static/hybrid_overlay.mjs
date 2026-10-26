@@ -18,7 +18,7 @@ export function mountSourceSwitch(host, field) {
     }
     const select = document.createElement('select');
     select.setAttribute('aria-label', 'Session menu');
-    for (const [value, label] of [['real', 'Real session'], ['simulated', 'Simulated session…'], ['hybrid', 'Real + ghosts'], ['settings', 'Settings…']]) {
+    for (const [value, label] of [['real', 'Real session'], ['simulated', 'Simulated session…'], ['hybrid', 'Real + ghosts'], ['operations', 'Operations…'], ['settings', 'Settings…']]) {
         const option = document.createElement('option');
         option.value = value;
         option.textContent = label;
@@ -34,6 +34,10 @@ export function mountSourceSwitch(host, field) {
     host.replaceChildren(select, preview);
 
     select.addEventListener('change', () => {
+        if (select.value === 'operations') {
+            location.href = '/operations.html';
+            return;
+        }
         if (select.value === 'simulated' || select.value === 'settings') {
             location.href = '/simulation.html?mode=' + select.value;
             return;
