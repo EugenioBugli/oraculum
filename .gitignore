@@ -8,6 +8,7 @@ src/static/circus/
 
 # Session recordings of the gateway (POST /record)
 recordings/
+artifacts/
 
 # Claude Code and agent files: never part of the delivery (owner, 2026-10-19)
 CLAUDE.md

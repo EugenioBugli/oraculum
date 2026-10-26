@@ -10,4 +10,12 @@ SSH diagnostics and artifact preview require the gateway to be started with `ORA
 
 **Preview artifact** reads the local robot checkout configured as `fleet.repo`. It reports the Git commit/dirty state, AArch64 binary architecture and SHA-256, and only the proposed `robot`, `oraculum`, `oraculumHost`, `useRerun`, `useGameController`, and `customMode` values. Wi-Fi credentials and unrelated config are excluded. A missing build, unknown target model, wrong architecture, dirty checkout, or missing gateway subnet address blocks staging. Preview performs no build or robot transfer.
 
-Hardware acceptance remains open because the robot is disconnected. The next implementation stage is a pinned build/staging job and a wired-only deploy adapter with backup, verification, and rollback. The existing deploy script requires Wi-Fi and must not serve as the wired adapter.
+Once those checks pass, a local terminal can pin the existing build without contacting the robot:
+
+```bash
+python3 tools/stage_artifact.py --target robot6 --profile practice
+```
+
+The staged files live in ignored `artifacts/<commit>-<binary-hash>-<config-hash>/`, with restrictive permissions. Repeating the command verifies the existing copy; a mismatch fails. The staging tool refuses secret-looking fields in `deploy.yaml`. It is intentionally a CLI step until an authenticated host-operation API is designed. On 2026-10-26 the actual checkout correctly refuses staging: it is dirty, has no AArch64 binary, the laptop has no address on the wired robot subnet, and the robot model has not been verified in Operations config.
+
+Hardware acceptance remains open because the robot is disconnected. The next implementation stage is a bounded build job and a wired-only deploy adapter with backup, verification, and rollback. The existing deploy script requires Wi-Fi and must not serve as the wired adapter.
