@@ -45,7 +45,7 @@ python3 src/oraculum_cli.py walk 0.4 0.0 0.0 --ip 10.0.19.103 --duration 2
   oraculum joystick 500 ms after the last packet, so the robot stops by itself after the run.
 - `--ip` (default `127.0.0.1`) and `--port` (default 10007).
 - It needs the control lock. It is refused (HTTP 403) in READY, SET and PLAYING.
-- This is the only client that can turn the robot. The on-screen joystick always sends `vtheta: 0`.
+- The Field and Dashboard pages also have hold-to-turn buttons; the CLI remains useful for a precisely bounded turn duration.
 
 ### stop, lie, resume
 

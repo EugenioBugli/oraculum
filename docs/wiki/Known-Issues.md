@@ -96,7 +96,7 @@ The real-time factor falls about as 2/N with N robots: 0.98 (1v1), 0.45 (3v3), 0
 
 ## 11. UI and CLI limits
 
-- The on-screen joystick cannot turn the robot: the pages always send `vtheta: 0`. Use `oraculum_cli.py walk`. (from code)
+- Hold-to-turn buttons are now present in Field and Dashboard, but their effect has not been accepted on a real robot.
 - The speed sliders go up to 2.0, but the robot clamps each stick value to [-1, 1]. Above 1.0 a slider has no effect.
   (from code)
 - The ARMS: LIMP button in the main view and the IDE-style view sends `lt`, which the robot reads only as the left

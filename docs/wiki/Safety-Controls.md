@@ -82,8 +82,10 @@ commands.
 
 - The stick sets forward speed (`vx`) and sideways speed (`vy`). The sliders scale them. The robot multiplies them by
   its own top speed and clamps each stick value to [-1, 1], so a slider above 1.0 has no more effect.
-- **The on-screen stick cannot turn the robot**: the pages always send `vtheta: 0`. To turn, use the CLI
-  (`oraculum_cli.py walk VX VY VTHETA --ip IP`).
+- The Field and Dashboard panels have **hold-to-turn** left/right buttons. They send `vtheta` only while MANUAL is on,
+  this tab holds the lock, the referee rule allows control, and the button is held. Release, pointer cancel, tab hide,
+  or browser blur returns turn to zero. This was tested with intercepted browser commands and fake telemetry, not a real robot.
+  For a timed turn, use `oraculum_cli.py walk VX VY VTHETA --ip IP --duration SECONDS`.
 - The robot uses the oraculum joystick only while datagrams keep arriving. **500 ms after the last one, it stops
   following them.** A closed browser cannot leave the robot walking. A real robot then stays in its Manual state, with
   the body on its own remote controller, until Resume (the Play combo). A simulated robot goes back to autonomous play.

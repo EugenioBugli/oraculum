@@ -48,7 +48,7 @@ Purpose: see the whole game, and drive one robot when needed.
   a robot it shows only a hint. After you select a robot (in the list or on the field) it shows:
   - the robot's name, a live 3D miniature of the robot (its MuJoCo model, posed with the joint angles from the
     telemetry; a 2D disc without WebGL2), and its role, state, latch and go-to target;
-  - the MANUAL switch and the on-screen stick with two speed sliders (only after a selection). See
+  - the MANUAL switch, on-screen stick, two speed sliders, and hold-to-turn buttons (only after a selection). See
     [Safety Controls](Safety-Controls);
   - STOP, Resume, **Get up**, **Sit down** (only for a T2), a 2 s press-and-hold LIE DOWN;
   - **Go to**: a list of positions from `GET /positions` (this robot's own READY and side-line positions first), with

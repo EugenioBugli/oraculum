@@ -1104,6 +1104,8 @@
                                 <span id="labelVx">1.0</span>
                             </div>
                             <input type="range" id="sliderVx" min="0.1" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('labelVx').textContent=Number(this.value).toFixed(1)">
+                            <div style="font-size:0.68rem;color:var(--text-secondary)">TURN · hold to rotate</div>
+                            <div style="display:flex;gap:0.35rem"><button type="button" data-turn="left" disabled aria-label="Hold to turn left" style="flex:1">↶ LEFT</button><button type="button" data-turn="right" disabled aria-label="Hold to turn right" style="flex:1">RIGHT ↷</button></div>
                         </div>
                     </div>
                     <div class="rp-cmds"></div>
@@ -1180,6 +1182,7 @@
         import { FIELD, beliefDrawings, gotoDrawings, latchWord, drawDrawings2D, drawRobot2D, drawRobotTag2D, fieldLines, gcSummary, loadField, isRobot, penaltyOf, robotName, robotTag, shortName, linkStale, linkCounts, robotTexts, readOnly, receptionLine, roleState, sourceTag, stateMismatch, teamLegend, teamPrimary, teamRgb, teamSummary, versionMark, budgetSummary } from '/static/field_model.js';
         import { mountControlBar, mountOverlays, readOnlyLock, robotActions, toast, stateUrl, withOperator } from '/static/control_bar.js';
         import { mountSourceSwitch } from '/static/hybrid_overlay.mjs';
+        import { mountTurnHold } from '/static/hold_turn.mjs';
         import { mountRobotPanel } from '/static/robot_panel.js';
         import { renderInspector } from '/static/inspector.js';
         await loadField(location.origin);  // the field of the gateway's config.yaml, before the scenes are built
@@ -2452,6 +2455,7 @@
         // MANUAL drives `manualRobot`, fixed when MANUAL turns on: selecting another robot only shows it. The toggle
         // says ON / OFF in words; after OFF the panel says the robot is released.
         let manualRobot = null, releasedRobot = null;  // {id, ip}
+        const turnHold = mountTurnHold(document.querySelector('[data-turn="left"]'), document.querySelector('[data-turn="right"]'));
         const robotLabel = (r) => {
             const agents = lastState?.agents || [], a = agents.find(x => x.id === r.id && (x.ip || "127.0.0.1") === r.ip);
             return a ? shortName(robotName(a, agents)) : `R${r.id} (${r.ip})`;  // "T19 R3·.2": the same text as its buttons
@@ -2475,6 +2479,7 @@
             const ro = !isManualMode && selected && readOnly((lastState?.agents || []).find(x => x.id === selected.id && (x.ip || "127.0.0.1") === selected.ip));
             if (ro) text = `${robotLabel(selected)} is read-only (no oraculum telemetry): MANUAL cannot drive it.`;
             box.disabled = !isManualMode && (!selected || ro);
+            turnHold.setEnabled(isManualMode && ctl.hasControl() && !refereeBlocks());
             document.getElementById("manualTarget").textContent = text;
             document.getElementById("manualToggleText").textContent = isManualMode ? "MANUAL: ON" : "MANUAL: OFF";
             document.getElementById("manualBannerText").textContent = !manualRobot ? ""
@@ -2575,7 +2580,7 @@
                     port: 10007,
                     vx: vx,
                     vy: vy,
-                    vtheta: 0.0,
+                    vtheta: turnHold.value(),
                     isManual: true,
                     testingOverride: document.getElementById("checkTestingOverride").checked
                 };
