@@ -37,6 +37,10 @@ display:
 # Env ORACULUM_MATCH=1 (or 0) overrides this key. Network placement: docs/wiki/Match-Mode-and-Rules.md.
 match: false
 
+# Fleet's "current version" comparison for this wired robot 6 test.
+fleet:
+  repo: ../robot6-oraculum-build
+
 # Read-only Operations inventory. Probes use fixed SSH commands and require ORACULUM_ACCESS_TOKEN.
 # Each robot has the same factory wired address, so connect only one at a time on Ethernet.
 operations:
