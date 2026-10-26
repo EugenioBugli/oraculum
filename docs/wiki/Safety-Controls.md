@@ -76,7 +76,7 @@ commands.
 
 1. Select the robot on the field or in the list. Status: tested in simulation (fake robots).
 2. Tick MANUAL. The page takes the control lock if it is free. Status: tested in simulation (fake robots).
-3. Drag the stick. The page sends a command every 80 ms while MANUAL is ticked and you hold the lock.
+3. Drag the stick. The page sends a command about every 80–100 ms while MANUAL is ticked and you hold the lock.
    Status: not tested with a real robot.
 4. Untick MANUAL when you are done. Status: tested in simulation (fake robots).
 
