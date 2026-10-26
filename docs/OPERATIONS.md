@@ -6,7 +6,7 @@ Targets are allowlisted in `config.yaml` under `operations.targets`. The initial
 
 The page always shows the gateway's IPv4 interfaces, whether one is on the configured robot subnet, and current robot telemetry with packet ages. **Run read-only SSH probe** checks TCP 22, then uses SSH batch mode with strict host-key checking and a five-second timeout. It reads service active state, installed version, `/dev/input/js*`, and the latest 30 service log lines. A disconnected robot, unknown host key, or absent SSH key produces an explicit failure; no password prompt or remote write is attempted.
 
-The command map shows the currently supported paths for STOP, Resume, Lie down, DAMP, Get up, Go to, and manual movement. It links to the selected robot's controls only when that target has fresh command-capable debug telemetry. Sit remains listed as unavailable with the current T2 SDK. The map itself sends no command.
+The command map shows the currently supported paths for STOP, Resume, Lie down, DAMP, Get up, Go to, and manual movement. It shows the selected robot's reported model, state, latch, version and packet age; the direct controls link appears only when fresh command-capable debug telemetry reports the configured model and the gateway is in practice mode. A blank latch may also mean old firmware did not report one. Sit remains listed as unavailable with the current T2 SDK. The map itself sends no command.
 
 SSH diagnostics and artifact preview require the gateway to be started with `ORACULUM_ACCESS_TOKEN` and opened through its existing access link. The SSH probe is additionally disabled in match mode. The browser does not store a robot password. Do not put an access token in `config.yaml` or commit it.
 

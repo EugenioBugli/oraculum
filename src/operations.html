@@ -58,12 +58,13 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#111b25;padding:12px;
   </section>
   <section aria-labelledby="telemetryTitle"><h2 id="telemetryTitle">Live telemetry <span id="telemetryTime" class="warn"></span></h2>
     <p class="note">These facts come from gateway packets. An open SSH port alone does not mean robot software or telemetry is running.</p>
-    <div class="scroll"><table><thead><tr><th>Robot</th><th>Address</th><th>Source</th><th>Packet age</th><th>State</th><th>Version</th></tr></thead><tbody id="robots"></tbody></table></div>
+    <div class="scroll"><table><thead><tr><th>Robot</th><th>Address</th><th>Source</th><th>Packet age</th><th>Model</th><th>State</th><th>Latch</th><th>Version</th></tr></thead><tbody id="robots"></tbody></table></div>
     <p id="emptyRobots" hidden>No robot telemetry is available. The robot may be disconnected, the framework may not be sending, or this gateway may not be its target.</p>
   </section>
   <section aria-labelledby="commandsTitle">
     <h2 id="commandsTitle">Command map</h2>
     <p id="commandStatus">No live robot selected.</p>
+    <p class="note">State and latch come from gateway telemetry, not proof that a requested motion completed. A blank latch may also mean older robot software did not report one. Recheck packet age after each command.</p>
     <p><a id="robotControls" href="/fleet.html">Open Fleet controls</a> · <a href="/index.html">Open Field manual control</a></p>
     <div class="scroll"><table><thead><tr><th>Operation</th><th>Current path</th><th>Condition</th></tr></thead><tbody>
       <tr><td>STOP / Resume</td><td>Robot page or Fleet</td><td>Recent debug telemetry; Resume needs the control lock</td></tr>
@@ -158,17 +159,22 @@ function renderTelemetry(state){
   for(const agent of agents){
     const ip=agent.ip||'unknown', age=state.fleet?.link?.[ip]?.age;
     const values=[`T${agent.team} R${agent.id}`,ip,(agent.sources||[]).join(', ')||'debug',
-      Number.isFinite(age)?age.toFixed(1)+' s':'unknown',agent.state||'unknown',agent.sys?.version||'unknown'];
+      Number.isFinite(age)?age.toFixed(1)+' s':'unknown',agent.robot||'unreported',
+      agent.state||'unknown',agent.readonly?'unreported':(agent.latch||'none / unreported'),agent.sys?.version||'unknown'];
     const row=document.createElement('tr');
     for(const value of values){const cell=document.createElement('td');cell.textContent=value;row.append(cell)}
     body.append(row);
   }
   $('emptyRobots').hidden=agents.length>0;
   const chosen=inventory?.targets.find(t=>t.id===$('target').value);
-  const live=chosen&&agents.find(a=>a.ip===chosen.ip && !a.readonly && (state.fleet?.link?.[a.ip]?.age??Infinity)<5);
-  set('commandStatus',state.match?'Gateway is in match mode: it sends no robot commands.':live?`T${live.team} R${live.id} sends fresh debug telemetry; review its reported state before any command.`:'No fresh command-capable telemetry for the selected target.');
-  $('robotControls').href=live?'/robot.html?robot='+encodeURIComponent(`${live.ip}|${live.id}`):'/fleet.html';
-  $('robotControls').textContent=live?'Open selected robot controls':'Open Fleet controls';
+  const live=chosen&&agents.find(a=>{const age=state.fleet?.link?.[a.ip]?.age;return a.ip===chosen.ip && !a.readonly && Number.isFinite(age) && age<5});
+  const modelMatch=live&&live.robot&&chosen.model&&live.robot===chosen.model;
+  set('commandStatus',state.match?'Gateway is in match mode: it sends no robot commands.':live?
+    `T${live.team} R${live.id}: ${live.robot||'model unreported'}${modelMatch?' (matches configured model)':' (verify model before commanding)'}; state ${live.state||'unknown'}; latch ${live.latch||'none / unreported'}; packet age ${state.fleet.link[live.ip].age.toFixed(1)} s.`:
+    'No fresh command-capable telemetry for the selected target.');
+  const controlsAvailable=!state.match&&modelMatch;
+  $('robotControls').href=controlsAvailable?'/robot.html?robot='+encodeURIComponent(`${live.ip}|${live.id}`):'/fleet.html';
+  $('robotControls').textContent=controlsAvailable?'Open selected robot controls':'Open Fleet controls';
   set('telemetryTime','· checked '+new Date().toLocaleTimeString());
 }
 async function pollTelemetry(){
