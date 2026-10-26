@@ -167,11 +167,11 @@ function renderTelemetry(state){
   }
   $('emptyRobots').hidden=agents.length>0;
   const chosen=inventory?.targets.find(t=>t.id===$('target').value);
-  const live=chosen&&agents.find(a=>{const age=state.fleet?.link?.[a.ip]?.age;return a.ip===chosen.ip && !a.readonly && Number.isFinite(age) && age<5});
+  const live=chosen&&agents.find(a=>{const age=state.fleet?.link?.[a.ip]?.age;return a.ip===chosen.ip && Number(a.id)===chosen.number && !a.readonly && Number.isFinite(age) && age<5});
   const modelMatch=live&&live.robot&&chosen.model&&live.robot===chosen.model;
   set('commandStatus',state.match?'Gateway is in match mode: it sends no robot commands.':live?
     `T${live.team} R${live.id}: ${live.robot||'model unreported'}${modelMatch?' (matches configured model)':' (verify model before commanding)'}; state ${live.state||'unknown'}; latch ${live.latch||'none / unreported'}; packet age ${state.fleet.link[live.ip].age.toFixed(1)} s.`:
-    'No fresh command-capable telemetry for the selected target.');
+    'No fresh command-capable telemetry matching the selected address and player number.');
   const controlsAvailable=!state.match&&modelMatch;
   $('robotControls').href=controlsAvailable?'/robot.html?robot='+encodeURIComponent(`${live.ip}|${live.id}`):'/fleet.html';
   $('robotControls').textContent=controlsAvailable?'Open selected robot controls':'Open Fleet controls';
