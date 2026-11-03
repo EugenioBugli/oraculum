@@ -72,11 +72,11 @@ def plan(root, artifact_id, target):
     tree_hash = data.get("config_tree_sha256")
     if not config_dir.is_dir() or config_dir.is_symlink() or not isinstance(config_files, dict) \
             or not isinstance(tree_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", tree_hash) \
-            or not {"deploy.yaml", "settings.yaml"}.issubset(config_files):
+            or "deploy.yaml" not in config_files:
         raise ValueError("artifact has no complete pinned config directory")
     for name, digest in config_files.items():
         parts = PurePosixPath(name).parts if isinstance(name, str) else ()
-        if not parts or any(part in (".", "..") for part in parts) or name.startswith("/") \
+        if not parts or not re.fullmatch(r"[a-zA-Z0-9_./-]+\.yaml", name) or any(part in (".", "..") for part in parts) or name.startswith("/") \
                 or not name.endswith(".yaml") or not isinstance(digest, str) \
                 or not re.fullmatch(r"[0-9a-f]{64}", digest):
             raise ValueError("artifact config has an invalid file entry")
@@ -96,7 +96,7 @@ def plan(root, artifact_id, target):
         raise ValueError("artifact config tree does not match its hash")
     try:
         deploy = yaml.safe_load((config_dir / "deploy.yaml").read_bytes())
-        settings = yaml.safe_load((config_dir / "settings.yaml").read_bytes())
+        settings = yaml.safe_load((config_dir / "settings.yaml").read_bytes()) if "settings.yaml" in config_files else deploy
     except yaml.YAMLError as exc:
         raise ValueError("artifact config YAML is invalid") from exc
     if not isinstance(deploy, dict) or not isinstance(settings, dict):

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import yaml
 
-from artifact_preview import _git, _hash, _source_dirty, preview
+from artifact_preview import _git, _hash, _source_dirty, preview, binary_path
 
 
 _SENSITIVE = ("password", "passwd", "psk", "secret", "token", "privatekey")
@@ -53,11 +53,15 @@ def _config_bundle(repo, target, profile):
             raise ValueError("Unexpected file in robot config: " + path.name)
         relative = path.relative_to(config_root).as_posix()
         raw = yaml.safe_load(path.read_bytes())
+        if relative == "deploy.yaml" and isinstance(raw, dict):
+            raw.pop("wifi", None)  # Ethernet artifacts never contain or change Wi-Fi credentials.
         if not isinstance(raw, dict) or _contains_secret(raw):
             raise ValueError("Robot config contains secret-looking fields or invalid YAML: " + relative)
         if relative == "deploy.yaml":
             raw.update(oraculum=profile, oraculumHost=target["gateway_address"],
                        number=target["number"], dualBoard=target["dual_board"])
+            if not (config_root / "settings.yaml").exists():
+                raw["scenario"] = "real"
             if profile == "match":
                 raw.update(useRerun=False, useGameController=True)
             files[relative] = yaml.safe_dump(raw, sort_keys=False).encode()
@@ -66,8 +70,8 @@ def _config_bundle(repo, target, profile):
             files[relative] = yaml.safe_dump(raw, sort_keys=False).encode()
         else:
             files[relative] = path.read_bytes()
-    if "deploy.yaml" not in files or "settings.yaml" not in files:
-        raise ValueError("Robot config must include deploy.yaml and settings.yaml")
+    if "deploy.yaml" not in files:
+        raise ValueError("Robot config must include deploy.yaml")
     hashes = {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}
     tree_hash = hashlib.sha256(json.dumps(hashes, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return files, hashes, tree_hash
@@ -79,7 +83,7 @@ def stage(repo, target, profile, output_root):
     if not status["ready"]:
         raise ValueError("Artifact cannot be staged: " + " ".join(status["blockers"]))
     repo = Path(repo).resolve()
-    source = repo / "build/aarch64/src/app/maximus_main"
+    source = Path(binary_path(str(repo), target))
     files, file_hashes, tree_hash = _config_bundle(repo, target, profile)
     encoded_config = files["deploy.yaml"]
     config_hash = hashlib.sha256(encoded_config).hexdigest()

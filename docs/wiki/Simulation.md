@@ -2,6 +2,8 @@
 
 Result first: there are three ways to test oraculum without real robots.
 
+For a quick joystick-direction check in the current UI, choose **Real + ghosts** from the session menu, select a blue `SIM · joystick preview` ghost, and turn MANUAL on. Drag the on-screen stick or hold a turn button. The ghost moves with browser-local kinematics and the panel shows forward/side/turn input values. This sends no command or control-lock request to a physical robot. It tests the UI joystick mapping, not the robot's walking controller or a Circus session. Turn MANUAL off before selecting a different target.
+
 | Way | Robots | Where | Status |
 |---|---|---|---|
 | Fake robots | `tools/udp_sender.py`: 7 robots that move at random. No robot code runs. | Your laptop | Tested in simulation (2026-10-21). See [Quick Start](Quick-Start). |
@@ -117,3 +119,5 @@ python3 hosted/modal_session.py stop sb-...
 ```
 
 The play tests of 3v3 and 5v5 games ran on Hetzner, not on Modal.
+
+The wizard also offers authenticated isolated simulator jobs when a pinned launcher image is configured. See [job configuration and image contract](../OPERATION_JOBS.md). Process lifecycle is implemented and fixture-tested; a production image and telemetry bridge still need acceptance. Ghost preview works without that image.

@@ -12,20 +12,21 @@ header{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:12px 20px
 header strong{letter-spacing:.12em}nav{display:flex;gap:8px;flex-wrap:wrap}a{color:#a7eaf4}nav a{color:var(--muted);text-decoration:none;padding:5px 8px;border-radius:5px}nav a[aria-current]{color:#fff;background:#315265}
 main{max-width:1250px;margin:auto;padding:22px;display:grid;gap:16px}h1{font-size:26px;margin:0}h2{font-size:16px;margin:0 0 12px}p{margin:4px 0;color:var(--muted)}
 section{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:17px}label{display:grid;gap:5px;font-weight:600}
-select,button{font:inherit;color:var(--text);background:#263847;border:1px solid #607589;border-radius:7px;padding:8px 10px}button{cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}
-button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+input,select,button{font:inherit;color:var(--text);background:#263847;border:1px solid #607589;border-radius:7px;padding:8px 10px}button{cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
 .row{display:flex;gap:12px;align-items:end;flex-wrap:wrap}.row label{min-width:250px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
 .fact{border:1px solid var(--line);border-radius:8px;padding:12px;min-height:80px}.fact b{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}.fact span{font:600 14px ui-monospace,monospace;overflow-wrap:anywhere}
 .note{border-left:3px solid var(--cyan);padding:9px 12px;background:#1c3540}.warn{color:var(--amber)}
 table{width:100%;border-collapse:collapse}th,td{text-align:left;border-bottom:1px solid var(--line);padding:9px 7px}th{color:var(--muted)}.scroll{overflow-x:auto}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#111b25;padding:12px;border-radius:7px;max-height:350px;overflow:auto;color:#d3e3eb}
+main>*,section,details{min-width:0}.row label{min-width:min(250px,100%);max-width:100%}input,select{max-width:100%;min-width:0}[data-history]{width:100%}summary{cursor:pointer;padding:8px 0}
 [hidden]{display:none!important}@media(max-width:600px){main{padding:12px}header{padding:10px}th,td{font-size:12px}}
 </style>
 </head>
 <body>
 <header><strong>ORACULUM</strong><nav aria-label="Pages"><a href="/index.html">Field</a><a href="/dashboard.html">Dashboard</a><a href="/fleet.html">Fleet</a><a href="/operations.html" aria-current="page">Operations</a></nav></header>
 <main>
-  <div><h1>Robot operations</h1><p>Read-only Ethernet preflight and live gateway status. Deploy and service actions are being built as separate verified workflows.</p></div>
+  <div><h1>Robot operations</h1><p>Ethernet diagnostics, reviewed software/service workflows, and observed job results.</p></div>
   <section aria-labelledby="targetTitle">
     <h2 id="targetTitle">Connect and inspect</h2>
     <div class="row"><label>Configured robot<select id="target"></select></label><button id="probe" type="button">Run read-only SSH probe</button></div>
@@ -42,7 +43,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#111b25;padding:12px;
       <div class="fact"><b>Probe time</b><span id="probeTime">Never</span></div>
     </div>
   </section>
-  <section aria-labelledby="artifactTitle">
+  <details><summary>Inspect local build and configuration</summary><section aria-labelledby="artifactTitle">
     <h2 id="artifactTitle">Wired artifact preview</h2>
     <p>Inspect the local AArch64 build and proposed practice or match settings. This preview reads files only; it does not build, transfer, deploy, or change Wi-Fi.</p>
     <div class="row"><label>Profile<select id="profile"><option value="practice">Practice · telemetry and controls</option><option value="match">Match · telemetry only</option></select></label><button id="previewArtifact" type="button">Preview artifact</button></div>
@@ -50,12 +51,13 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#111b25;padding:12px;
     <div class="grid"><div class="fact"><b>Source commit</b><span id="sourceCommit">Not checked</span></div><div class="fact"><b>Binary architecture</b><span id="binaryArch">Not checked</span></div><div class="fact"><b>Binary SHA-256</b><span id="binaryHash">Not checked</span></div></div>
     <pre id="artifactChanges">No config preview.</pre>
   </section>
-  <section aria-labelledby="deployTitle">
+  </details><details><summary>Inspect staged deployment</summary><section aria-labelledby="deployTitle">
     <h2 id="deployTitle">Wired deployment review</h2>
-    <p>Select a locally staged artifact to verify its identity and review the activation and rollback steps. This view cannot deploy or restart the robot.</p>
+    <p>Select a locally staged artifact to verify its identity and review the activation and rollback steps. Use Run a workflow below to execute an authenticated operation.</p>
     <div class="row"><label>Staged artifact<select id="artifactList"></select></label><button id="reviewDeploy" type="button" disabled>Review deploy plan</button></div>
     <p id="deployStatus" role="status">No staged artifact selected.</p><pre id="deployPlan">No plan loaded.</pre>
   </section>
+  </details><section id="operationWorkflows"></section>
   <section aria-labelledby="telemetryTitle"><h2 id="telemetryTitle">Live telemetry <span id="telemetryTime" class="warn"></span></h2>
     <p class="note">These facts come from gateway packets. An open SSH port alone does not mean robot software or telemetry is running.</p>
     <div class="scroll"><table><thead><tr><th>Robot</th><th>Address</th><th>Source</th><th>Packet age</th><th>Model</th><th>State</th><th>Latch</th><th>Version</th></tr></thead><tbody id="robots"></tbody></table></div>
@@ -68,17 +70,19 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#111b25;padding:12px;
     <p><a id="robotControls" href="/fleet.html">Open Fleet controls</a> · <a href="/index.html">Open Field manual control</a></p>
     <div class="scroll"><table><thead><tr><th>Operation</th><th>Current path</th><th>Condition</th></tr></thead><tbody>
       <tr><td>STOP / Resume</td><td>Robot page or Fleet</td><td>Recent debug telemetry; Resume needs the control lock</td></tr>
-      <tr><td>Lie down / DAMP</td><td>Robot page</td><td>Lie is controlled; DAMP can make the robot fall and needs physical support</td></tr>
+      <tr><td>DAMP</td><td>Robot page</td><td>DAMP can make the robot fall and needs physical support</td></tr>
       <tr><td>Get up / Go to</td><td>Robot page</td><td>Practice mode, lock, and referee rule</td></tr>
       <tr><td>Manual walk / turn</td><td>Field, Dashboard, CLI</td><td>Hold-to-drive and hold-to-turn; CLI supports a bounded duration</td></tr>
-      <tr><td>Sit</td><td>Unavailable</td><td>Installed T2 SDK has no working sit action</td></tr>
-      <tr><td>Service start / stop / restart</td><td>Planned Operations action</td><td>Requires a supported robot and authenticated mutation workflow</td></tr>
-      <tr><td>Wired deploy / rollback</td><td>Planned Operations action</td><td>Artifact preview and local staging exist; robot activation is not available here</td></tr>
+      <tr><td>Sit / Lie down</td><td>Unavailable</td><td>Current integration has no verified Sit or LieDown capability</td></tr>
+      <tr><td>Service start / stop / restart</td><td>Run a workflow</td><td>Authenticated service role and current physical support confirmation</td></tr>
+      <tr><td>Wired deploy / rollback</td><td>Run a workflow</td><td>Authenticated deploy role, verified installation paths, artifact hashes and physical support</td></tr>
     </tbody></table></div>
   </section>
   <section aria-labelledby="logsTitle"><h2 id="logsTitle">Recent service logs</h2><p>Last 30 lines from the selected robot after an authorized SSH probe. Older results are cleared when the target changes.</p><pre id="logs">No probe results.</pre></section>
 </main>
 <script type="module">
+import { mountOperationWorkflows } from "/static/operation_workflows.mjs";
+mountOperationWorkflows(document.getElementById("operationWorkflows"));
 const $=id=>document.getElementById(id);
 let inventory=null, generation=0;
 const displayTime=t=>t?new Date(t*1000).toLocaleString():'Never';
@@ -118,7 +122,7 @@ async function reviewDeploy(){
     const response=await fetch('/ops/deploy-plan?target='+encodeURIComponent(target)+'&artifact='+encodeURIComponent(artifact));
     const data=await response.json();if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);
     if(target!==$('target').value || artifact!==$('artifactList').value)return;
-    set('deployStatus','Local artifact verified. Activation remains unavailable until the listed checks are implemented and passed.');
+    set('deployStatus','Local artifact verified. Use Run a workflow to preview activation with current permissions and target checks.');
     set('deployPlan',data.phases.map((phase,index)=>`${index+1}. ${phase}`).join('\n')+'\n\nStill required:\n'+data.pending.map(x=>'• '+x).join('\n'));
   }catch(error){set('deployStatus','Deploy review failed: '+error.message);set('deployPlan','No valid plan loaded.')}
   finally{$('reviewDeploy').disabled=!inventory?.artifact_enabled || !$('artifactList').value;}
@@ -167,7 +171,7 @@ function renderTelemetry(state){
   }
   $('emptyRobots').hidden=agents.length>0;
   const chosen=inventory?.targets.find(t=>t.id===$('target').value);
-  const live=chosen&&agents.find(a=>{const age=state.fleet?.link?.[a.ip]?.age;return a.ip===chosen.ip && Number(a.id)===chosen.number && !a.readonly && Number.isFinite(age) && age<5});
+  const live=chosen&&agents.find(a=>{const age=state.fleet?.link?.[a.ip]?.age;return a.ip===chosen.ip && Number(a.id)===chosen.number && !a.readonly && a.sys?.link === "control" && Number.isFinite(age) && age<1});
   const modelMatch=live&&live.robot&&chosen.model&&live.robot===chosen.model;
   set('commandStatus',state.match?'Gateway is in match mode: it sends no robot commands.':live?
     `T${live.team} R${live.id}: ${live.robot||'model unreported'}${modelMatch?' (matches configured model)':' (verify model before commanding)'}; state ${live.state||'unknown'}; latch ${live.latch||'none / unreported'}; packet age ${state.fleet.link[live.ip].age.toFixed(1)} s.`:

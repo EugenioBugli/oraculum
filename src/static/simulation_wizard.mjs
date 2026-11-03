@@ -309,3 +309,7 @@ $('preview').addEventListener('click', (event) => {
 
 fillForm(scenario || defaultScenario());
 showStep(0);
+
+// Launch remains explicit and independent of saving a browser preview.
+import { mountOperationWorkflows } from "./operation_workflows.mjs";
+mountOperationWorkflows(document.getElementById("simulationWorkflow"), {scenario:()=>accept()?scenario:null});

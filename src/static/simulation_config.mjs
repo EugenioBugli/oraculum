@@ -1,4 +1,4 @@
-// Browser-local scenario for display-only ghosts. No packet is sent to a robot.
+// Browser-local scenario: ghosts can be moved by the UI joystick in hybrid mode. No packet is sent to a robot.
 export const SCENARIO_KEY = 'oraculum_scenario_v1';
 export const MODE_KEY = 'oraculum_source_mode_v1';
 export const MODELS = ['t1', 't2', 'k1'];
@@ -114,7 +114,8 @@ export function saveMode(mode) {
     return mode;
 }
 
-// Preserve the gateway's command state. Ghost addresses cannot be command targets and every ghost is read-only.
+// Preserve the gateway's command state. Ghost addresses cannot be gateway command targets;
+// readonly keeps STOP/Resume/etc. disabled, while the hybrid UI handles ghost MANUAL locally.
 export function overlayState(live, scenario, displayField) {
     const config = normalizeScenario(scenario);
     const sx = (displayField?.width || config.field.width) / config.field.width;

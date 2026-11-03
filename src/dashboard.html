@@ -976,7 +976,7 @@
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="12" x2="10" y2="12"></line><line x1="8" y1="10" x2="8" y2="14"></line><circle cx="15" cy="13" r="1"></circle><circle cx="18" cy="11" r="1"></circle><rect x="2" y="6" width="20" height="12" rx="6"></rect></svg>
                             ROBOT COMMANDS
                         </span>
-                        <label class="manual-toggle rp-gated"><input type="checkbox" id="checkManualMode" onchange="toggleManualMode(this.checked)" disabled aria-describedby="manualTarget"><span id="manualToggleText">MANUAL: OFF</span></label>
+                        <label class="manual-toggle rp-gated" title="Enter Manual walking mode; if STOP is latched, clear it at zero speed first"><input type="checkbox" id="checkManualMode" onchange="toggleManualMode(this.checked)" disabled aria-describedby="manualTarget"><span id="manualToggleText">MANUAL: OFF</span></label>
                     </div>
                     <div class="panel-body">
                         <div class="rp-empty">Select a robot in the list to see it, drive it and send it commands.</div>
@@ -992,12 +992,12 @@
                                     <span title="Multiplies the robot's own manual top speed (manual.maxVy in its settings)">STRAFE (VY) × robot max</span>
                                     <span id="labelVy">1.0</span>
                                 </div>
-                                <input type="range" id="sliderVy" min="0.1" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('labelVy').textContent=Number(this.value).toFixed(1)">
+                                <input type="range" id="sliderVy" min="0.1" max="1.0" step="0.1" value="1.0" oninput="document.getElementById('labelVy').textContent=Number(this.value).toFixed(1)">
                                 <div style="font-size: 0.72rem; color: var(--text-secondary); display: flex; justify-content: space-between;">
                                     <span title="Multiplies the robot's own manual top speed (manual.maxVx in its settings)">WALK (VX) × robot max</span>
                                     <span id="labelVx">1.0</span>
                                 </div>
-                                <input type="range" id="sliderVx" min="0.1" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('labelVx').textContent=Number(this.value).toFixed(1)">
+                                <input type="range" id="sliderVx" min="0.1" max="1.0" step="0.1" value="1.0" oninput="document.getElementById('labelVx').textContent=Number(this.value).toFixed(1)">
                                 <div style="font-size:0.72rem;color:var(--text-secondary)">TURN · hold to rotate</div>
                                 <div style="display:flex;gap:0.35rem"><button type="button" data-turn="left" disabled aria-label="Hold to turn left" style="flex:1">↶ LEFT</button><button type="button" data-turn="right" disabled aria-label="Hold to turn right" style="flex:1">RIGHT ↷</button></div>
                             </div>
@@ -1095,6 +1095,8 @@
         import { mountSourceSwitch } from '/static/hybrid_overlay.mjs';
         import { mountTurnHold } from '/static/hold_turn.mjs';
         import { mountRobotPanel } from '/static/robot_panel.js';
+        import { mountWorkspaceLayout } from '/static/workspace_layout.mjs';
+        mountWorkspaceLayout();
         import { renderInspector as renderInspectorPanel } from '/static/inspector.js';
         await loadField(location.origin);  // the field of the gateway's config.yaml, before the scenes are built
         const sourceSwitch = mountSourceSwitch(document.getElementById('sourceSwitch'), FIELD);
@@ -1104,9 +1106,9 @@
         // STOP ALL + control lock; when the holder keeps control after our request, MANUAL turns off
         let controlInFlight = null;  // the /control request on its way, if any (sendControlLoop)
         const ctl = mountControlBar(document.getElementById("controlBar"), () => API_URL,
-                                    { beforeRelease: async () => { if (isManualMode) window.toggleManualMode(false); await Promise.race([controlInFlight, new Promise(r => setTimeout(r, 1000))]); },  // at most 1 s: the gateway refuses a late command anyway
-                                      onDenied: () => { if (isManualMode) window.toggleManualMode(false); },
-                                      onLost: (holder) => { if (isManualMode) { window.toggleManualMode(false); toast(`${holder || "Nobody"} has control now: MANUAL is off.`); } } });
+                                    { beforeRelease: async () => { if (isManualMode && !manualRobot?.ghost) window.toggleManualMode(false); await Promise.race([controlInFlight, new Promise(r => setTimeout(r, 1000))]); },  // at most 1 s: the gateway refuses a late command anyway
+                                      onDenied: () => { if (isManualMode && !manualRobot?.ghost) window.toggleManualMode(false); },
+                                      onLost: (holder) => { if (isManualMode && !manualRobot?.ghost) { window.toggleManualMode(false); toast(`${holder || "Nobody"} has control now: MANUAL is off.`); } } });
         const ov = mountOverlays(() => API_URL);  // GameController + recording controls, overlays on every page
         const cardActions = new Map();  // STOP / Resume per robot address, moved into each rebuilt card
         // Command panel of the selected robot (name, 3D miniature, joystick, commands); commands carry this tab's bypass
@@ -2112,12 +2114,12 @@
                 html += `
                     <div class="robot-item ${isSelected}" onclick="selectRobot(${agent.id}, '${agent.ip || '127.0.0.1'}')">
                         <div class="robot-meta">
-                            <span class="robot-id"><span class="team-swatch" style="background: rgb(${teamRgb(agent)})"></span>${robotName(agent, state.agents)}${sourceTag(agent) ? `<span class="src-tag${readOnly(agent) ? ' ro' : ''}" title="Sources of this robot: ${(agent.sources || []).join(', ')}">${sourceTag(agent)}${readOnly(agent) ? ' · read-only' : ''}</span>` : ''}</span>
+                            <span class="robot-id"><span class="team-swatch" style="background: rgb(${teamRgb(agent)})"></span>${robotName(agent, state.agents)}${sourceTag(agent) ? `<span class="src-tag${readOnly(agent) ? ' ro' : ''}" title="Sources of this robot: ${(agent.sources || []).join(', ')}">${sourceTag(agent)}${agent.simulated ? ' · joystick preview' : readOnly(agent) ? ' · read-only' : ''}</span>` : ''}</span>
                             <span class="robot-role">${roleState(agent)}${penaltyOf(agent, state.gamecontroller) ? `<b style="color: var(--accent-amber, #f59e0b);"> · ⛔ ${penaltyOf(agent, state.gamecontroller)}</b>` : ''}${agent.latch ? `<b style="color: var(--accent-red, #ef4444);"> · ${latchWord(agent.latch)}</b>` : ''}${stateMismatch(agent, state.gamecontroller) ? `<b style="color: var(--accent-amber, #f59e0b);" title="${stateMismatch(agent, state.gamecontroller, true)}"> · ⚠ ${stateMismatch(agent, state.gamecontroller)}</b>` : ''}</span>
                         </div>
                         <div class="robot-stat">
                             <span>BATT ${typeof agent.battery === 'number' && agent.battery >= 0 ? (agent.battery < 20 ? '<b style="color: var(--accent-red);">⚠ ' + Math.round(agent.battery) + '%</b>' : Math.round(agent.battery) + '%') : 'n/a'}${agent.fallen ? ' · <b style="color: var(--accent-red);">⚠ fallen</b>' : ''}${versionMark(agent, state.fleet?.head) ? ` · <span title="robot code against this gateway's checkout">code ${versionMark(agent, state.fleet?.head)}</span>` : ''}${(() => { const age = state.fleet?.link?.[agent.ip]?.age ?? 0; return age < 1 ? '' : ` · <b style="color: var(--accent-amber, #f59e0b); white-space: nowrap;">LINK ${age.toFixed(0)} s old</b>`; })()}</span>
-                            <span class="card-actions"><span data-act="${agent.ip || '127.0.0.1'}" data-label="${robotName(agent, state.agents)}" data-ro="${readOnly(agent) ? 1 : 0}"></span>
+                            <span class="card-actions"><span data-act="${agent.ip || '127.0.0.1'}" data-label="${robotName(agent, state.agents)}" data-ro="${readOnly(agent) || state.match || agent.sys?.link === 'telemetry' ? 1 : 0}"></span>
                             ${agent.simulated ? '' : '<a href="/robot.html?robot=' + encodeURIComponent((agent.ip || '127.0.0.1') + '|' + agent.id) + '" onclick="event.stopPropagation()" style="color: #93c5fd; text-decoration: none;">Robot ›</a>'}</span>
                         </div>
                     </div>
@@ -2211,38 +2213,58 @@
         // MANUAL drives `manualRobot`, fixed when MANUAL turns on: selecting another robot only shows it. The toggle
         // says ON / OFF in words; after OFF the panel says the robot is released.
         let manualRobot = null, releasedRobot = null;  // {id, ip}
+        let manualEntry = null;  // STOP → Manual: zero-speed combo until fresh telemetry clears the latch
+        let ghostInput = { vx: 0, vy: 0, vtheta: 0 };
         const turnHold = mountTurnHold(document.querySelector('[data-turn="left"]'), document.querySelector('[data-turn="right"]'));
         const robotLabel = (r) => {
             const agents = lastPolledState?.agents || [], a = agents.find(x => x.id === r.id && (x.ip || "127.0.0.1") === r.ip);
             return a ? shortName(robotName(a, agents)) : `R${r.id} (${r.ip})`;  // "T19 R3·.2": the same text as its buttons
         };
+        const ghostPoseText = (r) => {
+            const pose = sourceSwitch.poseOf(r.ip);
+            return pose ? ` Position x ${pose.x.toFixed(2)}, y ${pose.y.toFixed(2)} m.` : "";
+        };
         // The gateway refuses manual commands in READY, SET and PLAYING unless this tab enabled the bypass
         const refereeBlocks = () => ["READY", "SET", "PLAYING"].includes(lastPolledState?.gamecontroller?.state)
             && !document.getElementById("checkTestingOverride").checked;
+        const manualUnavailable = agent => !agent || readOnly(agent) || lastPolledState?.match || agent.sys?.link === "telemetry";
         function showManualTarget() {
             const box = document.getElementById("checkManualMode");
             const selected = selectedRobotId !== null && selectedRobotId !== undefined ? { id: selectedRobotId, ip: selectedRobotIp } : null;
             let text;
-            const waiting = isManualMode && !ctl.hasControl();  // no command leaves this page without the control lock
-            const blocked = isManualMode && refereeBlocks();
+            const waiting = isManualMode && !manualRobot?.ghost && !ctl.hasControl();  // only real robot commands need the lock
+            const blocked = isManualMode && !manualRobot?.ghost && refereeBlocks();
             if (blocked) text = `MANUAL is blocked: the referee rule allows no manual command in ${lastPolledState?.gamecontroller?.state}. Nothing is sent. (Engineers: bypass in the menu.)`;
             else if (waiting) text = `MANUAL waits for control: ${ctl.holder() || "another operator"} has it (you asked in the header). Nothing is sent.`;
-            else if (isManualMode && manualRobot) text = `MANUAL ON → ${robotLabel(manualRobot)}. Selecting another robot does not change it.`;
-            else if (releasedRobot) text = `Released ${robotLabel(releasedRobot)}: it returns to its own control 0.5 s after the last command.`
+            else if (manualEntry && manualRobot) text = manualEntry.verified
+                ? `Manual is ready on ${robotLabel(manualRobot)}. Release the joystick to enable walking.`
+                : `Entering Manual on ${robotLabel(manualRobot)}: stick commands stay at zero until STOP clears.`;
+            else if (isManualMode && manualRobot) text = manualRobot.ghost
+                ? `GHOST MANUAL → ${robotLabel(manualRobot)}. Forward ${ghostInput.vx.toFixed(2)}, side ${ghostInput.vy.toFixed(2)}, turn ${ghostInput.vtheta.toFixed(2)}.${ghostPoseText(manualRobot)} Browser only; no robot command.`
+                : `MANUAL ON → ${robotLabel(manualRobot)}. Selecting another robot does not change it.`;
+            else if (releasedRobot) text = (releasedRobot.ghost ? "Ghost preview paused." : `Released ${robotLabel(releasedRobot)}: it returns to its own control 0.5 s after the last command.`)
                 + (selected ? ` Turn MANUAL on to drive ${robotLabel(selected)}.` : "");
-            else text = selected ? `MANUAL off. Turn it on to drive ${robotLabel(selected)}.` : "Select a robot first.";
+            else text = selected ? sourceSwitch.isLocalGhost(selected.ip)
+                ? `MANUAL off. Turn it on to test the joystick on ${robotLabel(selected)} in this browser.`
+                : `MANUAL off. Turn it on to drive ${robotLabel(selected)}.` : "Select a robot first.";
             // a read-only robot (no oraculum telemetry: another branch or team) takes no command: no MANUAL for it
-            const ro = !isManualMode && selected && readOnly((lastState?.agents || []).find(x => x.id === selected.id && (x.ip || "127.0.0.1") === selected.ip));
-            if (ro) text = `${robotLabel(selected)} is read-only (no oraculum telemetry): MANUAL cannot drive it.`;
+            const ro = !isManualMode && selected && !sourceSwitch.isLocalGhost(selected.ip)
+                && manualUnavailable((lastPolledState?.agents || []).find(x => x.id === selected.id && (x.ip || "127.0.0.1") === selected.ip));
+            if (ro) text = `${robotLabel(selected)} is read-only or in match mode: MANUAL cannot drive it.`;
             box.disabled = !isManualMode && (!selected || ro);
-            turnHold.setEnabled(isManualMode && ctl.hasControl() && !refereeBlocks());
+            turnHold.setEnabled(isManualMode && (manualRobot?.ghost || ctl.hasControl()) && !blocked);
             document.getElementById("manualTarget").textContent = text;
             document.getElementById("manualToggleText").textContent = isManualMode ? "MANUAL: ON" : "MANUAL: OFF";
             document.getElementById("manualBannerText").textContent = !manualRobot ? ""
                 : blocked ? `MANUAL blocked by the referee rule (${lastPolledState?.gamecontroller?.state}): nothing is sent`
                 : waiting ? `MANUAL waits for control (${ctl.holder() || "another operator"} has it): nothing is sent`
+                : manualEntry ? manualEntry.verified
+                    ? `Manual ready → ${robotLabel(manualRobot)}: release the joystick`
+                    : `Entering Manual → ${robotLabel(manualRobot)}: wait for STOP to clear`
+                : manualRobot.ghost ? `GHOST MANUAL → ${robotLabel(manualRobot)}: browser preview only`
                 : `MANUAL on → ${robotLabel(manualRobot)}: the joystick drives it`;
             document.getElementById("manualBanner").hidden = !isManualMode;
+            document.getElementById("robotPanel").classList.toggle("rp-manual-on", isManualMode);
         }
 
         {   // --manual-h: the height of the fixed MANUAL banner (0 while hidden); the page keeps this space free
@@ -2250,18 +2272,37 @@
             new ResizeObserver(() => document.documentElement.style.setProperty("--manual-h", `${banner.offsetHeight}px`)).observe(banner);
         }
         window.toggleManualMode = (enabled) => {
-            if (enabled && !ctl.hasControl()) ctl.take();  // engineer mode: driving needs the control lock
+            const selected = (lastPolledState?.agents || []).find(a => a.id === selectedRobotId && (a.ip || "127.0.0.1") === selectedRobotIp);
+            const ghost = sourceSwitch.isLocalGhost(selectedRobotIp);
+            if (enabled && !ghost && manualUnavailable(selected)) {
+                document.getElementById("checkManualMode").checked = isManualMode;
+                showManualTarget();
+                return;
+            }
+            if (enabled && !isManualMode && !ghost && ["damp", "lie"].includes(selected?.latch)) {
+                document.getElementById("checkManualMode").checked = false;
+                toast(`${robotLabel({ id: selectedRobotId, ip: selectedRobotIp })} is ${selected.latch === "damp" ? "damped" : "lying down"}. Use its STOP first.`);
+                return;
+            }
+            if (enabled && !ghost && !ctl.hasControl()) ctl.take();  // only real robots need the control lock
             if (enabled && !isManualMode) {
-                manualRobot = { id: selectedRobotId, ip: selectedRobotIp };
+                manualRobot = { id: selectedRobotId, ip: selectedRobotIp, ghost };
                 releasedRobot = null;
+                manualEntry = !ghost && ["stop", "getup", "goto"].includes(selected?.latch)
+                    ? { startedAt: 0, sent: 0, verified: false } : null;
             } else if (!enabled && isManualMode) {
                 releasedRobot = manualRobot;
                 manualRobot = null;
+                manualEntry = null;
+                ghostInput = { vx: 0, vy: 0, vtheta: 0 };
             }
             isManualMode = enabled;
             document.getElementById("checkManualMode").checked = enabled;  // the banner's "Turn off" unticks the box
             showManualTarget();
         };
+        window.addEventListener("oraculum:stop", (event) => {
+            if (isManualMode && (event.detail.robot === "all" || event.detail.robot === manualRobot?.ip)) toggleManualMode(false);
+        });
         toggleManualMode(false);  // off on every load, even if the browser restores the form
 
         // Joystick pad (same as index.html): the sliders only scale the knob position, so a pad at rest sends 0
@@ -2314,28 +2355,75 @@
         window.addEventListener("blur", handleJoystickEnd);  // a lost release must not keep the robot walking
 
         async function sendControlLoop() {
+            if (isManualMode && manualRobot?.ghost) {
+                if (!sourceSwitch.isLocalGhost(manualRobot.ip)) toggleManualMode(false);
+                else {
+                    ghostInput = {
+                    vx: -joyY * parseFloat(document.getElementById("sliderVx").value),
+                    vy: -joyX * parseFloat(document.getElementById("sliderVy").value),
+                    vtheta: turnHold.value()
+                    };
+                    sourceSwitch.driveGhost(manualRobot.ip, ghostInput);
+                    showManualTarget();
+                }
+                setTimeout(sendControlLoop, 100);
+                return;  // browser-local preview: never POST /control for a synthetic address
+            }
             if (isManualMode && manualRobot && ctl.hasControl() && !refereeBlocks()) {  // nothing is sent that would be refused
+                const agent = (lastPolledState?.agents || []).find(a => a.id === manualRobot.id && (a.ip || "127.0.0.1") === manualRobot.ip);
+                if (manualUnavailable(agent) || !isOnline || performance.now() - lastStateAt > 1000 || linkStale(lastPolledState, agent)) {
+                    toggleManualMode(false);
+                    setTimeout(sendControlLoop, 100);
+                    return;
+                }
+                if (manualEntry) {
+                    if (!agent || !isOnline || performance.now() - lastStateAt > 1000
+                        || linkStale(lastPolledState, agent) || ["damp", "lie"].includes(agent.latch)) {
+                        toast("Manual entry stopped: robot telemetry is stale or its posture changed.");
+                        toggleManualMode(false);
+                    } else if (manualEntry.verified && agent.latch) {
+                        toast("Manual entry stopped: the robot returned to STOP.");
+                        toggleManualMode(false);
+                    } else if (manualEntry.sent && !agent.latch) {
+                        manualEntry.verified = true;
+                        if (!joyActive && !turnHold.value()) manualEntry = null;
+                        showManualTarget();
+                    } else if (!manualEntry.verified && manualEntry.startedAt && Date.now() - manualEntry.startedAt > 3000) {
+                        toast("Manual entry timed out: STOP did not clear. No walking command was sent.");
+                        toggleManualMode(false);
+                    }
+                }
+                if (!isManualMode) { setTimeout(sendControlLoop, 100); return; }
                 const sliderVxVal = parseFloat(document.getElementById("sliderVx").value);
                 const sliderVyVal = parseFloat(document.getElementById("sliderVy").value);
+                const entry = manualEntry;
+                if (entry) entry.startedAt ||= Date.now();
+                const payload = {
+                    ip: manualRobot.ip,
+                    port: 10007,
+                    vx: entry ? 0 : -joyY * sliderVxVal,
+                    vy: entry ? 0 : -joyX * sliderVyVal,
+                    vtheta: entry ? 0 : turnHold.value(),
+                    isManual: true,
+                    testingOverride: document.getElementById("checkTestingOverride").checked
+                };
+                if (entry && !entry.verified) Object.assign(payload, { rb: true, rt: true, b: true });
                 try {
                     // MANUAL is checked above with no await before the fetch: after Release turns it off, no new request starts
                     const req = fetch(`${API_URL}/control`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(withOperator({
-                            ip: manualRobot.ip,
-                            port: 10007,
-                            vx: -joyY * sliderVxVal,
-                            vy: -joyX * sliderVyVal,
-                            vtheta: turnHold.value(),
-                            isManual: true,
-                            testingOverride: document.getElementById("checkTestingOverride").checked
-                        }))
+                        body: JSON.stringify(withOperator(payload))
                     });
                     controlInFlight = req.catch(() => {});
                     const res = await req;
                     // a reply to a command sent just before MANUAL turned off (control given away) needs no message
                     if ((res.status === 423 || res.status === 403) && isManualMode) ctl.locked(await res.json());
+                    else if (entry && manualEntry === entry && res.ok) entry.sent++;
+                    else if (entry && manualEntry === entry && !res.ok) {
+                        toast("Manual entry was refused by the gateway. No walking command was sent.");
+                        toggleManualMode(false);
+                    }
                 } catch(e){}
             }
             setTimeout(sendControlLoop, 100);

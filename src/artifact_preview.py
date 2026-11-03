@@ -44,12 +44,17 @@ def _architecture(path):
     return {183: "AArch64", 62: "x86-64"}.get(machine, "ELF machine " + str(machine))
 
 
+def binary_path(repo, target):
+    modern = os.path.join(repo, "build", "aarch64-" + target.get("model", ""), "src", "app", "maximus_main")
+    return modern if os.path.isfile(modern) else os.path.join(repo, "build", "aarch64", "src", "app", "maximus_main")
+
+
 def preview(repo, target, profile):
     """No build, file modification, network access, or user-supplied path."""
     if profile not in ("practice", "match"):
         raise ValueError("unknown profile")
     repo = os.path.realpath(repo)
-    binary = os.path.join(repo, "build", "aarch64", "src", "app", "maximus_main")
+    binary = binary_path(repo, target)
     config_path = os.path.join(repo, "src", "app", "config", "deploy.yaml")
     commit = _git(repo, "rev-parse", "HEAD")
     dirty = _source_dirty(repo)

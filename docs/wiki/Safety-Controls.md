@@ -69,13 +69,13 @@ Only one operator at a time may drive a robot. The **control lock** decides who.
 
 ## MANUAL (on-screen joystick)
 
-MANUAL drives one robot with the on-screen stick of the main view. The stick and the MANUAL switch show only after you
+MANUAL drives one robot with the on-screen stick of the Field or Dashboard view. The stick and the MANUAL switch show only after you
 select a robot. Since robot commit `e7ce3008` MANUAL drives the robot also with `customMode: false` (the
 manufacturer's walking controller, the default in `deploy.yaml`): the robot sends the sticks to the firmware as walk
 commands.
 
 1. Select the robot on the field or in the list. Status: tested in simulation (fake robots).
-2. Tick MANUAL. The page takes the control lock if it is free. Status: tested in simulation (fake robots).
+2. Tick MANUAL. The page takes the control lock if it is free. If the robot reports a STOP, GET UP or GO TO latch, the page first sends the Manual combo (`RB+RT+B`) with zero velocity. It waits for fresh telemetry to confirm that the latch cleared, then waits for the stick to be released before enabling motion. A timeout or stale telemetry turns MANUAL off. Status: isolated browser tests on Field and Dashboard with fake telemetry and intercepted commands; physical transition not yet observed.
 3. Drag the stick. The page sends a command about every 80–100 ms while MANUAL is ticked and you hold the lock.
    Status: not tested with a real robot.
 4. Untick MANUAL when you are done. Status: tested in simulation (fake robots).
@@ -91,6 +91,7 @@ commands.
   the body on its own remote controller, until Resume (the Play combo). A simulated robot goes back to autonomous play.
   (from code, `e7ce3008`; not tested with a real robot)
 - The robot that MANUAL drives is fixed when you tick MANUAL. Selecting another robot only shows it.
+- In **Real + ghosts**, select a `SIM · joystick preview` ghost before turning MANUAL on to test the on-screen stick. Its forward/side/turn values and position update in this browser only; the page sends no `/control` or control-lock request for it. The ghost uses simple kinematics, not Circus or the robot's gait controller. STOP/Resume on a ghost remain disabled.
 - A yellow banner names the robot while MANUAL is on.
 - **ARMS: STIFF / LIMP** sends the `lt` field. On the robot, `lt` is only the left trigger of the joystick now.
   It does not make the arms limp.

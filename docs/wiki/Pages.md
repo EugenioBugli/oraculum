@@ -167,3 +167,7 @@ program to AUTO.
 
 - `/ar_dashboard.html` serves the main view. The Android companion app opens this address.
 - `/wasm_test.html` loads an old renderer that does not work. Do not use it.
+
+## Workspace inspection
+
+Field and Dashboard support drag-resizable panes/panels, collapsible diagnostics, contextual Manual controls and enlarged robot inspection with a selectable orbit/zoom pivot. See [Workspace guide](../WORKSPACE.md) for mouse, touch and keyboard gestures.
