@@ -3,7 +3,7 @@
 # theta in rad from +x). The gateway mirrors them for a team that oraculum shows mirrored (config.yaml
 # frames.mirror_team_color), so every value here is in our own half.
 # Field: fieldRCAP, 22 x 14 m (spqrbooster2026 mappazzone src/app/config/fields/fieldRCAP.yaml).
-# Source of every value: spqrbooster2026 (tree /home/xps/work/spqr-merge, branch feature/oraculum-tcm-mappazzone
+# Source of every value: spqrbooster2026 (branch feature/oraculum-tcm-mappazzone
 # e7ce3008) src/app/config/formations/formationRCAP.yaml, read by src/app/utils/ReadyFormation.h:
 #   ready_N    = formation[N].readyPose.ourKickOff      (READY formation when we kick off)
 #   ready_N_def = formation[N].readyPose.opponentKickOff (only where it differs: players 4 and 5)

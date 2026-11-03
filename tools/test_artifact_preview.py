@@ -24,11 +24,11 @@ class ArtifactPreviewTest(unittest.TestCase):
             config = repo / "src/app/config/deploy.yaml"
             config.parent.mkdir(parents=True)
             config.write_text("robot: t1\noraculum: off\noraculumHost: ''\nwifiPsk: SECRET-DO-NOT-LEAK\n")
-            target = {"id": "robot6", "model": "t1", "gateway_address": "192.168.10.236"}
+            target = {"id": "robot6", "model": "t1", "gateway_address": "192.168.10.50"}
             data = preview(str(repo), target, "practice")
             self.assertEqual(data["binary"]["architecture"], "AArch64")
             self.assertEqual(data["config"]["proposed"]["oraculum"], "practice")
-            self.assertEqual(data["config"]["proposed"]["oraculumHost"], "192.168.10.236")
+            self.assertEqual(data["config"]["proposed"]["oraculumHost"], "192.168.10.50")
             self.assertNotIn("SECRET-DO-NOT-LEAK", json.dumps(data))
             self.assertFalse(data["ready"])  # No source commit in this fixture.
             header[18:20] = (62).to_bytes(2, "little")

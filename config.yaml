@@ -37,25 +37,29 @@ display:
 # Env ORACULUM_MATCH=1 (or 0) overrides this key. Network placement: docs/wiki/Match-Mode-and-Rules.md.
 match: false
 
-# Fleet's "current version" comparison for this wired robot 6 test.
-fleet:
-  repo: ../robot6-oraculum-build
+# The framework checkout this gateway compares robot versions with (the "current version" of the fleet page).
+# Default: ../spqrbooster2026, the clone beside this one. Point it at the checkout your robots run.
+#fleet:
+#  repo: ../spqrbooster2026
 
-# Read-only Operations inventory. Probes use fixed SSH commands and require ORACULUM_ACCESS_TOKEN.
-# Each robot has the same factory wired address, so connect only one at a time on Ethernet.
-operations:
-  targets:
-    - id: robot6
-      name: Robot 6 (wired)
-      ip: 192.168.10.102
-      subnet: 192.168.10.0/24
-      oraculum_host: 192.168.10.236   # intended fixed laptop IP; check interface before activation
-      repo: ../robot6-oraculum-build  # isolated bc462d43 robot 6 test checkout
-      user: booster
-      service: maximus
-      model: t1           # observed in the 2026-10-25 robot 6 inspection; recheck before deployment
-      number: 6           # jersey/player number in the deployed framework config
-      dual_board: false   # observed single-board robot 6; recheck before deployment
+# Read-only Operations inventory, and the robots the authenticated workflows may act on. Probes use fixed SSH
+# commands and need ORACULUM_ACCESS_TOKEN. Without this key, Operations shows no target and no workflow.
+# The block below is an EXAMPLE of one wired robot. Every value belongs to one gateway and one robot: fill in
+# your own, and read the model, the player number and the board layout from the robot before any deployment.
+# Each robot leaves the factory with the same wired address, so attach only one at a time to that segment.
+#operations:
+#  targets:
+#    - id: robot6
+#      name: Robot 6 (wired)
+#      ip: 192.168.10.102            # factory wired address of every Booster robot
+#      subnet: 192.168.10.0/24
+#      oraculum_host: 192.168.10.1   # the fixed address of THIS gateway on that subnet
+#      repo: ../spqrbooster2026      # the local checkout the staged artifact comes from
+#      user: booster
+#      service: maximus
+#      model: t1
+#      number: 6
+#      dual_board: false
 
 frames:
   # Robots send (x, y, angle) in their own team's frame (own goal at -x). Packets from the team with this

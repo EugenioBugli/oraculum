@@ -42,7 +42,7 @@ class ArtifactStageTest(unittest.TestCase):
             cache = repo / ".pixi-cache"
             cache.mkdir()
             (cache / "download.bin").write_bytes(b"cache output")
-            target = {"id": "robot6", "ip": "192.168.10.102", "model": "t1", "gateway_address": "192.168.10.236",
+            target = {"id": "robot6", "ip": "192.168.10.102", "model": "t1", "gateway_address": "192.168.10.50",
                       "number": 6, "dual_board": False}
             output = Path(root) / "artifacts"
             result = stage(repo, target, "match", output)

@@ -58,7 +58,7 @@ for junk in (b"", b"\x00" * 186, bytes(range(256)) * 2, b'{"agents": []}', os.ur
 
 # Robot bytes: captured on the Jetson simulation 2026-10-23 (1v1, teams 1 and 2, robot code spqr-merge
 # feature/oraculum-tcm-mappazzone @ bc462d43 = the rcap format; clip RECEPTION_20261023_205223 in
-# /DATA/RoboCup/oraculum_media_2v2/jetson_clips/). No robot bytes of main's format exist here: main is synthetic only.
+# local clips, not in this repository). No robot bytes of main's format exist here: main is synthetic only.
 golden = sorted((ROOT / "tools" / "golden").glob("team_*.bin"))  # one datagram per file: team_<team>_<sender>_<n>.bin
 assert len(golden) >= 4, "tools/golden/ team packets missing"
 for f in golden:

@@ -10,7 +10,7 @@ echo "Starting container with X11 forwarding..."
 docker run -it --rm \
     --net=host \
     -v /tmp/.X11-unix:/tmp/.X11-unix \
-    -v /home/xps/.Xauthority:/root/.Xauthority \
+    -v "${XAUTHORITY:-$HOME/.Xauthority}":/root/.Xauthority \
     -e DISPLAY=$DISPLAY \
     -e QT_X11_GL_THREAD_SAFE=1 \
     oraculum:dev

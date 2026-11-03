@@ -6,7 +6,7 @@
 set -euo pipefail
 STAGE=${1:-/tmp/oraculum-hosted-stage}
 case "$STAGE" in */oraculum-hosted-stage) ;; *) echo "STAGE must end with /oraculum-hosted-stage" >&2; exit 1;; esac
-SPQR=${SPQR:-/DATA/RoboCup/spqrbooster2026}
+SPQR=${SPQR:-$(cd "$(dirname "$0")/../.." && pwd)/spqrbooster2026}   # the framework clone beside this one
 HERE=$(cd "$(dirname "$0")" && pwd)
 ORA=$(dirname "$HERE")
 EMPTY=$(mktemp -d)

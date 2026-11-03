@@ -5,7 +5,7 @@ Result first: for an official match, deploy with `pixi run deploy-match`. It tur
 accepts **no** command from oraculum: no joystick, no STOP, no LIE DOWN, no DAMP, no camera.
 
 For the laptop, start the gateway with the **match switch** on: `ORACULUM_MATCH=1 python3 run_oraculum.py`, or
-`match: true` in `/DATA/RoboCup/oraculum/config.yaml`. The gateway then sends nothing to any robot or to the
+`match: true` in `config.yaml`. The gateway then sends nothing to any robot or to the
 GameController. See "The gateway match switch" and "Network placement in an official match" below.
 
 **Status: the robot side is not tested with a real robot (not run in simulation either).** The robot code is new on
@@ -67,11 +67,11 @@ Your local `deploy.yaml` does not change.
 The robot side (`oraculum: "match"`) stops the robot from listening. The gateway match switch stops the laptop from
 sending. Use both in an official match.
 
-- Turn it on with `match: true` in `/DATA/RoboCup/oraculum/config.yaml`, or with the environment variable
+- Turn it on with `match: true` in `config.yaml`, or with the environment variable
   `ORACULUM_MATCH=1`. The variable overrides the file: `ORACULUM_MATCH=0` turns the switch off.
-- One guard (`ControlServer.blocked()` in `/DATA/RoboCup/oraculum/src/control_server.py`) stops every datagram that the
+- One guard (`ControlServer.blocked()` in `src/control_server.py`) stops every datagram that the
   gateway sends: joystick (`POST /control`), STOP, LIE DOWN, DAMP, Resume, Get up, Sit down (`POST /stop`), Go to
-  (`POST /goto`) and camera requests (UDP 10008, `/DATA/RoboCup/oraculum/src/camera_hub.py`).
+  (`POST /goto`) and camera requests (UDP 10008, `src/camera_hub.py`).
 - `POST /control` (with `isManual: true`), `POST /stop`, `POST /goto` and `POST /gc` answer **HTTP 409** with
   "Match mode (oraculum match switch): the gateway sends nothing to the robots or the GameController (HSL rules,
   robot_players.tex L285-289 ...)".
@@ -131,7 +131,7 @@ Steps:
 3. Deploy the robots with `pixi run deploy-match` and `oraculumHost` = the laptop's wired IP (see below).
 4. Start the gateway with the switch: `ORACULUM_MATCH=1 python3 run_oraculum.py`. Check the chip
    "MATCH — no commands" in the page header.
-5. Keep phones, tablets and the Android companion app (`/DATA/RoboCup/robocup-hsl-companion`) away from the field
+5. Keep phones, tablets and the Android companion app away from the field
    during the match (L314). Read the pages on the laptop, or on a device that is not near the field.
 
 **Debug packets and the message budget.** The message budget counts team messages only. This is an inference from the

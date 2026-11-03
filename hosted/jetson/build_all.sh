@@ -3,14 +3,14 @@
 #   hosted/jetson/build_all.sh            # NATIVE=0 skips the native booster-motion (firmware 3.9 GB)
 #   BUILD_TYPE=Debug hosted/jetson/build_all.sh   # Maximus -O0 in build/arm (default Release in build/arm-release)
 # 1. copies these scripts to jetson-spqr:~/oraculum-sim-arm (small),
-# 2. syncs the sources from this laptop: the robot tree SRC (default /home/xps/work/spqr-merge, without .git, .pixi,
+# 2. syncs the sources from this machine: the robot tree SRC (default ../../../spqrbooster2026, without .git, .pixi,
 #    build), simbridge ce708bfa (its submodule is empty in SRC) and the gateway (git HEAD of this oraculum clone),
 # 3. starts build_jetson.sh on the Jetson, detached, and follows its log (cold about 8 min, steps in parallel).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 J=${J:-jetson-spqr}
-SRC=${SRC:-/home/xps/work/spqr-merge}
-SIMBRIDGE=${SIMBRIDGE:-/DATA/RoboCup/spqrbooster2026/external/simbridge}   # ce708bfa; build_jetson.sh adds 625336d2
+SRC=${SRC:-$(cd "$HERE/../../.." && pwd)/spqrbooster2026}
+SIMBRIDGE=${SIMBRIDGE:-$SRC/external/simbridge}   # ce708bfa; build_jetson.sh adds 625336d2
 ORACULUM=$(cd "$HERE/../.." && pwd)
 
 ssh "$J" 'mkdir -p ~/oraculum-sim-arm/scenes'

@@ -3,7 +3,7 @@
 ## Quick Start (Safest Method)
 
 ```bash
-cd /DATA/RoboCup/oraculum
+cd /path/to/oraculum
 ./docker-run.sh
 ```
 
