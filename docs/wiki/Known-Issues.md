@@ -1,26 +1,24 @@
 # Known Issues
 
-Status 2026-10-21. Each issue says where the finding comes from: **from code** (read in the source), **measured**
-(seen in a run) or **estimated** (computed, not seen).
+Status reviewed 2026-10-29. Findings below distinguish code inspection, historical measurements and estimates. Earlier simulator results are not acceptance of the current hardware build.
 
-## 1. Nothing is tested with a real robot
+## 1. Real-robot acceptance remains incomplete
 
-The first session with real robots is on 2026-10-22. Treat every robot-side behaviour in this wiki as unconfirmed.
+Robot 6 received the TCM build based on `bc462d43` over Ethernet on 2026-10-26. Service startup and fresh telemetry were verified after resolving a Rerun library mismatch and missing detector model. Physical manual movement was subsequently reported faulty. The proposed WALK-mode/heading correction is built locally but undeployed and unverified. STOP during walking, recovery actions and camera alignment still need hardware acceptance. Later reconnection showed reachable SSH but stale telemetry; current service state must be diagnosed.
 
 ## 2. Older robot builds ignore the `oraculum` settings
 
 `oraculum` and `oraculumHost` exist from `spqrbooster2026` commit `d55b0946` (branch `oraculum-tcm`, pushed 2026-10-21).
 Deploy `bc462d43` or later (GET UP, GO TO, SIT and MANUAL with `customMode: false`).
 A robot that runs an older build ignores them. With `useRerun: false` it then sends nothing and shows no error. Check
-the version column of the fleet table. The changes compile and link for x86; the aarch64 robot build is not tested.
+the version column of the fleet table. The AArch64 build was deployed and produced telemetry on robot 6; this does not establish motion acceptance.
 See [Field Setup](Field-Setup). (from code)
 
 ## 3. Match mode: oraculum cannot stop a robot
 
 In match mode the robot does not listen on UDP 10007. The gateway knows this from `sys.link = "telemetry"` and refuses
 STOP, LIE DOWN, DAMP, Resume, Get up, Sit down and Go to with HTTP 409; the page shows the error text. MANUAL
-(`POST /control`) is **not** refused for such a robot: the gateway sends the joystick datagrams and the robot ignores
-them. With the gateway match switch, every command is refused. A robot in match mode can only be
+(`POST /control`) is also refused for that target, including when its address is pinned by the gateway. The pages hide its robot commands and disable Manual. The refusal is covered by mocked UDP tests. With the gateway match switch, every command is refused. A robot in match mode can only be
 stopped with its own remote controller or through the referee. (from code; the refusal is not tested with a real robot)
 
 ## 4. Match mode: 1 packet per second and the 3.5 s timeout
@@ -96,12 +94,9 @@ The real-time factor falls about as 2/N with N robots: 0.98 (1v1), 0.45 (3v3), 0
 
 ## 11. UI and CLI limits
 
-- The on-screen joystick cannot turn the robot: the pages always send `vtheta: 0`. Use `oraculum_cli.py walk`. (from code)
-- The speed sliders go up to 2.0, but the robot clamps each stick value to [-1, 1]. Above 1.0 a slider has no effect.
-  (from code)
-- The ARMS: LIMP button in the main view and the IDE-style view sends `lt`, which the robot reads only as the left
-  trigger. It does not make the arms limp. (The CLI command `stiffness` with the same problem was removed on
-  2026-10-21.) (from code)
+- Hold-to-turn buttons are now present in Field and Dashboard, but their effect has not been accepted on a real robot.
+- Field/Dashboard speed sliders now stop at 1.0, matching normalized stick limits. Their physical effect still depends on the robot's manual limits and gait controller.
+- Field/Dashboard no longer expose an ARMS: LIMP action. The old `lt` mapping did not implement stiffness control; do not use it as a stiff/unstiff command. SIT is also omitted from the selected-robot panel because installed SDK support is unverified.
 - The reply "sent" to STOP does not mean that the robot stopped. Only the `latch` value in the robot's next
   telemetry shows it (STOPPED in the fleet row). (from code)
 
@@ -109,3 +104,7 @@ The real-time factor falls about as 2/N with N robots: 0.98 (1v1), 0.45 (3v3), 0
 
 `DebugCameraSender` is not tested on a robot or in the simulator. The hosted sessions run circus with no camera images.
 (from code)
+
+## Operations adapters (3 November 2026)
+
+Build/stage, deploy/rollback, service and existing network-profile jobs are implemented, with [explicit configuration and verification limits](../OPERATION_JOBS.md). No production simulator image is configured by default. Real SSH/service/NetworkManager recovery and the new framework port still require hardware acceptance. Job success reports process/service/hash evidence, not completed physical movement. SIT and LIE DOWN are unavailable on the current port.

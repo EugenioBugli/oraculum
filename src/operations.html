@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oraculum · Operations</title>
+<link rel="icon" href="data:,">
+<style>
+:root{color-scheme:dark;--bg:#12161d;--card:#202832;--line:#405060;--text:#eef4f8;--muted:#adc0cc;--cyan:#67e8f9;--amber:#fbbf24}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,sans-serif}
+header{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:12px 20px;background:#1b2530;border-bottom:1px solid var(--line)}
+header strong{letter-spacing:.12em}nav{display:flex;gap:8px;flex-wrap:wrap}a{color:#a7eaf4}nav a{color:var(--muted);text-decoration:none;padding:5px 8px;border-radius:5px}nav a[aria-current]{color:#fff;background:#315265}
+main{max-width:1250px;margin:auto;padding:22px;display:grid;gap:16px}h1{font-size:26px;margin:0}h2{font-size:16px;margin:0 0 12px}p{margin:4px 0;color:var(--muted)}
+section{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:17px}label{display:grid;gap:5px;font-weight:600}
+input,select,button{font:inherit;color:var(--text);background:#263847;border:1px solid #607589;border-radius:7px;padding:8px 10px}button{cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.row{display:flex;gap:12px;align-items:end;flex-wrap:wrap}.row label{min-width:250px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.fact{border:1px solid var(--line);border-radius:8px;padding:12px;min-height:80px}.fact b{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}.fact span{font:600 14px ui-monospace,monospace;overflow-wrap:anywhere}
+.note{border-left:3px solid var(--cyan);padding:9px 12px;background:#1c3540}.warn{color:var(--amber)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;border-bottom:1px solid var(--line);padding:9px 7px}th{color:var(--muted)}.scroll{overflow-x:auto}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#111b25;padding:12px;border-radius:7px;max-height:350px;overflow:auto;color:#d3e3eb}
+main>*,section,details{min-width:0}.row label{min-width:min(250px,100%);max-width:100%}input,select{max-width:100%;min-width:0}[data-history]{width:100%}summary{cursor:pointer;padding:8px 0}
+[hidden]{display:none!important}@media(max-width:600px){main{padding:12px}header{padding:10px}th,td{font-size:12px}}
+</style>
+</head>
+<body>
+<header><strong>ORACULUM</strong><nav aria-label="Pages"><a href="/index.html">Field</a><a href="/dashboard.html">Dashboard</a><a href="/fleet.html">Fleet</a><a href="/operations.html" aria-current="page">Operations</a></nav></header>
+<main>
+  <div><h1>Robot operations</h1><p>Ethernet diagnostics, reviewed software/service workflows, and observed job results.</p></div>
+  <section aria-labelledby="targetTitle">
+    <h2 id="targetTitle">Connect and inspect</h2>
+    <div class="row"><label>Configured robot<select id="target"></select></label><button id="probe" type="button">Run read-only SSH probe</button></div>
+    <p id="probePolicy" role="status"></p>
+    <div class="grid" style="margin-top:12px">
+      <div class="fact"><b>Ethernet target</b><span id="targetAddress">—</span></div>
+      <div class="fact"><b>Gateway interfaces</b><span id="interfaces">—</span></div>
+      <div class="fact"><b>Ethernet subnet</b><span id="subnet">Unknown</span></div>
+      <div class="fact"><b>SSH port</b><span id="sshPort">Not checked</span></div>
+      <div class="fact"><b>SSH diagnostics</b><span id="sshStatus">Not checked</span></div>
+      <div class="fact"><b>Service</b><span id="service">Unknown</span></div>
+      <div class="fact"><b>Installed version</b><span id="version">Unknown</span></div>
+      <div class="fact"><b>Joystick devices</b><span id="joysticks">Unknown</span></div>
+      <div class="fact"><b>Probe time</b><span id="probeTime">Never</span></div>
+    </div>
+  </section>
+  <details><summary>Inspect local build and configuration</summary><section aria-labelledby="artifactTitle">
+    <h2 id="artifactTitle">Wired artifact preview</h2>
+    <p>Inspect the local AArch64 build and proposed practice or match settings. This preview reads files only; it does not build, transfer, deploy, or change Wi-Fi.</p>
+    <div class="row"><label>Profile<select id="profile"><option value="practice">Practice · telemetry and controls</option><option value="match">Match · telemetry only</option></select></label><button id="previewArtifact" type="button">Preview artifact</button></div>
+    <p id="artifactStatus" role="status">Choose a configured robot to inspect an artifact.</p>
+    <div class="grid"><div class="fact"><b>Source commit</b><span id="sourceCommit">Not checked</span></div><div class="fact"><b>Binary architecture</b><span id="binaryArch">Not checked</span></div><div class="fact"><b>Binary SHA-256</b><span id="binaryHash">Not checked</span></div></div>
+    <pre id="artifactChanges">No config preview.</pre>
+  </section>
+  </details><details><summary>Inspect staged deployment</summary><section aria-labelledby="deployTitle">
+    <h2 id="deployTitle">Wired deployment review</h2>
+    <p>Select a locally staged artifact to verify its identity and review the activation and rollback steps. Use Run a workflow below to execute an authenticated operation.</p>
+    <div class="row"><label>Staged artifact<select id="artifactList"></select></label><button id="reviewDeploy" type="button" disabled>Review deploy plan</button></div>
+    <p id="deployStatus" role="status">No staged artifact selected.</p><pre id="deployPlan">No plan loaded.</pre>
+  </section>
+  </details><section id="operationWorkflows"></section>
+  <section aria-labelledby="telemetryTitle"><h2 id="telemetryTitle">Live telemetry <span id="telemetryTime" class="warn"></span></h2>
+    <p class="note">These facts come from gateway packets. An open SSH port alone does not mean robot software or telemetry is running.</p>
+    <div class="scroll"><table><thead><tr><th>Robot</th><th>Address</th><th>Source</th><th>Packet age</th><th>Model</th><th>State</th><th>Latch</th><th>Version</th></tr></thead><tbody id="robots"></tbody></table></div>
+    <p id="emptyRobots" hidden>No robot telemetry is available. The robot may be disconnected, the framework may not be sending, or this gateway may not be its target.</p>
+  </section>
+  <section aria-labelledby="commandsTitle">
+    <h2 id="commandsTitle">Command map</h2>
+    <p id="commandStatus">No live robot selected.</p>
+    <p class="note">State and latch come from gateway telemetry, not proof that a requested motion completed. A blank latch may also mean older robot software did not report one. Recheck packet age after each command.</p>
+    <p><a id="robotControls" href="/fleet.html">Open Fleet controls</a> · <a href="/index.html">Open Field manual control</a></p>
+    <div class="scroll"><table><thead><tr><th>Operation</th><th>Current path</th><th>Condition</th></tr></thead><tbody>
+      <tr><td>STOP / Resume</td><td>Robot page or Fleet</td><td>Recent debug telemetry; Resume needs the control lock</td></tr>
+      <tr><td>DAMP</td><td>Robot page</td><td>DAMP can make the robot fall and needs physical support</td></tr>
+      <tr><td>Get up / Go to</td><td>Robot page</td><td>Practice mode, lock, and referee rule</td></tr>
+      <tr><td>Manual walk / turn</td><td>Field, Dashboard, CLI</td><td>Hold-to-drive and hold-to-turn; CLI supports a bounded duration</td></tr>
+      <tr><td>Sit / Lie down</td><td>Unavailable</td><td>Current integration has no verified Sit or LieDown capability</td></tr>
+      <tr><td>Service start / stop / restart</td><td>Run a workflow</td><td>Authenticated service role and current physical support confirmation</td></tr>
+      <tr><td>Wired deploy / rollback</td><td>Run a workflow</td><td>Authenticated deploy role, verified installation paths, artifact hashes and physical support</td></tr>
+    </tbody></table></div>
+  </section>
+  <section aria-labelledby="logsTitle"><h2 id="logsTitle">Recent service logs</h2><p>Last 30 lines from the selected robot after an authorized SSH probe. Older results are cleared when the target changes.</p><pre id="logs">No probe results.</pre></section>
+</main>
+<script type="module">
+import { mountOperationWorkflows } from "/static/operation_workflows.mjs";
+mountOperationWorkflows(document.getElementById("operationWorkflows"));
+const $=id=>document.getElementById(id);
+let inventory=null, generation=0;
+const displayTime=t=>t?new Date(t*1000).toLocaleString():'Never';
+const set=(id,value)=>{$(id).textContent=String(value ?? 'Unknown')};
+const clearProbe=()=>{generation++;set('sshPort','Not checked');set('sshStatus','Not checked');set('service','Unknown');set('version','Unknown');set('joysticks','Unknown');set('probeTime','Never');set('logs','No probe results.');};
+const clearArtifact=()=>{set('artifactStatus','Choose a configured robot to inspect an artifact.');set('sourceCommit','Not checked');set('binaryArch','Not checked');set('binaryHash','Not checked');set('artifactChanges','No config preview.');set('deployStatus','No staged artifact selected.');set('deployPlan','No plan loaded.');};
+function selectTarget(){
+  clearProbe();clearArtifact();
+  set('commandStatus','Waiting for fresh telemetry for this target.');
+  $('robotControls').href='/fleet.html';$('robotControls').textContent='Open Fleet controls';
+  const item=inventory?.targets.find(t=>t.id===$('target').value);
+  set('targetAddress',item?`${item.user}@${item.ip} · ${item.service}`:'No configured target');
+  set('subnet',item?item.gateway_connected?`${item.gateway_address} active in ${item.subnet}`:item.gateway_interface?`Expected ${item.gateway_address}; interface has ${item.gateway_interface}`:`Expected ${item.gateway_address||'an address'} in ${item.subnet}; interface disconnected`:'Unknown');
+  $('probe').disabled=!item || !inventory?.probe_enabled;
+  $('previewArtifact').disabled=!item || !inventory?.artifact_enabled;
+  $('reviewDeploy').disabled=!item || !$('artifactList').value || !inventory?.artifact_enabled;
+}
+async function loadInventory(){
+  try{
+    const response=await fetch('/ops/targets');if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    inventory=await response.json();
+    $('target').replaceChildren(...inventory.targets.map(t=>new Option(t.name,t.id)));
+    set('interfaces',inventory.interfaces.length?inventory.interfaces.map(i=>`${i.name} ${i.address}`).join(' · '):'No IPv4 interface reported');
+    set('probePolicy',inventory.probe_enabled?'Probe is manual, bounded, and read-only. SSH uses existing trusted host keys and key authentication.':'SSH diagnostics require ORACULUM_ACCESS_TOKEN and practice mode. Live telemetry remains visible.');
+    if(inventory.artifact_enabled){
+      const response=await fetch('/ops/artifacts');
+      if(response.ok){const data=await response.json();$('artifactList').replaceChildren(...data.artifacts.map(id=>new Option(id,id)));}
+    }
+    selectTarget();
+  }catch(error){set('probePolicy','Inventory unavailable: '+error.message);$('probe').disabled=true;}
+}
+async function reviewDeploy(){
+  const target=$('target').value, artifact=$('artifactList').value;
+  if(!artifact)return;
+  $('reviewDeploy').disabled=true;set('deployStatus','Verifying staged files…');
+  try{
+    const response=await fetch('/ops/deploy-plan?target='+encodeURIComponent(target)+'&artifact='+encodeURIComponent(artifact));
+    const data=await response.json();if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);
+    if(target!==$('target').value || artifact!==$('artifactList').value)return;
+    set('deployStatus','Local artifact verified. Use Run a workflow to preview activation with current permissions and target checks.');
+    set('deployPlan',data.phases.map((phase,index)=>`${index+1}. ${phase}`).join('\n')+'\n\nStill required:\n'+data.pending.map(x=>'• '+x).join('\n'));
+  }catch(error){set('deployStatus','Deploy review failed: '+error.message);set('deployPlan','No valid plan loaded.')}
+  finally{$('reviewDeploy').disabled=!inventory?.artifact_enabled || !$('artifactList').value;}
+}
+async function previewArtifact(){
+  const target=$('target').value, profile=$('profile').value;
+  $('previewArtifact').disabled=true;set('artifactStatus','Reading local build…');
+  try{
+    const response=await fetch('/ops/artifact?target='+encodeURIComponent(target)+'&profile='+encodeURIComponent(profile));
+    const data=await response.json();if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);
+    if(target!==$('target').value)return;
+    set('artifactStatus',data.ready?'Artifact checks passed for staging. No robot action was taken.':data.blockers.join(' '));
+    set('sourceCommit',data.commit?data.commit.slice(0,12)+(data.dirty?' · dirty':' · clean'):'Unknown');
+    set('binaryArch',data.binary.present?`${data.binary.architecture} · ${data.binary.size} bytes`:'Missing');
+    set('binaryHash',data.binary.sha256||'Unavailable');
+    const changes=Object.entries(data.config.changes).map(([key,value])=>`${key}: ${JSON.stringify(value.from)} → ${JSON.stringify(value.to)}`);
+    set('artifactChanges',changes.length?changes.join('\n'):'No proposed config differences.');
+  }catch(error){set('artifactStatus','Artifact preview failed: '+error.message)}
+  finally{$('previewArtifact').disabled=!inventory?.artifact_enabled;}
+}
+async function probe(){
+  const target=$('target').value, current=++generation;
+  $('probe').disabled=true;set('sshStatus','Checking…');
+  try{
+    const response=await fetch('/ops/probe?target='+encodeURIComponent(target));
+    const data=await response.json();
+    if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);
+    if(current!==generation || target!==$('target').value)return;
+    set('sshPort',data.ssh_port?'Open':'Unreachable');set('sshStatus',data.ssh);
+    set('service',data.service);set('version',data.version);set('joysticks',data.joysticks);
+    set('probeTime',displayTime(data.observed_at));set('logs',data.logs?.length?data.logs.join('\n'):'No logs returned.');
+  }catch(error){if(current===generation)set('sshStatus','Probe failed: '+error.message)}
+  finally{if(current===generation)$('probe').disabled=!inventory?.probe_enabled;}
+}
+function renderTelemetry(state){
+  const agents=(state.agents||[]).filter(a=>!a.simulated);
+  const body=$('robots');body.replaceChildren();
+  for(const agent of agents){
+    const ip=agent.ip||'unknown', age=state.fleet?.link?.[ip]?.age;
+    const values=[`T${agent.team} R${agent.id}`,ip,(agent.sources||[]).join(', ')||'debug',
+      Number.isFinite(age)?age.toFixed(1)+' s':'unknown',agent.robot||'unreported',
+      agent.state||'unknown',agent.readonly?'unreported':(agent.latch||'none / unreported'),agent.sys?.version||'unknown'];
+    const row=document.createElement('tr');
+    for(const value of values){const cell=document.createElement('td');cell.textContent=value;row.append(cell)}
+    body.append(row);
+  }
+  $('emptyRobots').hidden=agents.length>0;
+  const chosen=inventory?.targets.find(t=>t.id===$('target').value);
+  const live=chosen&&agents.find(a=>{const age=state.fleet?.link?.[a.ip]?.age;return a.ip===chosen.ip && Number(a.id)===chosen.number && !a.readonly && a.sys?.link === "control" && Number.isFinite(age) && age<1});
+  const modelMatch=live&&live.robot&&chosen.model&&live.robot===chosen.model;
+  set('commandStatus',state.match?'Gateway is in match mode: it sends no robot commands.':live?
+    `T${live.team} R${live.id}: ${live.robot||'model unreported'}${modelMatch?' (matches configured model)':' (verify model before commanding)'}; state ${live.state||'unknown'}; latch ${live.latch||'none / unreported'}; packet age ${state.fleet.link[live.ip].age.toFixed(1)} s.`:
+    'No fresh command-capable telemetry matching the selected address and player number.');
+  const controlsAvailable=!state.match&&modelMatch;
+  $('robotControls').href=controlsAvailable?'/robot.html?robot='+encodeURIComponent(`${live.ip}|${live.id}`):'/fleet.html';
+  $('robotControls').textContent=controlsAvailable?'Open selected robot controls':'Open Fleet controls';
+  set('telemetryTime','· checked '+new Date().toLocaleTimeString());
+}
+async function pollTelemetry(){
+  try{const response=await fetch('/state');if(!response.ok)throw new Error(`HTTP ${response.status}`);renderTelemetry(await response.json())}
+  catch(error){$('robots').replaceChildren();$('emptyRobots').hidden=false;set('telemetryTime','· gateway unavailable: '+error.message)}
+}
+$('target').addEventListener('change',selectTarget);$('artifactList').addEventListener('change',clearArtifact);$('probe').addEventListener('click',probe);$('previewArtifact').addEventListener('click',previewArtifact);$('reviewDeploy').addEventListener('click',reviewDeploy);
+await loadInventory();await pollTelemetry();setInterval(pollTelemetry,3000);
+</script>
+</body>
+</html>

@@ -116,6 +116,15 @@ try:
     assert call(f"/camera?robot={tel.ip}|4")[0] == 200 and udp == [], "no camera request to a match robot"
     assert call(f"/camera?robot={ctl.ip}|2")[0] == 200 and [t for _, t in udp] == [(ctl.ip, 10008)], udp
     assert call("/state")[1]["match"] is False
+    udp.clear()
+    for pinned in ("", tel.ip):
+        s.control_ip = pinned
+        code, body = call("/control", {"ip": tel.ip if not pinned else ctl.ip, "isManual": True, "vx": 0.3, **A})
+        assert code == 409 and body["status"] == "read-only", body
+        assert udp == [], "no joystick datagram to a telemetry-only robot, including a pinned target"
+    s.control_ip = ""
+    assert call("/control", {"ip": ctl.ip, "isManual": True, "vx": 0.3, **A})[0] == 200
+    assert udp and all(t == (ctl.ip, 10007) for _, t in udp), udp
     # a command that takes the free lock (here Resume) logs CONTROL, like a Take on /control_lock
     ev = []
     s.events.add = lambda *a, **k: ev.append(a)

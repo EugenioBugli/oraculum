@@ -18,7 +18,7 @@ Milestones: 1 robot standing and walking (with real-time factor), then 1v1, then
   boot; uncommitted in `/home/xps/work/spqr-merge`) + simbridge waits for Prepare. Native runs since then: 0 falls in
   1v0 sim_fast (RTF 0.69), 1v1 sim_fast (0.40), 1v0 sim_real GPU (0.45 Debug, **0.65 Release**). Section
   "Start-fall fix" at the end.
-- Fastest chain: `bash /DATA/RoboCup/oraculum/hosted/jetson/build_all.sh` (section "Build chain").
+- Fastest chain: `bash hosted/jetson/build_all.sh` of this clone (section "Build chain").
 
 | Real-time factor (MODE_50W, shared machine) | Box64 | Native |
 |---|---|---|
@@ -450,14 +450,14 @@ env `CIRCUS_CPUS=<list>` pins circus with taskset.
 
 ## Build chain (fastest known)
 
-Run from the laptop: `bash /DATA/RoboCup/oraculum/hosted/jetson/build_all.sh`. The default (native booster-motion)
+Run from this clone: `bash hosted/jetson/build_all.sh`. The default (native booster-motion)
 needs the T1 firmware: 3.9 GB download (about 5 min with 16 ranges) + about 50 s unpack on the first build;
 `NATIVE=0` skips it (then only `BOOSTER_MOTION=box64` works). It does, in order:
 
-1. laptop -> jetson: `scp` of the scripts in `/DATA/RoboCup/oraculum/hosted/jetson/` (+ `vm/monitor_play.py`,
+1. laptop -> jetson: `scp` of the scripts in `hosted/jetson/` (+ `vm/monitor_play.py`,
    `scenes/`, `booster-native/config_sim_circus.lua`) to `~/oraculum-sim-arm/`.
 2. laptop -> jetson (since 2026-10-24; see "End-to-end run with Release Maximus" below): `rsync` of the robot tree
-   `SRC` (default `/home/xps/work/spqr-merge`), `rsync` of simbridge ce708bfa, `git archive HEAD` of the gateway.
+   `SRC` (default `../spqrbooster2026`, the clone beside this one), `rsync` of simbridge ce708bfa, `git archive HEAD` of the gateway.
    Before 2026-10-24: tar of the x86 server's `/workspace` (464 MB, 28 s cold) and `/opt/oraculum` (89 MB, 6 s); that
    server (`49.12.252.138`) no longer has `/workspace`.
 3. jetson, `build_jetson.sh` (detached, log `~/oraculum-sim-arm/logs/build_jetson.log`):
@@ -499,11 +499,11 @@ needs the T1 firmware: 3.9 GB download (about 5 min with 16 ranges) + about 50 s
   install`), robot image 370 s, Maximus Release 56 s, display image 0 s. Cold Release Maximus (an earlier run of this
   chain, with `build/arm-release` moved aside): 445 s, 105 steps. Robot base image after a simbridge change: 420 s.
 - Sources (the x86 server copy is gone):
-  - Robot tree: `SRC` (default `/home/xps/work/spqr-merge`). `rsync -a --exclude=.pixi --exclude=/build --exclude=.git`,
+  - Robot tree: `SRC` (default `../spqrbooster2026`, the clone beside this one). `rsync -a --exclude=.pixi --exclude=/build --exclude=.git`,
     with no `--delete`, so the Jetson keeps simbridge, `models/` and the other files it has.
-  - simbridge ce708bfa: from `/DATA/RoboCup/spqrbooster2026/external/simbridge`, because the submodules in `SRC` are
+  - simbridge ce708bfa: from `../spqrbooster2026/external/simbridge` (`SIMBRIDGE`), because the submodules in `SRC` are
     empty. `build_jetson.sh` adds 625336d2.
-  - Gateway: `git archive HEAD` (`src config fields config.yaml`) of `/DATA/RoboCup/oraculum`. Uncommitted edits are
+  - Gateway: `git archive HEAD` (`src config fields config.yaml`) of this clone. Uncommitted edits are
     not copied.
 - `/DATA` is NTFS. There, git's two simbridge symlinks (`tools/booster_motion/lib/libfmt.so.8`,
   `libSDL2-2.0.so.0`) are `IntxLNK` stub files. Copied as they are, simbridge stops with "libfmt.so.8: file too short",

@@ -187,14 +187,15 @@ async function post(api, path, body) {
     }
 }
 
-const AFTER = { stop: "stands until Resume", lie: "lies down until Resume", damp: "has soft motors" };
 const KIND = { lie: "LIE DOWN", getup: "GET UP", sit: "SIT DOWN" };  // else kind.toUpperCase()
 export async function sendStop(api, robot, kind, extra = {}) {
+    // A local STOP cancels any in-flight Manual entry before the request leaves this page.
+    if (kind === "stop") window.dispatchEvent(new CustomEvent("oraculum:stop", { detail: { robot } }));
     const r = await post(api, "/stop", { robot, kind, ...extra });
     const who = (r.names || r.targets || []).join(", ");  // "T19 R3 (127.0.0.1)"; robots behind one address share it
     const many = robot === "all" || (r.names || []).join().includes(",");
     const word = KIND[kind] || kind.toUpperCase();
-    if (r.ok) toast(`${word} sent to ${who}` + (AFTER[kind] ? `: ${many ? "each robot" : "the robot"} ${AFTER[kind]}` : ""));
+    if (r.ok) toast(`${word} sent to ${who}; check live robot status`);
     else toast(r.error || `${word} failed (HTTP ${r.status})`, true);
     return r;
 }
@@ -444,12 +445,11 @@ export function robotActions(ip, api, { lie = false, getup = false, sit = false,
     resume.onclick = (e) => { e.stopPropagation(); sendStop(api, ip, "resume", extra()); };
     box.append(stop, resume);
     for (const [on, kind, text, title] of [[getup, "getup", "Get up", "gets up if down, then stands still until Resume"],
-                                     [sit, "sit", "Sit down", "sits down (T2 only)"]]) {
+                                     [false, "sit", "Sit down", "unavailable"]]) {
         if (on) box.append(el("button", { className: "ctl-more", title: `${text} ${label || ip}: the robot ${title}`,
                                           onclick: (e) => { e.stopPropagation(); sendStop(api, ip, kind, extra()); } }, text, who()));
     }
-    if (lie) box.append(holdButton("Hold: LIE DOWN", `Hold 2 s: ${label || ip} lies down on its back (controlled) until Resume`, 2000,
-                                   () => sendStop(api, ip, "lie", extra()), "", who()));
+    // Current framework advertises no LieDown/Sit capability. Keep these unavailable until verified support exists.
     return box;
 }
 

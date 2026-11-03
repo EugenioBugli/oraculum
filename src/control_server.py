@@ -19,9 +19,13 @@ import yaml
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from camera_hub import CameraHub
+from artifact_preview import preview as artifact_preview
 from config import load_teams
 from control_lock import ControlLock
 from gc_client import PENALTY_NAMES, SET_PLAY_NAMES, GCReceiver
+from operations import OperationsInspector
+from operation_jobs import OperationJobs
+from wired_deploy_plan import list_artifacts, plan as wired_deploy_plan
 from reception import Reception
 from session import EventLog, Recorder
 from sim_gc import SimGameController
@@ -142,6 +146,9 @@ class ControlServer:
 
         # Hosted sessions: with ORACULUM_ACCESS_TOKEN set, every request needs the token (?token= once, then a cookie).
         self.access_token = os.environ.get("ORACULUM_ACCESS_TOKEN", "")
+        self.operations = OperationsInspector(self.config, root=root)
+        self.artifact_root = os.path.join(root, "artifacts")
+        self.operation_jobs = OperationJobs(self.operations, self.artifact_root, self.config)
         # Hosted session: every joystick datagram goes to this address, whatever the body says (no UDP to the internet).
         self.control_ip = "" if self.match else os.environ.get("ORACULUM_CONTROL_IP", "")
         self.control_lock = ControlLock()  # engineer mode: one operator drives at a time (src/control_lock.py)
@@ -286,11 +293,111 @@ class ControlServer:
             def _body(self):
                 return json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))).decode("utf-8") or "{}")
 
+            def _jobs_route(self, path, mutation):
+                if path not in ("/ops/capabilities", "/ops/preview", "/ops/jobs") and not path.startswith("/ops/jobs/"):
+                    return False
+                try:
+                    if not server_instance.access_token or server_instance.match:
+                        raise PermissionError("Operations require gateway authentication and practice mode")
+                    origin = self.headers.get("Origin")
+                    if origin and urlparse(origin).netloc != self.headers.get("Host"):
+                        raise PermissionError("Operations must come from this gateway origin")
+                    jobs = server_instance.operation_jobs
+                    owner = jobs.identity(self.headers.get("X-Oraculum-Operator", ""))
+                    if mutation:
+                        if self.headers.get_content_type() != "application/json" or not 0 < int(self.headers.get("Content-Length", 0)) <= 65536:
+                            raise ValueError("Expected a JSON request up to 64 KiB")
+                        body = self._body()
+                        if not isinstance(body, dict):
+                            raise ValueError("Expected a JSON object")
+                        if path == "/ops/preview":
+                            result = jobs.preview(owner, body)
+                        elif path == "/ops/jobs":
+                            result = jobs.submit(owner, body)
+                        elif path.endswith("/cancel"):
+                            result = jobs.cancel(owner, path.split("/")[-2])
+                        elif path.endswith("/confirm"):
+                            result = jobs.confirm_network(owner, path.split("/")[-2])
+                        else:
+                            raise ValueError("Unknown operation route")
+                    elif path == "/ops/capabilities":
+                        result = jobs.capabilities(owner)
+                    elif path == "/ops/jobs":
+                        result = {"jobs": jobs.list(owner)}
+                    else:
+                        result = jobs.get(owner, path.split("/")[-1])
+                    self._json(200, result)
+                except PermissionError as exc:
+                    self._json(403, {"error": str(exc)})
+                except (ValueError, KeyError, TypeError, OSError) as exc:
+                    self._json(400, {"error": str(exc)})
+                return True
+
             def do_GET(self):
                 if not self._allowed():
                     return
                 parsed_path = urlparse(self.path)
                 query = parse_qs(parsed_path.query)
+                if self._jobs_route(parsed_path.path, False):
+                    return
+                if parsed_path.path == "/ops/targets":
+                    inventory = server_instance.operations.inventory()
+                    inventory["targets"] = [{k: v for k, v in target.items() if k != "repo"}
+                                            for target in inventory["targets"]]
+                    self._json(200, {**inventory,
+                                     "probe_enabled": bool(server_instance.access_token) and not server_instance.match,
+                                     "artifact_enabled": bool(server_instance.access_token)})
+                    return
+                if parsed_path.path == "/ops/probe":
+                    if not server_instance.access_token or server_instance.match:
+                        self._json(403, {"error": "SSH diagnostics require an access token and practice mode."})
+                        return
+                    identifier = query.get("target", [""])[0]
+                    try:
+                        self._json(200, server_instance.operations.probe(identifier))
+                    except KeyError:
+                        self._json(404, {"error": "unknown configured target"})
+                    return
+                if parsed_path.path == "/ops/artifact":
+                    if not server_instance.access_token:
+                        self._json(403, {"error": "Artifact preview requires ORACULUM_ACCESS_TOKEN."})
+                        return
+                    identifier = query.get("target", [""])[0]
+                    profile = query.get("profile", [""])[0]
+                    target = next((item for item in server_instance.operations.inventory()["targets"]
+                                   if item["id"] == identifier), None)
+                    if target is None:
+                        self._json(404, {"error": "unknown configured target"})
+                        return
+                    try:
+                        self._json(200, artifact_preview(target["repo"], target, profile))
+                    except ValueError as exc:
+                        self._json(400, {"error": str(exc)})
+                    return
+                if parsed_path.path == "/ops/artifacts":
+                    if not server_instance.access_token:
+                        self._json(403, {"error": "Artifact inventory requires ORACULUM_ACCESS_TOKEN."})
+                        return
+                    self._json(200, {"artifacts": list_artifacts(server_instance.artifact_root)})
+                    return
+                if parsed_path.path == "/ops/deploy-plan":
+                    if not server_instance.access_token:
+                        self._json(403, {"error": "Deploy review requires ORACULUM_ACCESS_TOKEN."})
+                        return
+                    identifier = query.get("target", [""])[0]
+                    artifact = query.get("artifact", [""])[0]
+                    target = next((item for item in server_instance.operations.inventory()["targets"]
+                                   if item["id"] == identifier), None)
+                    if target is None:
+                        self._json(404, {"error": "unknown configured target"})
+                        return
+                    try:
+                        self._json(200, wired_deploy_plan(server_instance.artifact_root, artifact, target))
+                    except FileNotFoundError:
+                        self._json(404, {"error": "artifact not found"})
+                    except ValueError as exc:
+                        self._json(400, {"error": str(exc)})
+                    return
                 if parsed_path.path == "/field":
                     self._json(200, server_instance.field)
                     return
@@ -431,14 +538,14 @@ class ControlServer:
                     self.send_header("Content-Length", str(len(response)))
                     self.end_headers()
                     self.wfile.write(response)
-                elif parsed_path.path in ("/", "/index.html", "/wasm_test.html", "/dashboard", "/dashboard.html", "/ar_dashboard.html",
+                elif parsed_path.path in ("/", "/index.html", "/wasm_test.html", "/dashboard", "/dashboard.html", "/ar_dashboard.html", "/simulation", "/simulation.html", "/operations", "/operations.html",
                                           "/fleet", "/fleet.html", "/robot", "/robot.html",
                                           "/tv.html", "/director", "/director.html"):
                     try:
                         filename = os.path.basename(parsed_path.path)
                         if not filename or filename == "/":
                             filename = "index.html"
-                        elif filename in ("dashboard", "fleet", "robot", "director"):
+                        elif filename in ("dashboard", "fleet", "robot", "director", "simulation", "operations"):
                             filename += ".html"
                             
                         dashboard_path = os.path.join(
@@ -508,6 +615,8 @@ class ControlServer:
                 if not self._allowed():
                     return
                 parsed_path = urlparse(self.path)
+                if self._jobs_route(parsed_path.path, True):
+                    return
                 if parsed_path.path in ("/gc", "/stop", "/goto") and server_instance.blocked():  # match mode: nothing goes out
                     self._json(409, {"status": "blocked", "error": server_instance.blocked(), "match": True})
                     return
@@ -566,12 +675,18 @@ class ControlServer:
                     if kind not in server_instance.STOP_FIELDS:
                         self._json(400, {"error": "kind must be stop, lie, damp, resume, getup or sit"})
                         return
+                    if kind in ("lie", "sit"):
+                        self._json(409, {"error": "This integration has no verified LIE DOWN or SIT capability; no command sent."})
+                        return
                     # DAMP drops the robot and can break it: one robot at a time, and only with confirm = its address
                     if kind == "damp" and (cmd.get("robot", "all") == "all" or cmd.get("confirm") != cmd.get("robot")):
                         self._json(400, {"error": "DAMP needs one robot and confirm = its address (never all robots)"})
                         return
                     link = server_instance.udp_receiver.link_stats()
                     robot = str(cmd.get("robot", "all"))
+                    if kind != "stop" and (server_instance.operation_jobs.active if robot == "all" else server_instance.operation_jobs.busy_ip(robot)):
+                        self._json(409, {"error": "A maintenance operation is running; robot controls are blocked."})
+                        return
                     # "all": every robot heard in the last 60 s (the fleet page's offline window), so a Wi-Fi gap
                     # does not skip one; one robot: only an address that sent telemetry (no UDP to other hosts)
                     targets = sorted(ip for ip, st in link.items() if st["age"] < 60) if robot == "all" else [robot] if robot in link else []
@@ -679,6 +794,9 @@ class ControlServer:
                         cmd = json.loads(post_data.decode("utf-8"))
                         target_ip = server_instance.control_ip or cmd.get("ip", "127.0.0.1")
                         target_port = cmd.get("port", 10007)
+                        if cmd.get("isManual") is True and server_instance.operation_jobs.busy_ip(target_ip):
+                            self._json(409, {"error": "A maintenance operation is running for this robot."})
+                            return
 
                         # Read all control input fields (both joystick structure and legacy velocity fields)
                         if "disabled_drawings" in cmd:
@@ -707,6 +825,12 @@ class ControlServer:
                         if not server_instance.control_ip and server_instance.read_only_ip(target_ip):
                             self._json(409, {"status": "read-only", "error": f"{target_ip} sends no oraculum telemetry, only team "
                                              "messages or GameController return packets (another branch or team): no command."})
+                            return
+
+                        if any(a.ip == target_ip and (a.sys or {}).get("link") == "telemetry"
+                               for a in server_instance.udp_receiver.latest().agents):
+                            self._json(409, {"status": "read-only", "error":
+                                            f"{target_ip} is in match mode: telemetry only, no command."})
                             return
 
                         # Engineer mode: a manual command needs the control lock (a free lock is taken here)
@@ -829,6 +953,9 @@ class ControlServer:
                     self._json(400, {"error": str(e)})
                     return
                 robot, client, name = str(cmd.get("robot", "")), str(cmd.get("client", "")), str(cmd.get("name", ""))[:40]
+                if srv.operation_jobs.busy_ip(robot):
+                    self._json(409, {"error": "A maintenance operation is running for this robot."})
+                    return
                 cancel = cmd.get("cancel") is True
                 mirror = srv.udp_receiver.mirror_color
                 state = srv.udp_receiver.latest()

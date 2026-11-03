@@ -67,8 +67,8 @@ try:
     assert sent[-1] == ([red.ip], {"isManual": True, "getup": True})
     assert call("/stop", {"robot": red.ip, "kind": "sit", **A})[0] == 409, "sit: T2 only"
     red.robot = "t2"
-    assert call("/stop", {"robot": red.ip, "kind": "sit", **A})[0] == 200 and sent[-1][1] == {"isManual": True, "sit": True}
-    assert call("/stop", {"robot": "all", "kind": "sit", **A})[0] == 200 and sent[-1][0] == [red.ip], "all: T2 only"
+    assert call("/stop", {"robot": red.ip, "kind": "sit", **A})[0] == 409
+    assert call("/stop", {"robot": "all", "kind": "sit", **A})[0] == 409, "unsupported on every current model"
     assert call("/stop", {"robot": red.ip, "kind": "getup", "client": "tab-b", "name": "B"})[0] == 423, "lock held by A"
     assert call("/stop", {"robot": match.ip, "kind": "getup", **A})[0] == 409, "match mode"
     assert call("/stop", {"robot": damped.ip, "kind": "getup", **A})[0] == 409, "damped"
@@ -118,7 +118,7 @@ try:
     assert out.returncode == 0 and "ready_1" in out.stdout and "sideline_penalized" in out.stdout, out
     n = len(sent)
     out = run("sit", "--ip", red.ip)
-    assert out.returncode != 0 and "only on the T2" in out.stdout and len(sent) == n, out
+    assert out.returncode != 0 and "no verified" in out.stdout and len(sent) == n, out
 
     # telemetry: a blue robot's goto target is mirrored with its pose
     import socket_client as sc

@@ -19,9 +19,7 @@ ORACULUM_URL=http://10.0.19.10:8080 ORACULUM_ACCESS_TOKEN=<secret> python3 src/o
 
 Each run is one client of the control lock. It releases the lock when it ends.
 
-**Known bug:** `status` stops with `KeyError: 'state'` when no GameController packet arrived in the last 2 s
-(the gateway forgets the referee state 2 s after the last packet). Use the
-fleet page instead, or start the simulated referee. The other commands are not affected.
+When no GameController packet arrived in the last 2 s, `status` prints "No active GameController broadcast detected."
 
 ## Commands
 
@@ -32,7 +30,7 @@ python3 src/oraculum_cli.py status
 ```
 
 Prints the referee state, score and clock, one line per robot (ID, x, y, heading, role, state), and the debug drawings.
-It crashes when no GameController packet arrived in the last 2 s (see above).
+It reports that no GameController is active when packets are absent.
 
 ### walk
 
@@ -47,7 +45,7 @@ python3 src/oraculum_cli.py walk 0.4 0.0 0.0 --ip 10.0.19.103 --duration 2
   oraculum joystick 500 ms after the last packet, so the robot stops by itself after the run.
 - `--ip` (default `127.0.0.1`) and `--port` (default 10007).
 - It needs the control lock. It is refused (HTTP 403) in READY, SET and PLAYING.
-- This is the only client that can turn the robot. The on-screen joystick always sends `vtheta: 0`.
+- The Field and Dashboard pages also have hold-to-turn buttons; the CLI remains useful for a precisely bounded turn duration.
 
 ### stop, lie, resume
 

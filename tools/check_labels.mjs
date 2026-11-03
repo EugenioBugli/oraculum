@@ -4,8 +4,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const path = process.argv[2] || new URL('../src/static/circus_view.js', import.meta.url);
-// A data: module cannot resolve "./field_model.js": point it at the file next to circus_view.js
-const src = readFileSync(path, 'utf8').replace("'./field_model.js'", `'${new URL('field_model.js', path instanceof URL ? path : new URL(path, `file://${process.cwd()}/`)).href}'`);
+// Load both browser ES modules as data URLs, also on Node without package.json type=module.
+const sourceURL = path instanceof URL ? path : new URL(path, `file://${process.cwd()}/`);
+const fieldURL = 'data:text/javascript,' + encodeURIComponent(readFileSync(new URL('field_model.js', sourceURL), 'utf8'));
+const src = readFileSync(path, 'utf8').replace("'./field_model.js'", JSON.stringify(fieldURL));
 const { placeLabels } = await import('data:text/javascript,' + encodeURIComponent(src));
 
 const boxes = (items, lh) => items.map(it => ({ x: it.left, y: it.y - it.up - lh, w: 2 * lh, h: lh }));

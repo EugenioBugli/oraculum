@@ -36,7 +36,7 @@ fi
  else patch -p1 -N -s < "$W/simbridge_625336d2.patch" && echo "simbridge: 625336d2 applied"; fi)
 
 # 1b. Maximus with booster-motion 1.8 in simulation (SPQR_SIM_FW18, set by supervisord.arm.conf on the native path):
-#     kSoccer instead of kWalking + Prepare at boot. Same change as uncommitted in /home/xps/work/spqr-merge.
+#     kSoccer instead of kWalking + Prepare at boot. Same change as uncommitted in the framework tree.
 (cd workspace
  if patch -p1 -R --dry-run -s -f < "$W/maximus_sim_fw18.patch" >/dev/null 2>&1; then echo "maximus: sim_fw18 already in"
  else patch -p1 -N -s < "$W/maximus_sim_fw18.patch" && echo "maximus: sim_fw18 applied"; fi)

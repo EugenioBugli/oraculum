@@ -17,8 +17,8 @@ active branch, with team coordination; merge of `RCAP2026-DEV` at `7fb7df9f`). D
 they have no oraculum link.
 
 > **Code version (2026-10-23).** Deploy `oraculum-tcm` at commit `bc462d43` or later (GitHub branch
-> `SPQRTeam/spqrbooster2026` `oraculum-tcm`; the local branch `feature/oraculum-tcm-mappazzone` in
-> `/home/xps/work/spqr-merge` has the same commit). It has GET UP, GO TO and SIT (T2 only) over UDP 10007 (`04ef450e`),
+> `SPQRTeam/spqrbooster2026` `oraculum-tcm`, now `SPQRTeam/maximus`; the local branch
+> `feature/oraculum-tcm-mappazzone` has the same commit). It has GET UP, GO TO and SIT (T2 only) over UDP 10007 (`04ef450e`),
 > MANUAL that drives also with `customMode: false` (`e7ce3008`), and the remote's Prep combo ends GET UP and GO TO.
 > `d55b0946` (2026-10-21) added the settings `oraculum` and `oraculumHost`.
 > On the deploy machine: `git fetch origin && git switch oraculum-tcm && git pull`.

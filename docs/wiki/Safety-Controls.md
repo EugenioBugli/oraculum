@@ -69,26 +69,29 @@ Only one operator at a time may drive a robot. The **control lock** decides who.
 
 ## MANUAL (on-screen joystick)
 
-MANUAL drives one robot with the on-screen stick of the main view. The stick and the MANUAL switch show only after you
+MANUAL drives one robot with the on-screen stick of the Field or Dashboard view. The stick and the MANUAL switch show only after you
 select a robot. Since robot commit `e7ce3008` MANUAL drives the robot also with `customMode: false` (the
 manufacturer's walking controller, the default in `deploy.yaml`): the robot sends the sticks to the firmware as walk
 commands.
 
 1. Select the robot on the field or in the list. Status: tested in simulation (fake robots).
-2. Tick MANUAL. The page takes the control lock if it is free. Status: tested in simulation (fake robots).
-3. Drag the stick. The page sends a command every 80 ms while MANUAL is ticked and you hold the lock.
+2. Tick MANUAL. The page takes the control lock if it is free. If the robot reports a STOP, GET UP or GO TO latch, the page first sends the Manual combo (`RB+RT+B`) with zero velocity. It waits for fresh telemetry to confirm that the latch cleared, then waits for the stick to be released before enabling motion. A timeout or stale telemetry turns MANUAL off. Status: isolated browser tests on Field and Dashboard with fake telemetry and intercepted commands; physical transition not yet observed.
+3. Drag the stick. The page sends a command about every 80–100 ms while MANUAL is ticked and you hold the lock.
    Status: not tested with a real robot.
 4. Untick MANUAL when you are done. Status: tested in simulation (fake robots).
 
 - The stick sets forward speed (`vx`) and sideways speed (`vy`). The sliders scale them. The robot multiplies them by
   its own top speed and clamps each stick value to [-1, 1], so a slider above 1.0 has no more effect.
-- **The on-screen stick cannot turn the robot**: the pages always send `vtheta: 0`. To turn, use the CLI
-  (`oraculum_cli.py walk VX VY VTHETA --ip IP`).
+- The Field and Dashboard panels have **hold-to-turn** left/right buttons. They send `vtheta` only while MANUAL is on,
+  this tab holds the lock, the referee rule allows control, and the button is held. Release, pointer cancel, tab hide,
+  or browser blur returns turn to zero. This was tested with intercepted browser commands and fake telemetry, not a real robot.
+  For a timed turn, use `oraculum_cli.py walk VX VY VTHETA --ip IP --duration SECONDS`.
 - The robot uses the oraculum joystick only while datagrams keep arriving. **500 ms after the last one, it stops
   following them.** A closed browser cannot leave the robot walking. A real robot then stays in its Manual state, with
   the body on its own remote controller, until Resume (the Play combo). A simulated robot goes back to autonomous play.
   (from code, `e7ce3008`; not tested with a real robot)
 - The robot that MANUAL drives is fixed when you tick MANUAL. Selecting another robot only shows it.
+- In **Real + ghosts**, select a `SIM · joystick preview` ghost before turning MANUAL on to test the on-screen stick. Its forward/side/turn values and position update in this browser only; the page sends no `/control` or control-lock request for it. The ghost uses simple kinematics, not Circus or the robot's gait controller. STOP/Resume on a ghost remain disabled.
 - A yellow banner names the robot while MANUAL is on.
 - **ARMS: STIFF / LIMP** sends the `lt` field. On the robot, `lt` is only the left trigger of the joystick now.
   It does not make the arms limp.

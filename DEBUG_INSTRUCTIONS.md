@@ -5,7 +5,7 @@
 Run in a container to isolate any memory issues from your system:
 
 ```bash
-cd /DATA/RoboCup/oraculum
+cd /path/to/oraculum
 chmod +x docker-run.sh
 ./docker-run.sh
 ```
@@ -31,7 +31,7 @@ When you ran oraculum the first time, it froze GNOME. This is likely due to:
 Isolates the process completely. Safe for debugging.
 
 ```bash
-cd /DATA/RoboCup/oraculum
+cd /path/to/oraculum
 
 # Build once
 docker build -t oraculum:dev .
@@ -63,7 +63,7 @@ Or use the helper script:
 A patched version with better thread cleanup:
 
 ```bash
-cd /DATA/RoboCup/oraculum
+cd /path/to/oraculum
 
 # Create a wrapper entry point
 cat > run_oraculum_fixed.py << 'EOF'

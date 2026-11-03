@@ -61,6 +61,7 @@ export function rawRgb(color) {
 const knownRobots = new Map();  // "ip|team|id" -> {a, t}
 export function robotName(a, agents) {
     const name = `T${a?.team || '?'} R${a?.id ?? '?'}`;
+    if (a?.simulated) return name + ' ·SIM';
     if (!Array.isArray(agents)) return name;  // also .map(robotName): the 2nd argument is then an index
     const now = Date.now();
     for (const b of [a, ...agents]) if (b) knownRobots.set(`${b.ip || '127.0.0.1'}|${b.team}|${b.id}`, { a: b, t: now });
@@ -72,7 +73,7 @@ export function robotName(a, agents) {
     return `${name} ·${twins.some(b => last(b.ip || '127.0.0.1') === last(ip)) ? ip : '.' + last(ip)}`;
 }
 // Robots in a /state and how many of them have a stale link: the header says "all robot links stale" or "N link stale".
-export const linkCounts = state => ({ n: (state?.agents || []).length, stale: (state?.agents || []).filter(a => linkStale(state, a)).length });
+export const linkCounts = state => { const real = (state?.agents || []).filter(a => !a.simulated); return { n: real.length, stale: real.filter(a => linkStale(state, a)).length }; };
 // The part robotName adds for a twin ("·.2" -> ".2"), or "": the 2D discs show it under the number.
 export const robotTag = (a, agents) => robotName(a, agents).split(' ·')[1] || '';
 // Parts of a robotName label: "T19 R3 ·.2" -> number "R3", twin tag ".2" ("" when the robot has no twin).
@@ -95,12 +96,11 @@ export const receptionLine = r => {
     return teams.length ? '\nTeam messages heard since the gateway started: ' + teams.map(([n, t]) => `T${n} ${t.packets} (` +
         [...Object.entries(t.formats || {}).map(([f, c]) => `${f} ${c}`), t.unknown ? `${t.unknown} unknown format` : ''].filter(Boolean).join(', ') + ')').join(' · ') : '';
 };
-export const READONLY_TIP = 'Read-only: this robot sends no oraculum telemetry (another branch or team), only team messages ' +
-    'or GameController return packets. It takes no command.';
+export const READONLY_TIP = 'Read-only: this is a simulated display ghost, or a robot seen only through team messages or GameController returns. It takes no command.';
 const READONLY_STALE_S = 2.5;  // team messages come every 0.6-1.2 s (1 s while play is stopped): 1 s would flicker
 // Its sources, short: "DBG" (debug telemetry, UDP 10006), "TM" (team message), "GC" (GameController return)
-export const sourceTag = a => (a?.sources || []).map(s => ({ debug: 'DBG', team: 'TM', gc: 'GC' })[s] || s).join('+');
-export const sourceTitle = a => (a?.sources || []).map(s => `${{ debug: 'debug telemetry', team: `team message${a.team_format ? ` (${a.team_format} format)` : ''}`, gc: 'GameController return' }[s] || s} ${(a.source_age || {})[s] ?? '?'} s`).join(', ');
+export const sourceTag = a => (a?.sources || []).map(s => ({ debug: 'DBG', team: 'TM', gc: 'GC', sim: 'SIM' })[s] || s).join('+');
+export const sourceTitle = a => (a?.sources || []).map(s => `${{ debug: 'debug telemetry', team: `team message${a.team_format ? ` (${a.team_format} format)` : ''}`, gc: 'GameController return', sim: 'simulated display preview' }[s] || s} ${(a.source_age || {})[s] ?? '?'} s`).join(', ');
 
 // Words for the one-letter role and state of the telemetry (the robots send full role names; the fake sender letters).
 const ROLE_WORDS = { G: 'Goalkeeper', D: 'Defender', M: 'Midfielder', A: 'Attacker' };
@@ -121,7 +121,8 @@ export function versionMark(agent, head) {
 // "7/7 live · 2 fallen · 0 penalised · 1 low battery · 1 wrong version" for the main page. `seen` (Map: robot key ->
 // {agent, t}) is kept by the page: a robot silent for less than 60 s counts as offline, as in the fleet table.
 export function teamSummary(state, seen, now = Date.now()) {
-    const agents = state?.agents || [], key = a => `${a.ip}|${a.id}`;
+    const agents = (state?.agents || []).filter(a => !a.simulated), ghosts = (state?.agents || []).length - agents.length;
+    const key = a => `${a.ip}|${a.id}`;
     for (const a of agents) seen.set(key(a), { agent: a, t: now });
     for (const [k, v] of seen) if (now - v.t > 60000) seen.delete(k);
     const gc = state?.gamecontroller, head = state?.fleet?.head;
@@ -129,7 +130,8 @@ export function teamSummary(state, seen, now = Date.now()) {
     const stale = a => linkStale(state, a);  // a robot with old data is not counted as live
     return [`${n(a => !stale(a))}/${seen.size} live`, `${n(a => a.fallen)} fallen`, `${n(a => penaltyOf(a, gc) || a.state === 'P')} penalised`,
             `${n(a => a.battery >= 0 && a.battery < 20)} low battery`, `${n(a => versionMark(a, head) === '✗')} wrong version`]
-        .concat(n(stale) ? [`${n(stale)} ${n(stale) === 1 ? 'link' : 'links'} stale`] : []).join(' · ');
+        .concat(n(stale) ? [`${n(stale)} ${n(stale) === 1 ? 'link' : 'links'} stale`] : [])
+        .concat(ghosts ? [`${ghosts} display ${ghosts === 1 ? 'ghost' : 'ghosts'}`] : []).join(' · ');
 }
 
 // GameController pill for every page. No packet for 2 s → "No GameController" and no fake "00:00 0 - 0";

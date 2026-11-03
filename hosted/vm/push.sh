@@ -14,8 +14,8 @@ SIMBRIDGE_REF=${SIMBRIDGE_REF:-ce708bfa}  # simbridge main 2026-10-18: the match
 # lockstep: the upstream 1 us busy-spins one core per robot (the 10-robot stall on Modal), and 1 ms would use up to half
 # of a 2 ms substep. 200 us matches circus's own check. Tune with SIMBRIDGE_POLL_US after measure_rtf.sh.
 POLL_US=${SIMBRIDGE_POLL_US:-200}
-SPQR=${SPQR:-/DATA/RoboCup/spqrbooster2026}  # the robot framework tree to build (e.g. a merge clone on another disk)
-ORA=/DATA/RoboCup/oraculum
+SPQR=${SPQR:-$(cd "$(dirname "$0")/../../.." && pwd)/spqrbooster2026}  # the robot framework tree to build
+ORA=$(cd "$(dirname "$0")/../.." && pwd)                               # this gateway clone
 HERE=$(cd "$(dirname "$0")" && pwd)
 
 ssh "$VM" 'command -v rsync >/dev/null && command -v git >/dev/null || (apt-get update -q && apt-get install -yq rsync git)

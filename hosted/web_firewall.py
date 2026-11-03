@@ -1,6 +1,6 @@
 """Make ONE session server public on HTTPS: a separate firewall "oraculum-web" (tcp 22, 80, 443) instead of the shared
 "oraculum-ssh-only". The shared firewall and the other servers do not change. Port 8080 stays closed: put Caddy (TLS)
-in front of the gateway on 443. Run from /DATA/RoboCup/oraculum/hosted:
+in front of the gateway on 443. Run from the `hosted/` directory of this clone:
     python3 web_firewall.py <server id>          # public
     python3 web_firewall.py <server id> --close  # back to ssh only
 """
