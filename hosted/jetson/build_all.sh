@@ -10,7 +10,8 @@ set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 J=${J:-jetson-spqr}
 SRC=${SRC:-$(cd "$HERE/../../.." && pwd)/spqrbooster2026}
-SIMBRIDGE=${SIMBRIDGE:-$SRC/external/simbridge}   # ce708bfa; build_jetson.sh adds 625336d2
+SIMBRIDGE=${SIMBRIDGE:-$(cd "$HERE/../../.." && pwd)/spqrbooster2026/external/simbridge}   # ce708bfa, NOT from
+# SRC: a merge clone has an empty submodule there. build_jetson.sh adds 625336d2.
 ORACULUM=$(cd "$HERE/../.." && pwd)
 
 ssh "$J" 'mkdir -p ~/oraculum-sim-arm/scenes'
